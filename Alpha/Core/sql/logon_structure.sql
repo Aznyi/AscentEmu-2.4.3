@@ -1,12 +1,3 @@
-/*
-MySQL Data Transfer
-Source Host: localhost
-Source Database: testse
-Target Host: localhost
-Target Database: testse
-Date: 5/12/2008 11:48:13 PM
-*/
-
 SET FOREIGN_KEY_CHECKS=0;
 -- ----------------------------
 -- Table structure for accounts
@@ -18,7 +9,7 @@ CREATE TABLE `accounts` (
   `encrypted_password` varchar(42) collate utf8_unicode_ci NOT NULL default '',
   `gm` varchar(32) collate utf8_unicode_ci NOT NULL default '' COMMENT 'Game permissions',
   `banned` tinyint(3) unsigned NOT NULL default '0' COMMENT 'Account Standing',
-  `lastlogin` timestamp NOT NULL default '0000-00-00 00:00:00' COMMENT 'Last login timestamp',
+  `lastlogin` timestamp NULL DEFAULT NULL COMMENT 'Last login timestamp',
   `lastip` varchar(16) collate utf8_unicode_ci NOT NULL default '' COMMENT 'Last remote address',
   `email` varchar(64) collate utf8_unicode_ci NOT NULL default '' COMMENT 'Contact e-mail address',
   `flags` tinyint(3) unsigned NOT NULL default '0' COMMENT 'Client flags',
@@ -33,7 +24,7 @@ CREATE TABLE `accounts` (
 -- ----------------------------
 CREATE TABLE `ipbans` (
   `ip` varchar(16) collate utf8_unicode_ci NOT NULL default '' COMMENT 'Remote host',
-  `expire` timestamp NOT NULL default '0000-00-00 00:00:00' COMMENT 'Expiry time (s)',
+  `expire` timestamp NULL DEFAULT NULL COMMENT 'Expiry time (s)',
   PRIMARY KEY  (`ip`),
   UNIQUE KEY `a` (`ip`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='IPBanner';
