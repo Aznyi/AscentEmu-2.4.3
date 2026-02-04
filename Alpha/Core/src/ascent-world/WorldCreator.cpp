@@ -594,7 +594,7 @@ void Instance::LoadFromDB(Field * fields)
 
 void InstanceMgr::ResetSavedInstances(Player * plr)
 {
-	WorldPacket data(SMSG_RESET_INSTANCE, 4);
+	WorldPacket data(SMSG_INSTANCE_RESET, 4);
 	Instance * in;
 	InstanceMap::iterator itr;
 	InstanceMap * instancemap;
@@ -769,11 +769,11 @@ void InstanceMgr::BuildSavedInstancesForPlayer(Player * plr)
 					{
 						m_mapLock.Release();
 
-						data.SetOpcode(SMSG_INSTANCE_SAVE);
+						data.SetOpcode(SMSG_UPDATE_LAST_INSTANCE);
 						data << uint32(in->m_mapId);
 						plr->GetSession()->SendPacket(&data);
 
-						data.Initialize(SMSG_INSTANCE_RESET_ACTIVATE);
+						data.Initialize(SMSG_UPDATE_INSTANCE_OWNERSHIP);
 						data << uint32(0x01);
 						plr->GetSession()->SendPacket(&data);
 					
@@ -785,7 +785,7 @@ void InstanceMgr::BuildSavedInstancesForPlayer(Player * plr)
 		m_mapLock.Release();
 	}
 
-	data.SetOpcode(SMSG_INSTANCE_RESET_ACTIVATE);
+	data.SetOpcode(SMSG_UPDATE_INSTANCE_OWNERSHIP);
 	data << uint32(0x00);
 	plr->GetSession()->SendPacket(&data);
 }

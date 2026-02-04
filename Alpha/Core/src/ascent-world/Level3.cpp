@@ -1227,7 +1227,7 @@ bool ChatHandler::HandleFlySpeedCheatCommand(const char* args, WorldSession* m_s
 	BlueSystemMessage(m_session, "Setting the fly speed of %s to %f.", plr->GetName(), Speed);
 	GreenSystemMessage(plr->GetSession(), "%s set your fly speed to %f.", m_session->GetPlayer()->GetName(), Speed);
 	
-	WorldPacket data(SMSG_FORCE_MOVE_SET_FLY_SPEED, 16);
+	WorldPacket data(SMSG_FORCE_FLIGHT_SPEED_CHANGE, 16);
 	data << plr->GetNewGUID();
 	data << uint32(0) << Speed;
 	plr->SendMessageToSet(&data, true);

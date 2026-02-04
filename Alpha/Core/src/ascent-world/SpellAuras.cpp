@@ -682,37 +682,6 @@ void Aura::AddAuraVisual()
 	}
 	m_visualSlot = m_target->AddAuraVisual(m_spellProto->Id, 1, IsPositive());
 
-	/*m_target->SetUInt32Value(UNIT_FIELD_AURA + slot, m_spellProto->Id);
-
-	uint8 flagslot = slot >> 3;
-
-	uint32 value = m_target->GetUInt32Value((uint16)(UNIT_FIELD_AURAFLAGS + flagslot));
-
-	uint8 aurapos = (slot & 7) << 2;
-	uint32 value1 = (uint32)AFLAG_SET << aurapos;
-	value |= value1;
-
-	m_target->SetUInt32Value((uint16)(UNIT_FIELD_AURAFLAGS + flagslot), value);
-	
-	uint32 index = (slot / 8);
-	uint32 byte  = (slot % 8);
-
-	uint32 x = 0, y = 0;
-	uint32 val = m_target->GetUInt32Value(UNIT_FIELD_AURALEVELS + index);
-	if(x != 0)
-	{
-		val |= (x << (byte * 8));
-		m_target->SetUInt32Value(UNIT_FIELD_AURALEVELS + index, val);
-	}
-
-	val = m_target->GetUInt32Value(UNIT_FIELD_AURAAPPLICATIONS + index);
-	if(y != 0)
-	{
-		val |= (y << (byte * 8));
-		m_target->SetUInt32Value(UNIT_FIELD_AURAAPPLICATIONS + index, val);
-	}
-	sLog.outDebug("Adding Aura Visual - target: %d , slot: %d , flagslot: %d , flagsvalue: 0x%.4X",m_target->GetGUID(),slot,flagslot,value);*/
-   
 	//  0000 0000 original
 	//  0000 1001 AFLAG_SET
 	//  1111 1111 0xFF
@@ -721,17 +690,13 @@ void Aura::AddAuraVisual()
 
 	if( m_target->IsPlayer())
 	{
-		/*WorldPacket data(SMSG_UPDATE_AURA_DURATION, 5);
-		data << m_visualSlot << (uint32)m_duration;
-		static_cast< Player* >( m_target )->GetSession()->SendPacket(&data);*/
-
 		packetSMSG_SET_AURA_DURATION datasa;
 		datasa.slot = m_visualSlot;
 		datasa.duration = m_duration;
 		static_cast<Player*>(m_target)->GetSession()->OutPacket(SMSG_UPDATE_AURA_DURATION, sizeof(packetSMSG_SET_AURA_DURATION), &datasa);
 	}
 		
-	WorldPacket data(SMSG_AURA_U PDATE, 22);
+	WorldPacket data(SMSG_SET_EXTRA_AURA_INFO, 22);
 	data << m_target->GetNewGUID() << m_visualSlot << uint32(m_spellProto->Id) << uint32(m_duration) << uint32(m_duration);
 	m_target->SendMessageToSet(&data,false);
 
@@ -741,27 +706,6 @@ void Aura::AddAuraVisual()
 void Aura::RemoveAuraVisual()
 {
 	m_target->RemoveAuraVisual(m_spellProto->Id, 1);
-
-	//UNIT_FIELD_AURAFLAGS 0-7;UNIT_FIELD_AURAFLAGS+1 8-15;UNIT_FIELD_AURAFLAGS+2 16-23 ... For each Aura 1 Byte
-
-	/*if(m_auraSlot>=MAX_AURAS)
-		return;
-	uint8 slot = m_auraSlot;
-
-	m_target->SetUInt32Value((uint16)(UNIT_FIELD_AURA + slot), 0);
-
-	uint8 flagslot = slot >> 3;
-
-	uint32 value = m_target->GetUInt32Value((uint16)(UNIT_FIELD_AURAFLAGS + flagslot));
-	
-	uint8 aurapos = (slot & 7) << 2;
-	 
-	uint32 value1 = ~( (uint32)AFLAG_SET << aurapos );
-	
-	value &= value1;
-   
-	m_target->SetUInt32Value(UNIT_FIELD_AURAFLAGS + flagslot,value);
-	sLog.outDebug("Removing Aura Visual - target: %d , slot: %d , flagslot: %d , flagsvalue: 0x%.4X",m_target->GetGUID(),slot,flagslot,value); */
 }
 
 void Aura::EventUpdateAA(float r)
@@ -2150,7 +2094,7 @@ void Aura::SpellAuraModConfuse(bool apply)
 		{
 			// this is a hackfix to stop player from moving -> see AIInterface::_UpdateMovement() Wander AI for more info
 			WorldPacket data1(9);
-			data1.Initialize(SMSG_DEATH_NOTIFY_OBSOLETE);
+			data1.Initialize(SMSG_CLIENT_CONTROL_UPDATE);
 			data1 << m_target->GetNewGUID() << uint8(0x00);
 			p_target->GetSession()->SendPacket(&data1);
 			p_target->SpeedCheatDelay( GetDuration() );
@@ -2169,7 +2113,7 @@ void Aura::SpellAuraModConfuse(bool apply)
 		{
 			// re-enable movement
 			WorldPacket data1(9);
-			data1.Initialize(SMSG_DEATH_NOTIFY_OBSOLETE);
+			data1.Initialize(SMSG_CLIENT_CONTROL_UPDATE);
 			data1 << m_target->GetNewGUID() << uint8(0x01);
 			p_target->GetSession()->SendPacket(&data1);
 
@@ -2295,7 +2239,7 @@ void Aura::SpellAuraModFear(bool apply)
 		{
 			// this is a hackfix to stop player from moving -> see AIInterface::_UpdateMovement() Fear AI for more info
 			WorldPacket data1(9);
-			data1.Initialize(SMSG_DEATH_NOTIFY_OBSOLETE);
+			data1.Initialize(SMSG_CLIENT_CONTROL_UPDATE);
 			data1 << m_target->GetNewGUID() << uint8(0x00);
 			p_target->GetSession()->SendPacket(&data1);
 			p_target->SpeedCheatDelay( GetDuration() );
@@ -2316,7 +2260,7 @@ void Aura::SpellAuraModFear(bool apply)
 			{
 				// re-enable movement
 				WorldPacket data1(9);
-				data1.Initialize(SMSG_DEATH_NOTIFY_OBSOLETE);
+				data1.Initialize(SMSG_CLIENT_CONTROL_UPDATE);
 				data1 << m_target->GetNewGUID() << uint8(0x01);
 				p_target->GetSession()->SendPacket(&data1);
 

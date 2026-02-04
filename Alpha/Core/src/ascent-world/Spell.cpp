@@ -1851,7 +1851,7 @@ void Spell::SendCastResult(uint8 result)
 		pe.ErrorMessage = result;
 		pe.MultiCast = extra_cast_number;
 		pe.Extra = Extra;
-		plr->GetSession()->OutPacket( SMSG_CAST_RESULT, sizeof( packetSMSG_CASTRESULT_EXTRA ), &pe );
+		plr->GetSession()->OutPacket(SMSG_CAST_FAILED, sizeof( packetSMSG_CASTRESULT_EXTRA ), &pe );
 	}
 	else
 	{
@@ -1859,7 +1859,7 @@ void Spell::SendCastResult(uint8 result)
 		pe.SpellId = m_spellInfo->Id;
 		pe.ErrorMessage = result;
 		pe.MultiCast = extra_cast_number;
-		plr->GetSession()->OutPacket( SMSG_CAST_RESULT, sizeof( packetSMSG_CASTRESULT ), &pe );
+		plr->GetSession()->OutPacket(SMSG_CAST_FAILED, sizeof( packetSMSG_CASTRESULT ), &pe );
 	}
 }
 
