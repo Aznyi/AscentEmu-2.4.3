@@ -22,7 +22,7 @@
 
 #include <stdlib.h>
 #include "Common.h"
-#include <openssl/sha.h>
+#include <../dep/openssl/sha.h>
 #include "Auth/BigNumber.h"
 
 class Sha1Hash
