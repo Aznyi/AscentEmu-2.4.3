@@ -1,12 +1,18 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30413.136
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11415.280 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ascent-world", "VC90\ascent-world.vcxproj", "{1DC6C4DA-A028-41F3-877D-D5400C594F88}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ascent-shared", "VC90\ascent-shared.vcxproj", "{90297C34-F231-4DF4-848E-A74BCC0E40ED}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ascent-logonserver", "VC90\ascent-logonserver.vcxproj", "{6E15F06D-5546-474D-BB42-39848DEF77E0}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GossipScripts", "..\src\scripts\projects\GossipScripts2008.vcxproj", "{25B8B9AE-2401-4F71-B946-26F6D3237443}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "InstanceScripts", "..\src\scripts\projects\InstanceScripts2008.vcxproj", "{EE39B48B-C598-4AAF-9EF0-199402933EE5}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpellHandlers", "..\src\scripts\projects\SpellsHandlers2008.vcxproj", "{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -40,6 +46,30 @@ Global
 		{6E15F06D-5546-474D-BB42-39848DEF77E0}.Release|Win32.Build.0 = Release|Win32
 		{6E15F06D-5546-474D-BB42-39848DEF77E0}.Release|x64.ActiveCfg = Release|x64
 		{6E15F06D-5546-474D-BB42-39848DEF77E0}.Release|x64.Build.0 = Release|x64
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|Win32.ActiveCfg = Debug|Win32
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|Win32.Build.0 = Debug|Win32
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|x64.ActiveCfg = Debug|x64
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|x64.Build.0 = Debug|x64
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Release|Win32.ActiveCfg = Release|Win32
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Release|Win32.Build.0 = Release|Win32
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Release|x64.ActiveCfg = Release|x64
+		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Release|x64.Build.0 = Release|x64
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Debug|Win32.ActiveCfg = Debug|Win32
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Debug|Win32.Build.0 = Debug|Win32
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Debug|x64.ActiveCfg = Debug|x64
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Debug|x64.Build.0 = Debug|x64
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Release|Win32.ActiveCfg = Release|Win32
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Release|Win32.Build.0 = Release|Win32
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Release|x64.ActiveCfg = Release|x64
+		{EE39B48B-C598-4AAF-9EF0-199402933EE5}.Release|x64.Build.0 = Release|x64
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Debug|Win32.ActiveCfg = Debug|Win32
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Debug|Win32.Build.0 = Debug|Win32
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Debug|x64.ActiveCfg = Debug|x64
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Debug|x64.Build.0 = Debug|x64
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Release|Win32.ActiveCfg = Release|Win32
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Release|Win32.Build.0 = Release|Win32
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Release|x64.ActiveCfg = Release|x64
+		{58B5F00B-81D6-4A14-8142-D7B882BAD8DE}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
