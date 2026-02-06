@@ -277,8 +277,13 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 	/************************************************************************/
 	/* Update player movement state                                         */
 	/************************************************************************/
-	//update the detector
-	if( sWorld.antihack_speed && !_player->GetTaxiState() )
+
+	// update the detector
+	// NOTE: When a player is on a transport (boat/zeppelin/elevator), the client still sends world-space
+	// movement updates that include the transport's motion. Feeding those samples into the
+	// speedhack detector produces false-positives (especially on turns/acceleration), which
+	// can lead to forced logout.
+	if( sWorld.antihack_speed && !_player->GetTaxiState() && !_player->m_TransporterGUID && !movement_info.transGuid )
 	{
 		// simplified: just take the fastest speed. less chance of fuckups too
 		float speed = ( _player->flying_aura ) ? _player->m_flySpeed : ( _player->m_swimSpeed >_player-> m_runSpeed ) ? _player->m_swimSpeed : _player->m_runSpeed;
