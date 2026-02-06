@@ -11185,3 +11185,10 @@ FROM pickpocketingloot pl
 LEFT JOIN items i ON i.entry = pl.itemid
 WHERE pl.entryid IN (24960)
   AND i.entry IS NULL;
+
+
+-- Fix invalid AI Agent spell loading in issue
+DELETE FROM ai_agents
+WHERE entry IN (10390,10391,10394,10482,11439,19428,21022)
+  AND spell IN (15584,15613,11586,11571);
+
