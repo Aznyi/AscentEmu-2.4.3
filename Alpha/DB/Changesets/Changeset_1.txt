@@ -11172,3 +11172,16 @@ INSERT INTO `creature_quest_finisher` VALUES (28126, 12515);
 
 -- Update Shrine of Dath Remars Object Type to match retail
 UPDATE gameobject_names SET TYPE = 10 WHERE entry = 180516;
+
+-- Fix Invalid loot for non existent item in issue 7
+DELETE cl
+FROM creatureloot cl
+LEFT JOIN items i ON i.entry = cl.itemid
+WHERE cl.entryid IN (24560, 25169)
+  AND i.entry IS NULL;
+
+DELETE pl
+FROM pickpocketingloot pl
+LEFT JOIN items i ON i.entry = pl.itemid
+WHERE pl.entryid IN (24960)
+  AND i.entry IS NULL;
