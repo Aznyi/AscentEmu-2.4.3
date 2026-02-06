@@ -252,10 +252,7 @@ bool Transporter::GenerateWaypoints()
 					}
 
 					TWayPoint pos(keyFrames[i].mapid, newX, newY, newZ, teleport);
-					if (teleport)
-					{
-						m_WayPoints[t] = pos;
-					}
+					m_WayPoints[t] = pos;
 				}
 
 				// caught in tFrom dock's "gravitational pull"
@@ -344,13 +341,12 @@ void Transporter::UpdatePosition()
 {
 	// Waypoint size check.
 	if (m_WayPoints.size() <= 1)
-	{
 		return;
-	}
 
 	// Set the timer.
 	m_timer = getMSTime() % m_period;
-	
+
+	// Advance through waypoints if our timer has passed them.
 	while (((m_timer - mCurrentWaypoint->first) % m_pathTime) >= ((mNextWaypoint->first - mCurrentWaypoint->first) % m_pathTime))
 	{
 		mCurrentWaypoint = mNextWaypoint;
@@ -361,36 +357,75 @@ void Transporter::UpdatePosition()
 			TransportPassengers(mCurrentWaypoint->second.mapid, GetMapId(), mCurrentWaypoint->second.x, mCurrentWaypoint->second.y, mCurrentWaypoint->second.z, mCurrentWaypoint->second.o);
 			break;
 		}
-
 		else
 		{
 			SetPosition(mCurrentWaypoint->second.x, mCurrentWaypoint->second.y, mCurrentWaypoint->second.z, m_position.o, false);
 		}
+
 		// During the delay sounds play..
-		if(mCurrentWaypoint->second.delayed)
+		if (mCurrentWaypoint->second.delayed)
 		{
 			// Pull by Display ID instead of entry?
-            switch (GetInfo()->DisplayID)
-            {
-                case 3015:
-                case 7087:
-                {
+			switch (GetInfo()->DisplayID)
+			{
+				case 3015:
+				case 7087:
+				{
 					// ShipDocked (LightHouseFogHorn.wav)
-                    PlaySoundToSet(5154);
-                } break;
-                case 3031:
-                {
+					PlaySoundToSet(5154);
+				} break;
+				case 3031:
+				{
 					// ZeppelinDocked  (ZeppelinHorn.wav)
-                    PlaySoundToSet(11804);
-                } break;
-                default:
-                {
+					PlaySoundToSet(11804);
+				} break;
+				default:
+				{
 					// BoatDockingWarning (BoatDockedWarning.wav)
-                    PlaySoundToSet(5495);
-                } break;
-            }
+					PlaySoundToSet(5495);
+				} break;
+			}
 		}
 	}
+
+	// Smooth movement between waypoints on the same map.
+	// Without this the transporter snaps between sparse waypoints which causes visible jitter
+	// and server-side position corrections ("rubberbanding") for passengers.
+	if (mCurrentWaypoint == m_WayPoints.end() || mNextWaypoint == m_WayPoints.end())
+		return;
+
+	if (mCurrentWaypoint->second.mapid != GetMapId())
+		return;
+
+	// Don't attempt to interpolate across a map-teleport edge.
+	if (mCurrentWaypoint->second.teleport || mNextWaypoint->second.teleport || (mCurrentWaypoint->second.mapid != mNextWaypoint->second.mapid))
+		return;
+
+	uint32 curT = mCurrentWaypoint->first;
+	uint32 nextT = mNextWaypoint->first;
+
+	uint32 span = (nextT - curT) % m_pathTime;
+	if (span == 0)
+		return;
+
+	uint32 elapsed = (m_timer - curT) % m_pathTime;
+	if (elapsed > span)
+		elapsed = span;
+
+	const float pct = float(elapsed) / float(span);
+
+	const float nx = mCurrentWaypoint->second.x + (mNextWaypoint->second.x - mCurrentWaypoint->second.x) * pct;
+	const float ny = mCurrentWaypoint->second.y + (mNextWaypoint->second.y - mCurrentWaypoint->second.y) * pct;
+	const float nz = mCurrentWaypoint->second.z + (mNextWaypoint->second.z - mCurrentWaypoint->second.z) * pct;
+
+	// Face toward next point (avoids the "awkward" visual where the transport seems to slide).
+	float o = m_position.o;
+	const float dx = (mNextWaypoint->second.x - mCurrentWaypoint->second.x);
+	const float dy = (mNextWaypoint->second.y - mCurrentWaypoint->second.y);
+	if (dx != 0.0f || dy != 0.0f)
+		o = atan2f(dy, dx);
+
+	SetPosition(nx, ny, nz, o, false);
 }
 
 //
@@ -398,63 +433,63 @@ void Transporter::UpdatePosition()
 //
 void Transporter::TransportPassengers(uint32 mapid, uint32 oldmap, float x, float y, float z, float o)
 {
-	if (mPassengers.size() > 0)
-	{
-		PassengerIterator itr = mPassengers.begin();
-		PassengerIterator it2;
-
-		WorldPacket Pending(SMSG_TRANSFER_PENDING, 12);
-		Pending << mapid << GetEntry() << oldmap;
-
-
-		WorldPacket NewWorld;
-		LocationVector v;
-
-		for (; itr != mPassengers.end();)
-		{
-			it2 = itr;
-			++itr;
-
-			Player* plr = objmgr.GetPlayer(it2->first);
-			if (!plr)
-			{
-				// remove all non players from map
-				mPassengers.erase(it2);
-				continue;
-			}
-			if (!plr->GetSession() || !plr->IsInWorld())
-				continue;
-
-			v.x = x + plr->m_TransporterX;
-			v.y = y + plr->m_TransporterY;
-			v.z = z + plr->m_TransporterZ;
-			v.o = plr->GetOrientation();
-
-			if (mapid == 530 && !plr->GetSession()->HasFlag(ACCOUNT_FLAG_XPACK_01))
-			{
-				// player does not have BC content, repop at graveyard
-				plr->RepopAtGraveyard(plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ(), plr->GetMapId());
-				continue;
-			}
-
-			plr->GetSession()->SendPacket(&Pending);
-			plr->_Relocate(mapid, v, false, true, 0);
-
-			// Lucky bitch. Do it like on official.
-			if (plr->isDead())
-			{
- 				plr->ResurrectPlayer();
- 				plr->SetUInt32Value(UNIT_FIELD_HEALTH, plr->GetUInt32Value(UNIT_FIELD_MAXHEALTH));
- 				plr->SetUInt32Value(UNIT_FIELD_POWER1, plr->GetUInt32Value(UNIT_FIELD_MAXPOWER1));
-			}
-		}
-	}
-
-	// Set our position
+	// Move the transport first so clients have a solid collider on the destination map
+	// before passengers are relocated. Doing this after relocating passengers can cause
+	// them to fall and take damage (or die) during the transfer tick.
 	RemoveFromWorld(false);
 	SetMapId(mapid);
-	SetPosition(x, y, z, m_position.o, false);
+	SetPosition(x, y, z, o, false);
 	AddToWorld();
+
+	if (mPassengers.size() == 0)
+		return;
+
+	PassengerIterator itr = mPassengers.begin();
+	PassengerIterator it2;
+
+	WorldPacket Pending(SMSG_TRANSFER_PENDING, 12);
+	Pending << mapid << GetEntry() << oldmap;
+
+	LocationVector v;
+
+	for (; itr != mPassengers.end();)
+	{
+		it2 = itr;
+		++itr;
+
+		Player* plr = objmgr.GetPlayer(it2->first);
+		if (!plr)
+		{
+			// remove all non players from map
+			mPassengers.erase(it2);
+			continue;
+		}
+		if (!plr->GetSession() || !plr->IsInWorld())
+			continue;
+
+		v.x = x + plr->m_TransporterX;
+		v.y = y + plr->m_TransporterY;
+		v.z = z + plr->m_TransporterZ;
+		v.o = plr->GetOrientation();
+
+		if (mapid == 530 && !plr->GetSession()->HasFlag(ACCOUNT_FLAG_XPACK_01))
+		{
+			// player does not have BC content, repop at graveyard
+			plr->RepopAtGraveyard(plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ(), plr->GetMapId());
+			continue;
+		}
+
+		plr->GetSession()->SendPacket(&Pending);
+		plr->_Relocate(mapid, v, false, true, 0);
+
+		// Lucky bitch. Do it like on official.
+		if (plr->isDead())
+		{
+ 			plr->ResurrectPlayer();
+ 			plr->SetUInt32Value(UNIT_FIELD_HEALTH, plr->GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+ 			plr->SetUInt32Value(UNIT_FIELD_POWER1, plr->GetUInt32Value(UNIT_FIELD_MAXPOWER1));
+		}
+	}
 }
 
 void ObjectMgr::LoadTransporters()
