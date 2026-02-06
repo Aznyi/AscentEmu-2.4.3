@@ -1173,6 +1173,15 @@ void QuestMgr::OnQuestFinished(Player* plr, Quest* qst, Object *qst_giver, uint3
 
 	    //Add to finished quests
 	    plr->AddToFinishedQuests(qst->id);
+
+		// Force a questgiver status refresh for this questgiver so the client clears the ?/! icons.
+		if(qst_giver && plr && plr->GetSession())
+		{
+			WorldPacket st(SMSG_QUESTGIVER_STATUS, 12);
+			st << qst_giver->GetGUID();
+			st << uint8(sQuestMgr.CalcStatus(qst_giver, plr));
+			plr->GetSession()->SendPacket(&st);
+		}
     }
 }
 

@@ -318,7 +318,7 @@ void WorldSession::HandleInrangeQuestgiverQuery(WorldPacket & recv_data)
 {
 	CHECK_INWORLD_RETURN;
 
-	WorldPacket data(CMSG_QUESTGIVER_STATUS_MULTIPLE_QUERY, 1000);
+	WorldPacket data(SMSG_QUESTGIVER_STATUS_MULTIPLE, 1000);
 	Object::InRangeSet::iterator itr;
 	Creature * pCreature;
 	uint32 count = 0;
