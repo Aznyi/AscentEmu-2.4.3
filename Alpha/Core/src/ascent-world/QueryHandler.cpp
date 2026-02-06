@@ -125,65 +125,89 @@ void WorldSession::HandleCreatureQueryOpcode( WorldPacket & recv_data )
 	SendPacket( &data );
 }
 
+// Consolidated GO query response builder/sender
+void WorldSession::SendGameObjectQueryResponse(uint32 entryID)
+{
+    GameObjectInfo* goinfo = GameObjectNameStorage.LookupEntry(entryID);
+    if(goinfo == NULL)
+        return;
+
+    LocalizedGameObjectName* lgn = (language > 0)
+        ? sLocalizationMgr.GetLocalizedGameObjectName(entryID, language)
+        : NULL;
+
+    WorldPacket data(SMSG_GAMEOBJECT_QUERY_RESPONSE, 300);
+
+    data << entryID;
+    data << goinfo->Type;
+    data << goinfo->DisplayID;
+
+    if(lgn)
+        data << lgn->Name;
+    else
+        data << goinfo->Name;
+
+    data << uint8(0) << uint8(0) << uint8(0) << uint8(0) << uint8(0) << uint8(0); // 1.12.1 structure
+
+    data << goinfo->SpellFocus;
+    data << goinfo->sound1;
+    data << goinfo->sound2;
+    data << goinfo->sound3;
+    data << goinfo->sound4;
+    data << goinfo->sound5;
+    data << goinfo->sound6;
+    data << goinfo->sound7;
+    data << goinfo->sound8;
+    data << goinfo->sound9;
+    data << goinfo->Unknown1;
+    data << goinfo->Unknown2;
+    data << goinfo->Unknown3;
+    data << goinfo->Unknown4;
+    data << goinfo->Unknown5;
+    data << goinfo->Unknown6;
+    data << goinfo->Unknown7;
+    data << goinfo->Unknown8;
+    data << goinfo->Unknown9;
+    data << goinfo->Unknown10;
+    data << goinfo->Unknown11;
+    data << goinfo->Unknown12;
+    data << goinfo->Unknown13;
+    data << goinfo->Unknown14;
+
+    SendPacket(&data);
+}
+
+// PageText open helper: force GO template cache, then trigger the UI
+void WorldSession::OpenGameObjectPageText(GameObject* go, uint32 pageId)
+{
+    if(go == NULL || pageId == 0)
+        return;
+
+    // Ensure the client has the GO template cached
+    SendGameObjectQueryResponse(go->GetEntry());
+
+    // Trigger PageText UI (GUID payload variant is sufficient once query is accepted)
+    WorldPacket p(SMSG_GAMEOBJECT_PAGETEXT, 8);
+    p << go->GetGUID();
+    SendPacket(&p);
+}
+
 //////////////////////////////////////////////////////////////
 /// This function handles CMSG_GAMEOBJECT_QUERY:
 //////////////////////////////////////////////////////////////
 void WorldSession::HandleGameObjectQueryOpcode( WorldPacket & recv_data )
 {
 	CHECK_PACKET_SIZE(recv_data, 12);
-	WorldPacket data(SMSG_GAMEOBJECT_QUERY_RESPONSE, 300);
 
 	uint32 entryID;
 	uint64 guid;
-	GameObjectInfo *goinfo;
-	
 
 	recv_data >> entryID;
 	recv_data >> guid;
 
 	sLog.outDetail("WORLD: CMSG_GAMEOBJECT_QUERY '%u'", entryID);
 
-	goinfo = GameObjectNameStorage.LookupEntry(entryID);
-	if(goinfo == NULL)
-		return;
-
-	LocalizedGameObjectName * lgn = (language>0) ? sLocalizationMgr.GetLocalizedGameObjectName(entryID, language) : NULL;
-    
-	data << entryID;
-	data << goinfo->Type;
-	data << goinfo->DisplayID;
-	if(lgn)
-		data << lgn->Name;
-	else
-		data << goinfo->Name;
-
-	data << uint8(0) << uint8(0) << uint8(0) << uint8(0) << uint8(0) << uint8(0);   // new string in 1.12
-	data << goinfo->SpellFocus;
-	data << goinfo->sound1;
-	data << goinfo->sound2;
-	data << goinfo->sound3;
-	data << goinfo->sound4;
-	data << goinfo->sound5;
-	data << goinfo->sound6;
-	data << goinfo->sound7;
-	data << goinfo->sound8;
-	data << goinfo->sound9;
-	data << goinfo->Unknown1;
-	data << goinfo->Unknown2;
-	data << goinfo->Unknown3;
-	data << goinfo->Unknown4;
-	data << goinfo->Unknown5;
-	data << goinfo->Unknown6;
-	data << goinfo->Unknown7;
-	data << goinfo->Unknown8;
-	data << goinfo->Unknown9;
-	data << goinfo->Unknown10;
-	data << goinfo->Unknown11;
-	data << goinfo->Unknown12;
-	data << goinfo->Unknown13;
-	data << goinfo->Unknown14;
-
-	SendPacket( &data );
+	SendGameObjectQueryResponse(entryID);
 }
 
 //////////////////////////////////////////////////////////////

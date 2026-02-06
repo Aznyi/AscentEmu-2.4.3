@@ -11169,3 +11169,6 @@ INSERT INTO `creature_quest_finisher` VALUES (27215, 12020);
 INSERT INTO `creature_quest_finisher` VALUES (27215, 12022);
 INSERT INTO `creature_quest_finisher` VALUES (27216, 12191);
 INSERT INTO `creature_quest_finisher` VALUES (28126, 12515);
+
+-- Update Shrine of Dath Remars Object Type to match retail
+UPDATE gameobject_names SET TYPE = 10 WHERE entry = 180516;

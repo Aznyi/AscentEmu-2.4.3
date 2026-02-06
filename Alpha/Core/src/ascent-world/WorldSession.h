@@ -33,6 +33,7 @@ class MapMgr;
 class Creature;
 class MovementInfo;
 struct TrainerSpell;
+class GameObject;
 
 //#define SESSION_CAP 5
 
@@ -347,6 +348,10 @@ protected:
 	void HandleQueryTimeOpcode(WorldPacket& recvPacket);
 	void HandleCreatureQueryOpcode(WorldPacket& recvPacket);
 	void HandleGameObjectQueryOpcode(WorldPacket& recvPacket);
+
+    // Consolidated helpers
+    void SendGameObjectQueryResponse(uint32 entryID);
+    void OpenGameObjectPageText(GameObject* go, uint32 pageId);
 	void HandleItemNameQueryOpcode( WorldPacket & recv_data );
 	void HandlePageTextQueryOpcode( WorldPacket & recv_data );
 
@@ -663,6 +668,10 @@ protected:
 	void HandleSetFriendNote(WorldPacket & recv_data);
 	void Handle38C(WorldPacket & recv_data);
 	void HandleInrangeQuestgiverQuery(WorldPacket & recv_data);
+
+	// Unhandled Opcodes we just consume
+	void HandleTimeSyncResp(WorldPacket& recv_data);
+	void HandleMeetingStoneInfo(WorldPacket& recv_data);
 
 public:
 

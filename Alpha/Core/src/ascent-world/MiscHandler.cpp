@@ -1236,6 +1236,37 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 	uint32 type = obj->GetUInt32Value(GAMEOBJECT_TYPE_ID);
 	switch (type)
 	{
+	case GAMEOBJECT_TYPE_GOOBER:
+	{
+			// Quest credit (Ex: Shrine of Dath'Remar, etc.)
+			sQuestMgr.OnGameObjectActivate(_player, obj);
+ 
+            // PageTextId in this DB/core is present in SpellFocus and/or sound7 for this object type (can vary).
+            uint32 pageId = goinfo->SpellFocus ? goinfo->SpellFocus : goinfo->sound7;
+
+            if(_player && pageId != 0)
+                OpenGameObjectPageText(obj, pageId);
+		}break;
+	case GAMEOBJECT_TYPE_TEXT:
+	{
+			// Send Activate for Quest Related Objects
+			sQuestMgr.OnGameObjectActivate(_player, obj);
+
+			// This is stored in SpellFocus
+			uint32 pageId = goinfo->SpellFocus;
+			if(pageId == 0)
+				pageId = goinfo->sound7; // fallback if your DB really uses sound7
+
+			sLog.outDetail("DBG GOOBER PAGETEXT: entry=%u pageId=%u (SpellFocus=%u sound7=%u)",
+				goinfo->ID, pageId, goinfo->SpellFocus, goinfo->sound7);
+
+			if(_player && pageId != 0)
+			{
+				WorldPacket data(SMSG_GAMEOBJECT_PAGETEXT, 8);
+				data << obj->GetGUID();
+				SendPacket(&data);
+			}
+	}break;
 		case GAMEOBJECT_TYPE_CHAIR:
 		{
 
@@ -1411,10 +1442,6 @@ void WorldSession::HandleGameObjectUse(WorldPacket & recv_data)
 				}
 			}
 		}break;
-	case GAMEOBJECT_TYPE_GOOBER:
-		{
-			//Quest related mostly
-		}
 	case GAMEOBJECT_TYPE_CAMERA://eye of azora
 		{
 			/*WorldPacket pkt(SMSG_TRIGGER_CINEMATIC,4);
