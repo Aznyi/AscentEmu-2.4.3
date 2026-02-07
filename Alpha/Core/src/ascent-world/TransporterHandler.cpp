@@ -333,6 +333,44 @@ WaypointIterator Transporter::GetNextWaypoint()
 	return iter;
 }
 
+bool Transporter::FindDockNear(uint32 mapid, float x, float y, float z, float maxDist, uint32& outDockTime, float& outDockDistSq)
+{
+    outDockTime = 0;
+    outDockDistSq = 0.0f;
+
+    if (maxDist <= 0.0f)
+        return false;
+
+    const float maxDistSq = maxDist * maxDist;
+
+    bool found = false;
+    float best = maxDistSq;
+
+    for (WaypointIterator itr = m_WayPoints.begin(); itr != m_WayPoints.end(); ++itr)
+    {
+        if (!itr->second.delayed)
+            continue;
+
+        if (itr->second.mapid != mapid)
+            continue;
+
+        const float dx = itr->second.x - x;
+        const float dy = itr->second.y - y;
+        const float dz = itr->second.z - z;
+        const float d2 = dx*dx + dy*dy + dz*dz;
+
+        if (d2 <= best)
+        {
+            best = d2;
+            outDockTime = itr->first;
+            outDockDistSq = d2;
+            found = true;
+        }
+    }
+
+    return found;
+}
+
 //
 // Update the player / objects position.
 //

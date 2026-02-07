@@ -18,6 +18,7 @@
  */
 
 #include "StdAfx.h"
+#include "ZeppelinMasterGossip.h"
 
 /** Table formats converted to strings
  */
@@ -130,6 +131,10 @@ void ObjectMgr::LoadExtraCreatureProtoStuff()
 				ci->lowercase_name[j] = tolower(ci->lowercase_name[j]); // Darvaleo 2008/08/15 - Copied lowercase conversion logic from ItemPrototype task
 
 			ci->gossip_script = sScriptMgr.GetDefaultGossipScript();
+
+			// Zeppelin Masters have a special retail gossip option: "Where is the zeppelin now?"
+			if(ci->SubName && stricmp(ci->SubName, "Zeppelin Master") == 0)
+				ci->gossip_script = new ZeppelinMasterGossip();
 
 			if(!itr->Inc())
 				break;

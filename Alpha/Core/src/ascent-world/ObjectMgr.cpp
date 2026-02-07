@@ -2285,6 +2285,21 @@ Transporter * ObjectMgr::GetTransporterByEntry(uint32 entry)
 	return rv;
 }
 
+void ObjectMgr::CopyTransports(std::vector<Transporter*>& out)
+{
+    out.clear();
+    _TransportLock.Acquire();
+    out.reserve(mTransports.size());
+
+    for (unordered_map<uint32, Transporter*>::iterator itr = mTransports.begin(); itr != mTransports.end(); ++itr)
+    {
+        if (itr->second)
+            out.push_back(itr->second);
+    }
+
+    _TransportLock.Release();
+}
+
 void ObjectMgr::LoadGuildCharters()
 {
 	m_hiCharterId = 0;

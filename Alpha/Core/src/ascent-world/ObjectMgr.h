@@ -554,6 +554,7 @@ public:
 	Transporter * GetTransporter(uint32 guid);
 	Transporter * GetTransporterByEntry(uint32 entry);
 
+	void CopyTransports(std::vector<Transporter*>& out);
 	Charter * CreateCharter(uint32 LeaderGuid, CharterTypes Type);
 	Charter * GetCharter(uint32 CharterId, CharterTypes Type);
 	void RemoveCharter(Charter *);

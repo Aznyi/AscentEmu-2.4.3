@@ -411,6 +411,11 @@ void Player::OnLogin()
 
 Player::~Player ( )
 {
+	// Be aggressive about removing any pending events before tearing down state.
+	// Unit/Object also remove events in their destructors, but Player destructor
+	// performs a lot of cleanup that can be touched by scheduled callbacks.
+	sEventMgr.RemoveEvents(this);
+
 	if(!ok_to_remove)
 	{
 		printf("Player deleted from non-logoutplayer!\n");

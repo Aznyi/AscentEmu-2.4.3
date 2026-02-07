@@ -38,6 +38,7 @@ class SpeedDetector;
 #define PLAYER_NORMAL_RUN_SPEED 7.0f
 #define PLAYER_NORMAL_SWIM_SPEED 4.722222f
 #define PLAYER_NORMAL_FLIGHT_SPEED 7.0f
+
 #define PLAYER_HONORLESS_TARGET_SPELL 2479
 #define MONSTER_NORMAL_RUN_SPEED 8.0f
 /* action button defines */
@@ -712,7 +713,16 @@ public:
 	void BuildEnumData( WorldPacket * p_data );
     void BuildFlagUpdateForNonGroupSet(uint32 index, uint32 flag);
 	std::string m_afk_reason;
+	std::string m_dynamicNpcText;
 	void SetAFKReason(std::string reason) { m_afk_reason = reason; };
+
+	// Reserved high npc_text id used for core-side dynamic gossip text.
+	// Scripts can set per-player text and request this ID, and the core will serve
+	// the text via SMSG_NPC_TEXT_UPDATE without needing DB npc_text rows.
+	enum { DYNAMIC_NPC_TEXT_ID = 0x00F00000 };
+	ASCENT_INLINE void SetDynamicNpcText(const std::string& text) { m_dynamicNpcText = text; }
+	ASCENT_INLINE const std::string& GetDynamicNpcText() const { return m_dynamicNpcText; }
+	ASCENT_INLINE void ClearDynamicNpcText() { m_dynamicNpcText.clear(); }
 	ASCENT_INLINE const char* GetName() { return m_name.c_str(); }
 	ASCENT_INLINE std::string* GetNameString() { return &m_name; }
 	void Die();
@@ -1217,6 +1227,7 @@ public:
 	GossipMenu* CurrentGossipMenu;
 	void CleanupGossipMenu();
 	void Gossip_Complete();
+
 	int m_lifetapbonus;
 	uint32 m_lastShotTime;
 	

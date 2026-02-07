@@ -1,6 +1,5 @@
 //
-// Soulstone Emu (C) 2017
-// Transport System
+// AscentEmu 2.4.3
 //
 
 #ifndef __TRANSPORTERHANDLER_H
@@ -110,6 +109,10 @@ public:
 	WaypointIterator mNextWaypoint;
 
 	void OnPushToWorld();
+
+	// Finds a dock (a delayed waypoint) on the given map near the supplied position.
+	// Returns true and outputs the waypoint timestamp and distance^2 when a matching dock is found.
+	bool FindDockNear(uint32 mapid, float x, float y, float z, float maxDist, uint32& outDockTime, float& outDockDistSq);
 
 private:
 	

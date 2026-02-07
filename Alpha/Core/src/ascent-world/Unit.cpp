@@ -232,7 +232,12 @@ Unit::Unit()
 }
 
 Unit::~Unit()
-{  
+{ 
+	// Ensure no pending EventMgr callbacks can fire while/after we begin tearing down.
+	// Object::~Object() also calls RemoveEvents(), but Unit has a lot of teardown
+	// (auras/AI/spells) that can be referenced by scheduled events.
+	sEventMgr.RemoveEvents(this);
+
 	RemoveAllAuras();
 
 	if(SM_CriticalChance != 0) delete [] SM_CriticalChance ;
@@ -4928,6 +4933,11 @@ void Unit::OnPushToWorld()
 
 void Unit::RemoveFromWorld(bool free_guid)
 {
+	// Stop any scheduled callbacks that might still reference this unit.
+	// This prevents stale EventMgr events from firing after the unit leaves the world
+	// (e.g. during despawn/logout/teleport).
+	sEventMgr.RemoveEvents(this);
+
 	CombatStatus.OnRemoveFromWorld();
 	if(critterPet != 0)
 	{

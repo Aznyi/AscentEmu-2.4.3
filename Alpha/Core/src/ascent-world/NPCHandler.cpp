@@ -603,6 +603,69 @@ void WorldSession::HandleNpcTextQueryOpcode( WorldPacket & recv_data )
 	recv_data >> targetGuid;
 	GetPlayer()->SetUInt64Value(UNIT_FIELD_TARGET, targetGuid);
 
+	// Runtime-only dynamic npc_text support (used by scripted gossips that want a blizzlike text window
+	// without creating DB npc_text entries).
+	if (textID == Player::DYNAMIC_NPC_TEXT_ID && !GetPlayer()->GetDynamicNpcText().empty())
+	{
+		const std::string& dynText = GetPlayer()->GetDynamicNpcText();
+		data.Initialize( SMSG_NPC_TEXT_UPDATE );
+		data << textID;
+		data << float(1.0f);
+		// First text slot
+		data << dynText;
+		data << dynText;
+		data << uint32(0x00);
+		data << uint32(0x00);
+		for(uint32 e=0;e<6;e++)
+			data << uint32(0x00);
+
+		// Remaining slots empty
+		for(int i=0;i<7;i++)
+		{
+			data << uint32(0x00);
+			data << uint8(0x00) << uint8(0x00);
+			data << uint32(0x00);
+			data << uint32(0x00);
+			for(uint32 e=0;e<6;e++)
+				data << uint32(0x00);
+		}
+
+		SendPacket(&data);
+		GetPlayer()->ClearDynamicNpcText();
+		return;
+	}
+
+	// Core-side dynamic npc_text support (used by scripts for blizzlike text windows).
+	if(textID == Player::DYNAMIC_NPC_TEXT_ID && !GetPlayer()->GetDynamicNpcText().empty())
+	{
+		data.Initialize( SMSG_NPC_TEXT_UPDATE );
+		data << textID;
+		data << float(1.0f);
+
+		const std::string& dyn = GetPlayer()->GetDynamicNpcText();
+		// Slot 0 carries the text shown in the parchment window.
+		data << dyn;
+		data << dyn;
+		data << uint32(0x00); // lang
+		data << uint32(0x00); // probability/unused
+		for(uint32 e=0;e<6;e++)
+			data << uint32(0x00);
+
+		for(int i=0;i<7;i++)
+		{
+			data << uint32(0x00);
+			data << uint8(0x00) << uint8(0x00);
+			data << uint32(0x00);
+			data << uint32(0x00);
+			for(uint32 e=0;e<6;e++)
+				data << uint32(0x00);
+		}
+
+		SendPacket(&data);
+		GetPlayer()->ClearDynamicNpcText();
+		return;
+	}
+
 	pGossip = NpcTextStorage.LookupEntry(textID);
 	LocalizedNpcText * lnc = (language>0) ? sLocalizationMgr.GetLocalizedNpcText(textID,language) : NULL;
 

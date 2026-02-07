@@ -378,6 +378,7 @@
     <ClCompile Include="..\..\src\ascent-world\WorldRunnable.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WorldSession.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WorldSocket.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\ZeppelinMasterGossip.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\ascent-world\AddonMgr.h" />
@@ -464,6 +465,7 @@
     <ClInclude Include="..\..\src\ascent-world\WorldRunnable.h" />
     <ClInclude Include="..\..\src\ascent-world\WorldSession.h" />
     <ClInclude Include="..\..\src\ascent-world\WorldSocket.h" />
+    <ClInclude Include="..\..\src\ascent-world\ZeppelinMasterGossip.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="ascent-shared.vcxproj">
