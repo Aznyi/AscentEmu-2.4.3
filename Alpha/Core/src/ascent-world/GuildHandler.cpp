@@ -321,44 +321,61 @@ void WorldSession::HandleGuildRank(WorldPacket & recv_data)
 	uint32 rankId;
 	string newName;
 	uint32 i;
+	Guild* pGuild = _player->m_playerInfo->guild;
 	GuildRank * pRank;
 
 	recv_data >> rankId;
-	pRank = _player->m_playerInfo->guild->GetGuildRank(rankId);
+	//pRank = _player->m_playerInfo->guild->GetGuildRank(rankId);
+	pRank = pGuild->GetGuildRank(rankId);
 	if(pRank == NULL)
 		return;
 
+	// TBC 2.4.3: rankId, rights, rankName, goldLimitPerDay, tab perms...
 	recv_data >> pRank->iRights;
 	recv_data >> newName;
 
-	if(newName.length() < 2)
-		newName = string(pRank->szRankName);
-	
-	if(strcmp(newName.c_str(), pRank->szRankName) != 0)
-	{
-		// name changed
-		char * pTmp = pRank->szRankName;
-		pRank->szRankName = strdup(newName.c_str());
-		free(pTmp);
-	}
+    if(newName.length() < 2)
+        newName = string(pRank->szRankName);
 
-	recv_data >> pRank->iGoldLimitPerDay;
+    if(strcmp(newName.c_str(), pRank->szRankName) != 0)
+    {
+        // name changed
+        char * pTmp = pRank->szRankName;
+        pRank->szRankName = strdup(newName.c_str());
+        free(pTmp);
+    }
 
-	for(i = 0; i < MAX_GUILD_BANK_TABS; ++i)
-	{
-		recv_data >> pRank->iTabPermissions[i].iFlags;
-		recv_data >> pRank->iTabPermissions[i].iStacksPerDay;
-	}
+    recv_data >> pRank->iGoldLimitPerDay;
 
-	CharacterDatabase.Execute("REPLACE INTO guild_ranks VALUES(%u, %u, \"%s\", %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
-		_player->m_playerInfo->guild->GetGuildId(), pRank->iId, CharacterDatabase.EscapeString(newName).c_str(),
-		pRank->iRights, pRank->iGoldLimitPerDay,
-		pRank->iTabPermissions[0].iFlags, pRank->iTabPermissions[0].iStacksPerDay,
-		pRank->iTabPermissions[1].iFlags, pRank->iTabPermissions[1].iStacksPerDay,
-		pRank->iTabPermissions[2].iFlags, pRank->iTabPermissions[2].iStacksPerDay,
-		pRank->iTabPermissions[3].iFlags, pRank->iTabPermissions[3].iStacksPerDay,
-		pRank->iTabPermissions[4].iFlags, pRank->iTabPermissions[4].iStacksPerDay,
-		pRank->iTabPermissions[5].iFlags, pRank->iTabPermissions[5].iStacksPerDay);
+    for(i = 0; i < MAX_GUILD_BANK_TABS; ++i)
+    {
+        recv_data >> pRank->iTabPermissions[i].iFlags;
+        recv_data >> pRank->iTabPermissions[i].iStacksPerDay;
+    }
+
+    CharacterDatabase.Execute(
+        "REPLACE INTO guild_ranks "
+        "(guildId, rankId, rankName, rankRights, goldLimitPerDay, "
+        "bankTabFlags0, itemStacksPerDay0, "
+        "bankTabFlags1, itemStacksPerDay1, "
+        "bankTabFlags2, itemStacksPerDay2, "
+        "bankTabFlags3, itemStacksPerDay3, "
+        "bankTabFlags4, itemStacksPerDay4, "
+        "bankTabFlags5, itemStacksPerDay5) "
+        "VALUES(%u, %u, \"%s\", %u, %d, %u, %d, %u, %d, %u, %d, %u, %d, %u, %d, %u, %d)",
+		pGuild->GetGuildId(), pRank->iId, CharacterDatabase.EscapeString(newName).c_str(),
+        (uint32)pRank->iRights, (int32)pRank->iGoldLimitPerDay,
+        (uint32)pRank->iTabPermissions[0].iFlags, (int32)pRank->iTabPermissions[0].iStacksPerDay,
+        (uint32)pRank->iTabPermissions[1].iFlags, (int32)pRank->iTabPermissions[1].iStacksPerDay,
+        (uint32)pRank->iTabPermissions[2].iFlags, (int32)pRank->iTabPermissions[2].iStacksPerDay,
+        (uint32)pRank->iTabPermissions[3].iFlags, (int32)pRank->iTabPermissions[3].iStacksPerDay,
+        (uint32)pRank->iTabPermissions[4].iFlags, (int32)pRank->iTabPermissions[4].iStacksPerDay,
+        (uint32)pRank->iTabPermissions[5].iFlags, (int32)pRank->iTabPermissions[5].iStacksPerDay
+    );
+
+	// Push updated rank names to clients (prevents "blank rank" until relog)
+	pGuild->SendGuildQuery(NULL);
+	pGuild->SendGuildRoster(this);
 }
 
 void WorldSession::HandleGuildAddRank(WorldPacket & recv_data)

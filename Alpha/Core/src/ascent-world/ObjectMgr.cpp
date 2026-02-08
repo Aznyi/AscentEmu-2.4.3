@@ -537,7 +537,15 @@ void ObjectMgr::LoadPlayerCreateInfo()
 // DK:LoadGuilds()
 void ObjectMgr::LoadGuilds()
 {
-	QueryResult *result = CharacterDatabase.Query( "SELECT * FROM guilds" );
+    QueryResult * result = CharacterDatabase.Query(
+        "SELECT "
+        "guildId, guildName, leaderGuid, "
+        "emblemStyle, emblemColor, "
+        "borderStyle, borderColor, backgroundColor, "
+        "guildInfo, motd, "
+        "createdate, bankTabCount, bankBalance "
+        "FROM guilds"
+    );
 	if(result)
 	{
 		uint32 period = (result->GetRowCount() / 20) + 1;

@@ -143,8 +143,13 @@ int WorldSession::Update(uint32 InstanceID)
 			Handler = &WorldPacketHandlers[packet->GetOpcode()];
 			if(Handler->status == STATUS_LOGGEDIN && !_player && Handler->handler != 0)
 			{
-				sLog.outError("[Session] Received unexpected/wrong state packet with opcode %s (0x%.4X)",
-					LookupName(packet->GetOpcode(), g_worldOpcodeNames), packet->GetOpcode());
+				// The client may emit certain in-world opcodes during the world->charselect transition.
+				// Treat these as harmless no-ops rather than log spam. (This is how Mangos handles some items.)
+				if(packet->GetOpcode() != CMSG_CANCEL_TRADE)
+				{
+					sLog.outError("[Session] Received unexpected/wrong state packet with opcode %s (0x%.4X)",
+						LookupName(packet->GetOpcode(), g_worldOpcodeNames), packet->GetOpcode());
+				}
 			}
 			else
 			{

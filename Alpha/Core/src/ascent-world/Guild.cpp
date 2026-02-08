@@ -227,7 +227,16 @@ GuildRank * Guild::CreateGuildRank(const char * szRankName, uint32 iPermissions,
 			m_lock.Release();
 
 			// save the rank into the database
-			CharacterDatabase.Execute("INSERT INTO guild_ranks VALUES(%u, %u, \"%s\", %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
+            CharacterDatabase.Execute(
+                "INSERT INTO guild_ranks "
+				"(guildId, rankId, rankName, rankRights, goldLimitPerDay, "
+				"bankTabFlags0, itemStacksPerDay0, "
+				"bankTabFlags1, itemStacksPerDay1, "
+				"bankTabFlags2, itemStacksPerDay2, "
+				"bankTabFlags3, itemStacksPerDay3, "
+				"bankTabFlags4, itemStacksPerDay4, "
+				"bankTabFlags5, itemStacksPerDay5) "
+                "VALUES(%u, %u, \"%s\", %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
 				m_guildId, i, CharacterDatabase.EscapeString(string(szRankName)).c_str(),
 				r->iRights, r->iGoldLimitPerDay,
 				r->iTabPermissions[0].iFlags, r->iTabPermissions[0].iStacksPerDay,
@@ -423,7 +432,20 @@ bool Guild::LoadFromDB(Field * f)
 
 	// load ranks
 	uint32 j;
-	QueryResult * result = CharacterDatabase.Query("SELECT * FROM guild_ranks WHERE guildId = %u ORDER BY rankId ASC", m_guildId);
+    QueryResult * result = CharacterDatabase.Query(
+        "SELECT "
+        "guildId, rankId, rankName, rankRights, goldLimitPerDay, "
+        "bankTabFlags0, itemStacksPerDay0, "
+        "bankTabFlags1, itemStacksPerDay1, "
+        "bankTabFlags2, itemStacksPerDay2, "
+        "bankTabFlags3, itemStacksPerDay3, "
+        "bankTabFlags4, itemStacksPerDay4, "
+        "bankTabFlags5, itemStacksPerDay5 "
+        "FROM guild_ranks "
+        "WHERE guildId = %u "
+        "ORDER BY rankId ASC",
+        m_guildId
+    );
 	if(result==NULL)
 		return false;
 
@@ -445,12 +467,12 @@ bool Guild::LoadFromDB(Field * f)
 		sid++;
 		r->szRankName = strdup(f2[2].GetString());
 		r->iRights = f2[3].GetUInt32();
-		r->iGoldLimitPerDay = f2[4].GetUInt32();
+		r->iGoldLimitPerDay = f2[4].GetInt32();
 		
 		for(j = 0; j < MAX_GUILD_BANK_TABS; ++j)
 		{
-			r->iTabPermissions[j].iFlags = f2[5+(j*2)].GetUInt32();
-			r->iTabPermissions[j].iStacksPerDay = f2[6+(j*2)].GetUInt32();
+			r->iTabPermissions[j].iFlags = f2[5 + (j * 2)].GetUInt32();
+			r->iTabPermissions[j].iStacksPerDay = f2[6 + (j * 2)].GetInt32();
 		}
 
 		//m_ranks.push_back(r);
@@ -1219,9 +1241,17 @@ void Guild::SendGuildQuery(WorldSession * pClient)
 
 void Guild::CreateInDB()
 {
-	CharacterDatabase.Execute("INSERT INTO guilds VALUES(%u, \"%s\", %u, %u, %u, %u, %u, %u, '', '', %u, 0, 0)",
-		m_guildId, CharacterDatabase.EscapeString(string(m_guildName)).c_str(), m_guildLeader, m_emblemStyle, m_emblemColor, m_borderColor, m_borderStyle,
-		m_backgroundColor, m_creationTimeStamp);
+    CharacterDatabase.Execute(
+        "INSERT INTO guilds "
+        "(guildId, guildName, leaderGuid, emblemStyle, emblemColor, borderStyle, borderColor, backgroundColor, guildInfo, motd, createdate, bankTabCount, bankBalance) "
+        "VALUES(%u, \"%s\", %u, %u, %u, %u, %u, %u, '', '', %u, 0, 0)",
+        m_guildId,
+        CharacterDatabase.EscapeString(string(m_guildName)).c_str(),
+        m_guildLeader,
+        m_emblemStyle, m_emblemColor,
+        m_borderStyle, m_borderColor,
+        m_backgroundColor,
+        m_creationTimeStamp);
 }
 
 Guild* Guild::Create()
@@ -1304,7 +1334,8 @@ uint32 GuildMember::CalculateAvailableAmount()
 
 void GuildMember::OnMoneyWithdraw(uint32 amt)
 {
-	if(pRank->iGoldLimitPerDay <= 0)		// Unlimited
+	// -1 = unlimited; do not track daily withdraw counters for unlimited ranks
+	if(pRank->iGoldLimitPerDay < 0)
 		return;
 
 	// reset the counter if a day has passed
@@ -1317,8 +1348,8 @@ void GuildMember::OnMoneyWithdraw(uint32 amt)
 	}
 	else
 	{
-		// increment counter
-		uWithdrawlsSinceLastReset++;
+		// increment by amount withdrawn (copper)
+		uWithdrawlsSinceLastReset += amt;
 		CharacterDatabase.Execute("UPDATE guild_data SET withdrawlsSinceLastReset = %u WHERE playerid = %u",
 			uWithdrawlsSinceLastReset, pPlayer->guid);
 	}
