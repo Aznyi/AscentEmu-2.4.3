@@ -11192,3 +11192,22 @@ DELETE FROM ai_agents
 WHERE entry IN (10390,10391,10394,10482,11439,19428,21022)
   AND spell IN (15584,15613,11586,11571);
 
+-- Fix Auberdine to Menethil Boat Spawn
+INSERT INTO gameobject_spawns
+(Entry, map, position_x, position_y, position_z, Facing,
+ orientation1, orientation2, orientation3, orientation4,
+ State, Flags, Faction, Scale, stateNpcLink)
+VALUES
+(176231, 1, 6425.14, 552.19, 8.65, 4.71239,
+ 0, 0, 0.707107, -0.707107,
+ 1, 0, 0, 1.0, 0);
+
+-- Fix Auerdine to Rut Village
+INSERT INTO gameobject_spawns
+(Entry, map, position_x, position_y, position_z, Facing,
+ orientation1, orientation2, orientation3, orientation4,
+ State, Flags, Faction, Scale, stateNpcLink)
+VALUES
+(176244, 1, 6342.21, 557.16, 7.95, 1.5708,
+ 0, 0, 0.707107, 0.707107,
+ 1, 0, 0, 1.0, 0);
