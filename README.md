@@ -1,12 +1,37 @@
-AscentEmu version 2.4.3 is a continuiation of the last revision of OpenAscent. This is a free learning project available for anyone to use or submit issues or fixes for.
+# Project Overview
+
+AscentEmu 2.4.3 is a continuation of the final revision of OpenAscent, preserved and extended as a free, educational emulator project.
+The goal of this project is to provide a stable reference implementation for learning, experimentation, and community-driven improvement.
+
+Contributions, bug reports, and fixes are welcome.
+
+# Key Features
+- Based on the final OpenAscent 2.4.3 codebase
+- Focused on stability, correctness, and maintainability
+- Intended for learning, experimentation, and emulator development
+- Open to community contributions and issue submissions
+
+# Database
+- Recommended SQL Server: MariaDB
+- Recommended Database Editor: HeidiSQL
+
+# Core Required Items
+
+Map Extractor Location: \Alpha\Core\extras\extracted
+
+The same directory includes:
+- Pre-extracted 2.4.3 DBC files
+- A DBC Extractor if you prefer to generate fresh DBCs
 
 
-Recommended SQL Server: Maria DB
-Recommended DB Editor: HeidiSQL
+# Build Information
+- Supported Platform: Windows (currently)
+- Build Configuration: Release x64
+- Debug builds are not recommended for normal operation.
+- Support for additional platforms is planned for future development.
 
 
-Map Extractor can be found in \Alpha\Core\extras\extracted.
-The same \Alpha\Core\extras\extracted folder contains a copy 2.4.3 DBC files or you can extract fresh using the Dbc Extractor in that same path.
+# Project Status
 
-
-Currently the core only supports windows builds, I plan to expand this. When building, build Release x64.
+This project is actively maintained as a learning and preservation effort.
+While not intended to be a production-grade emulator, it aims to remain clean, understandable, and extensible for developers exploring WoW emulator internals.
