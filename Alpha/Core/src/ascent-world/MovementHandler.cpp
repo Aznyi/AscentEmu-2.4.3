@@ -18,8 +18,25 @@
  */
 
 #include "StdAfx.h"
+#include <math.h>
 #define SWIMMING_TOLERANCE_LEVEL -0.08f
 #define MOVEMENT_PACKET_TIME_DELAY 500
+
+static inline void CalcPassengerWorldPos(
+	float tX, float tY, float tZ, float tO,
+	float offX, float offY, float offZ,
+	float &outX, float &outY, float &outZ)
+{
+	float c = cosf(tO);
+	float s = sinf(tO);
+
+	float rx = offX * c - offY * s;
+	float ry = offX * s + offY * c;
+
+	outX = tX + rx;
+	outY = tY + ry;
+	outZ = tZ + offZ;
+}
 
 #ifdef WIN32
 
@@ -80,9 +97,10 @@ void WorldSession::HandleMoveWorldportAckOpcode( WorldPacket & recv_data )
 	{
 		/* wow, our pc must really suck. */
 		Transporter * pTrans = _player->m_CurrentTransporter;
-		float c_tposx = pTrans->GetPositionX() + _player->m_TransporterX;
-		float c_tposy = pTrans->GetPositionY() + _player->m_TransporterY;
-		float c_tposz = pTrans->GetPositionZ() + _player->m_TransporterZ;
+		float c_tposx, c_tposy, c_tposz;
+		CalcPassengerWorldPos(pTrans->GetPositionX(), pTrans->GetPositionY(), pTrans->GetPositionZ(), pTrans->GetOrientation(),
+			_player->m_TransporterX, _player->m_TransporterY, _player->m_TransporterZ,
+			c_tposx, c_tposy, c_tposz);
 
 		WorldPacket dataw(SMSG_NEW_WORLD, 20);
 		dataw << pTrans->GetMapId() << c_tposx << c_tposy << c_tposz << _player->GetOrientation();
@@ -437,28 +455,67 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 	{
 		if(_player->m_TransporterGUID && !movement_info.transGuid)
 		{
-			/* we left the transporter we were on */
+			// The client can temporarily omit transGuid while still on a transport (notably Deeprun Tram),
+			// especially during turns/cell transitions/loading jitter. Detaching immediately causes
+			// the server to think the player is no longer on the transport -> player falls through.
+			uint32 now = getMSTime();
+
+			if(_player->m_transportLostTime == 0)
+				_player->m_transportLostTime = now;
+
+			bool should_detach = false;
+
+			// If we still know the transporter object, only detach immediately if the player is clearly far away.
 			if(_player->m_CurrentTransporter)
 			{
-				_player->m_CurrentTransporter->RemovePlayer(_player);
-				_player->m_CurrentTransporter = NULL;
+				float dx = _player->GetPositionX() - _player->m_CurrentTransporter->GetPositionX();
+				float dy = _player->GetPositionY() - _player->m_CurrentTransporter->GetPositionY();
+				float dist2 = dx*dx + dy*dy;
+				if(dist2 > (60.0f * 60.0f)) // ~60 yards => definitely not on it
+					should_detach = true;
 			}
 
-			_player->m_TransporterGUID = 0;
-			_player->SpeedCheatReset();
-			_player->SpeedCheatDelay(5000);
+			// Otherwise, only detach if missing transGuid persists for a short grace period.
+			if (!should_detach && _player->m_transportLostTime && (now - _player->m_transportLostTime) > 2000)
+				should_detach = true;
+
+			if(should_detach)
+			{
+				/* we left the transporter we were on */
+				if(_player->m_CurrentTransporter)
+				{
+					_player->m_CurrentTransporter->RemovePlayer(_player);
+					_player->m_CurrentTransporter = NULL;
+				}
+
+				_player->m_TransporterGUID = 0;
+				_player->m_transportLostTime = 0;
+				_player->SpeedCheatReset();
+				_player->SpeedCheatDelay(5000);
+			}
 		}
 		else if(movement_info.transGuid)
 		{
+			// We have valid transport data again; clear any pending lost timer.
+			_player->m_transportLostTime = 0;
+
+			// Always keep m_CurrentTransporter pointer in sync. It can be NULL after relog/map change/cell churn
+			// even while m_TransporterGUID remains set, which causes us to fall back to raw world coords and fall through.
+			Transporter* newTrans = objmgr.GetTransporter(GUID_LOPART(movement_info.transGuid));
+			if(newTrans && newTrans != _player->m_CurrentTransporter)
+			{
+				if(_player->m_CurrentTransporter)
+					_player->m_CurrentTransporter->RemovePlayer(_player);
+
+				_player->m_CurrentTransporter = newTrans;
+				_player->m_CurrentTransporter->AddPlayer(_player);
+			}
+
 			if(!_player->m_TransporterGUID)
 			{
 				/* just walked into a transport */
 				if(_player->IsMounted())
 					_player->RemoveAura(_player->m_MountSpellId);
-
-				_player->m_CurrentTransporter = objmgr.GetTransporter(GUID_LOPART(movement_info.transGuid));
-				if(_player->m_CurrentTransporter)
-					_player->m_CurrentTransporter->AddPlayer(_player);
 
 				/* set variables */
 				_player->m_TransporterGUID = movement_info.transGuid;
@@ -466,6 +523,7 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 				_player->m_TransporterX = movement_info.transX;
 				_player->m_TransporterY = movement_info.transY;
 				_player->m_TransporterZ = movement_info.transZ;
+				_player->m_TransporterO = movement_info.transO;
 				_player->SpeedCheatDelay(5000);
 			}
 			else
@@ -475,6 +533,7 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 				_player->m_TransporterX = movement_info.transX;
 				_player->m_TransporterY = movement_info.transY;
 				_player->m_TransporterZ = movement_info.transZ;
+				_player->m_TransporterO = movement_info.transO;
 			}
 		}
 	}
@@ -506,7 +565,11 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 	}
 	else
 	{
-		if(!_player->m_CurrentTransporter) 
+		// Guard: if client reports being on a transport but transporter pointer
+		// cannot be resolved, do NOT apply raw world-space movement.
+		bool skip_world_update = (!_player->m_CurrentTransporter && movement_info.transGuid);
+
+		if(!skip_world_update && !_player->m_CurrentTransporter)
 		{
 			if( !_player->SetPosition(movement_info.x, movement_info.y, movement_info.z, movement_info.orientation) )
 			{
@@ -514,10 +577,25 @@ void WorldSession::HandleMovementOpcodes( WorldPacket & recv_data )
 				_player->KillPlayer();
 			}
 		}
-		else
+		else if (!skip_world_update)
 		{
-			_player->SetPosition(movement_info.x, movement_info.y, movement_info.z, 
-				movement_info.orientation + movement_info.transO, false);
+			float wx, wy, wz;
+			CalcPassengerWorldPos(
+				_player->m_CurrentTransporter->GetPositionX(),
+				_player->m_CurrentTransporter->GetPositionY(),
+				_player->m_CurrentTransporter->GetPositionZ(),
+				// Use client-reported transport orientation for best sync on turns (Deeprun Tram).
+				// The server-side transporter orientation can drift slightly vs the client during rotation,
+				// causing passenger drift and occasional fall-off.
+				_player->m_TransporterO,
+				_player->m_TransporterX, _player->m_TransporterY, _player->m_TransporterZ,
+				wx, wy, wz);
+			_player->SetPosition(wx, wy, wz, movement_info.orientation + movement_info.transO, false);
+
+			// Deeprun Tram + transports move passengers in small increments.
+			// Player::SetPosition only triggers relocation after a threshold; force it so in-range/cell sets stay correct.
+			if(_player->IsInWorld() && _player->GetMapMgr())
+				_player->GetMapMgr()->ChangeObjectLocation(_player);
 		}
 	}	
 }

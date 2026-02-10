@@ -1267,6 +1267,11 @@ public:
 	
 	//Transporters
 	bool m_lockTransportVariables;
+	uint32 m_transportLostTime; // Grace timer when client temporarily omits transGuid
+
+	// Prevent MovementHandler from clearing transport state while the client is loading a new map.
+	// Used during cross-map transport transfers.
+	void EventUnlockTransportVariables();
 	uint64 m_TransporterGUID;
 	float m_TransporterX;
 	float m_TransporterY;

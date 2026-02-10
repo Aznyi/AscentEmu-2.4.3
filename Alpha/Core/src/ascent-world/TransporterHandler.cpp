@@ -4,6 +4,23 @@
 //
 
 #include "StdAfx.h"
+#include <math.h>
+
+static inline void CalcPassengerWorldPos(
+	float tX, float tY, float tZ, float tO,
+	float offX, float offY, float offZ,
+	float &outX, float &outY, float &outZ)
+{
+	float c = cosf(tO);
+	float s = sinf(tO);
+
+	float rx = offX * c - offY * s;
+	float ry = offX * s + offY * c;
+
+	outX = tX + rx;
+	outY = tY + ry;
+	outZ = tZ + offZ;
+}
 
 Mutex m_transportGuidGen;
 uint32 m_transportGuidMax = 50;
@@ -18,7 +35,9 @@ Transporter::~Transporter()
 void Transporter::OnPushToWorld()
 {
 	// Create waypoint event
-	sEventMgr.AddEvent(this, &Transporter::UpdatePosition, EVENT_TRANSPORTER_NEXT_WAYPOINT, 100, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+	// IMPORTANT: Transport movement + map transfers touch MapMgr/cell state.
+	// Must execute in world context (MapMgr thread) to avoid cell creation races/asserts.
+	sEventMgr.AddEvent(this, &Transporter::UpdatePosition, EVENT_TRANSPORTER_NEXT_WAYPOINT, 100, 0, 0);
 }
 
 // Pull DBC Values to fill our path.
@@ -137,10 +156,11 @@ bool Transporter::GenerateWaypoints()
 		}
 		else
 		{
-			keyFrames[i].distFromPrev =
-				sqrt(pow(keyFrames[i].x - keyFrames[i - 1].x, 2) +
-				pow(keyFrames[i].y - keyFrames[i - 1].y, 2) +
-				pow(keyFrames[i].z - keyFrames[i - 1].z, 2));
+			float dx = keyFrames[i].x - keyFrames[i - 1].x;
+			float dy = keyFrames[i].y - keyFrames[i - 1].y;
+			float dz = keyFrames[i].z - keyFrames[i - 1].z;
+			keyFrames[i].distFromPrev = sqrtf(dx * dx + dy * dy + dz * dz);
+
 		}
 		if (keyFrames[i].actionflag == 2)
 		{
@@ -398,6 +418,13 @@ void Transporter::UpdatePosition()
 		else
 		{
 			SetPosition(mCurrentWaypoint->second.x, mCurrentWaypoint->second.y, mCurrentWaypoint->second.z, m_position.o, false);
+
+			// Transports often move in small increments; Object::SetPosition only triggers ChangeObjectLocation
+			// when movement exceeds ~2 yards. If we don't force relocation, the transport can stay "stuck"
+			// in the wrong cell/inrange set, causing late pop-in (often only fixed by relog) and passenger
+			// detach/fall-through during turns.
+			if(IsInWorld() && m_mapMgr)
+				m_mapMgr->ChangeObjectLocation(this);
 		}
 
 		// During the delay sounds play..
@@ -464,6 +491,10 @@ void Transporter::UpdatePosition()
 		o = atan2f(dy, dx);
 
 	SetPosition(nx, ny, nz, o, false);
+
+	// Force relocation update every tick for transports (see note above).
+	if(IsInWorld() && m_mapMgr)
+		m_mapMgr->ChangeObjectLocation(this);
 }
 
 //
@@ -505,9 +536,10 @@ void Transporter::TransportPassengers(uint32 mapid, uint32 oldmap, float x, floa
 		if (!plr->GetSession() || !plr->IsInWorld())
 			continue;
 
-		v.x = x + plr->m_TransporterX;
-		v.y = y + plr->m_TransporterY;
-		v.z = z + plr->m_TransporterZ;
+		CalcPassengerWorldPos(
+			x, y, z, o,
+			plr->m_TransporterX, plr->m_TransporterY, plr->m_TransporterZ,
+			v.x, v.y, v.z);
 		v.o = plr->GetOrientation();
 
 		if (mapid == 530 && !plr->GetSession()->HasFlag(ACCOUNT_FLAG_XPACK_01))
@@ -518,6 +550,10 @@ void Transporter::TransportPassengers(uint32 mapid, uint32 oldmap, float x, floa
 		}
 
 		plr->GetSession()->SendPacket(&Pending);
+		// Lock transport variables during the worldport so MovementHandler doesn't interpret
+		// missing transGuid packets during loading as "left the transport".
+		plr->m_lockTransportVariables = true;
+		plr->m_fallDisabledUntil = UNIXTIME + 5;
 		plr->_Relocate(mapid, v, false, true, 0);
 
 		// Lucky bitch. Do it like on official.

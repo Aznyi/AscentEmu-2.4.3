@@ -203,6 +203,7 @@ Player::Player( uint32 guid ) : m_mailBox(guid)
 	m_TransporterO			= 0.0f;
 	m_TransporterUnk		= 0.0f;
 	m_lockTransportVariables= false;
+	m_transportLostTime		= 0;
 
 	// Autoshot variables
 	m_AutoShotTarget		= 0;
@@ -3258,7 +3259,20 @@ void Player::OnPushToWorld()
 	SpeedCheatReset();
 	m_beingPushed = false;
 	AddItemsToWorld();
-	m_lockTransportVariables = false;
+	// If we are on a transport during a cross-map worldport, the client may briefly send
+	// movement packets without transGuid while loading. If we clear transport variables
+	// immediately, MovementHandler will treat it as "left the transport" and the player
+	// can fall through / take fall damage. Keep the lock for a short grace period.
+	if(m_TransporterGUID != 0)
+	{
+		m_lockTransportVariables = true;
+		m_fallDisabledUntil = UNIXTIME + 5;
+		sEventMgr.AddEvent(this, &Player::EventUnlockTransportVariables, EVENT_UNK, 3000, 1, 0);
+	}
+	else
+	{
+		m_lockTransportVariables = false;
+	}
 
 	// delay the unlock movement packet
 	WorldPacket * data = new WorldPacket(SMSG_TIME_SYNC_REQ, 4);
@@ -3333,6 +3347,11 @@ void Player::OnPushToWorld()
 
 	z_axisposition = 0.0f;
 	m_changingMaps = false;
+}
+
+void Player::EventUnlockTransportVariables()
+{
+	m_lockTransportVariables = false;
 }
 
 void Player::RemoveFromWorld()

@@ -24,6 +24,7 @@
 #include "StdAfx.h"
 #define MAP_MGR_UPDATE_PERIOD 100
 #define MAPMGR_INACTIVE_MOVE_TIME 10
+#include <math.h>
 extern bool bServerShutdown;
 
 MapMgr::MapMgr(Map *map, uint32 mapId, uint32 instanceid) : CellHandler<MapCell>(map), _mapId(mapId), eventHolder(instanceid)
@@ -32,6 +33,14 @@ MapMgr::MapMgr(Map *map, uint32 mapId, uint32 instanceid) : CellHandler<MapCell>
 	m_instanceID = instanceid;
 	pMapInfo = WorldMapInfoStorage.LookupEntry(mapId);
 	m_UpdateDistance = pMapInfo->update_distance * pMapInfo->update_distance;
+
+	// Cell activation radius determines what objects even exist to be considered "in range".
+	// Previously this was hard-coded to 2 cells (~133 yards each axis), making large moving
+	// objects like transports pop in late even when viewingDistance was increased in DB.
+	m_CellUpdateRadius = (int)ceilf(pMapInfo->update_distance / _cellSize);
+	if(m_CellUpdateRadius < 2) m_CellUpdateRadius = 2;
+	if(m_CellUpdateRadius > 6) m_CellUpdateRadius = 6; // safety clamp to avoid huge loads
+
 	iInstanceMode = 0;
 
 	// Create script interface
@@ -325,7 +334,7 @@ void MapMgr::PushObject(Object *obj)
 	if(plObj)
 	{
 	   m_PlayerStorage[plObj->GetLowGUID()] = plObj;
-	   UpdateCellActivity(x, y, 2);
+	   UpdateCellActivity(x, y, m_CellUpdateRadius);
 	}
 	else
 	{
@@ -550,7 +559,7 @@ void MapMgr::RemoveObject(Object *obj, bool free_guid)
 		{
 			uint32 x = GetPosX(obj->GetPositionX());
 			uint32 y = GetPosY(obj->GetPositionY());
-			UpdateCellActivity(x, y, 2);
+			UpdateCellActivity(x, y, m_CellUpdateRadius);
 		}
 		m_PlayerStorage.erase( static_cast< Player* >( obj )->GetLowGUID() );
 	}
@@ -784,14 +793,14 @@ void MapMgr::ChangeObjectLocation( Object *obj )
 		if(obj->GetTypeId() == TYPEID_PLAYER)
 		{
 			// have to unlock/lock here to avoid a deadlock situation.
-			UpdateCellActivity(cellX, cellY, 2);
+			UpdateCellActivity(cellX, cellY, m_CellUpdateRadius);
 			if( pOldCell != NULL )
 			{
 				// only do the second check if theres -/+ 2 difference
 				if( abs( (int)cellX - (int)pOldCell->_x ) > 2 ||
 					abs( (int)cellY - (int)pOldCell->_y ) > 2 )
 				{
-					UpdateCellActivity( pOldCell->_x, pOldCell->_y, 2 );
+					UpdateCellActivity(pOldCell->_x, pOldCell->_y, m_CellUpdateRadius);
 				}
 			}
 		}
@@ -847,12 +856,32 @@ void MapMgr::UpdateInRangeSet( Object *obj, Player *plObj, MapCell* cell, ByteBu
 		if( curObj == NULL )
 			continue;
 
-		if( curObj->IsPlayer() && obj->IsPlayer() && plObj->m_TransporterGUID && plObj->m_TransporterGUID == static_cast< Player* >( curObj )->m_TransporterGUID )
+		if( curObj->IsPlayer() && obj->IsPlayer() && plObj->m_TransporterGUID &&
+			plObj->m_TransporterGUID == static_cast< Player* >( curObj )->m_TransporterGUID )
+		{
 			fRange = 0.0f; // unlimited distance for people on same boat
+		}
 		else if( curObj->GetTypeFromGUID() == HIGHGUID_TYPE_TRANSPORTER )
+		{
 			fRange = 0.0f; // unlimited distance for transporters (only up to 2 cells +/- anyway.)
+		}
 		else
+		{
 			fRange = m_UpdateDistance; // normal distance
+
+			// If the player is on a transport (e.g. Deeprun Tram), expand visibility for nearby objects.
+			// Some transport "pieces" (cars, dock parts, etc.) can be normal gameobjects whose origin is
+			// far enough away that they pop in/out while you're standing on the transport.
+			//
+			// This keeps additional relevance limited to players who are currently on a transport.
+			if( plObj != NULL && plObj->m_TransporterGUID != 0 )
+			{
+				// 250 yards squared; enough to cover long transports without making the whole map relevant.
+				const float transportRange = 250.0f * 250.0f;
+				if( fRange < transportRange )
+					fRange = transportRange;
+			}
+		}
 
 		if ( curObj != obj && ( curObj->GetDistance2dSq( obj ) <= fRange || fRange == 0.0f ) )
 		{

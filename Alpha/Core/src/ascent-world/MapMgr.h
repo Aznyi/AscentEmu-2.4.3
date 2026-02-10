@@ -285,6 +285,10 @@ public:
 	// Distance a Player can "see" other objects and receive updates from them (!! ALREADY dist*dist !!)
 	float m_UpdateDistance;
 
+
+	// How many cells around the player are kept active/loaded.
+	int m_CellUpdateRadius;
+
 private:
 	/* Update System */
 	FastMutex m_updateMutex;		// use a user-mode mutex for extra speed
