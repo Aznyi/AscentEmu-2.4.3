@@ -437,7 +437,7 @@ void BuildStats(MapMgr * mgr, char * m_file, Instance * inst, MapInfo * inf)
 	snprintf(tmp, 200, "	<instance>\n");																												pushline;
 	snprintf(tmp, 200, "		<map>%u</map>\n", mgr->GetMapId());																						pushline;
 	snprintf(tmp, 200, "		<maptype>%u</maptype>\n", inf->type);																						pushline;
-	snprintf(tmp, 200, "		<players>%u</players>\n", mgr->GetPlayerCount());																			pushline;
+	snprintf(tmp, 200, "		<players>%u</players>\n", uint32(mgr->GetPlayerCount()));																			pushline;
 	snprintf(tmp, 200, "		<maxplayers>%u</maxplayers>\n", inf->playerlimit);																		pushline;
 
 	//<creationtime>
