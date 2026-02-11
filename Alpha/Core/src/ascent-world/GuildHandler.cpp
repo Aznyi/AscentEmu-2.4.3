@@ -1698,3 +1698,71 @@ void WorldSession::HandleGuildBankViewLog(WorldPacket & recv_data)
 
 	_player->GetGuild()->SendGuildBankLog(this, slotid);
 }
+
+void WorldSession::HandleGuildBankQueryText(WorldPacket & recv_data)
+{
+	if(!_player->IsInWorld() || _player->GetGuild() == NULL)
+		return;
+
+	uint8 tabid;
+	recv_data >> tabid;
+
+	GuildBankTab * tab = _player->GetGuild()->GetBankTab((uint32)tabid);
+	if(tab == NULL)
+		return;
+
+	uint32 len = (tab->szTabText != NULL) ? (uint32)strlen(tab->szTabText) : 1;
+
+	WorldPacket data(MSG_QUERY_GUILD_BANK_TEXT, 1 + len);
+	data << uint8(tabid);
+
+	if(tab->szTabText != NULL)
+		data << tab->szTabText;
+	else
+		data << uint8(0);
+
+	SendPacket(&data);
+}
+
+void WorldSession::HandleGuildBankSetText(WorldPacket & recv_data)
+{
+	if(!_player->IsInWorld() || _player->GetGuild() == NULL)
+		return;
+
+	uint8 tabid;
+	std::string text;
+	recv_data >> tabid >> text;
+
+	Guild * g = _player->GetGuild();
+	GuildBankTab * tab = g->GetBankTab((uint32)tabid);
+	if(tab == NULL)
+		return;
+
+	// Permission: require update-text right for this tab (rank 0 should already be forced allowed by your earlier changes)
+	GuildRank * r = _player->GetGuildRankS();
+	if(r == NULL)
+		return;
+	if(r->iId != 0)
+		return;
+
+	// Clamp payload
+	if(text.size() > 500)
+		text.resize(500);
+
+	// Update in-memory cache
+	if(tab->szTabText) free(tab->szTabText);
+	tab->szTabText = strdup(text.c_str());
+
+	// Persist (row should exist now because BuyBankTab inserts it; still safe)
+	CharacterDatabase.Execute(
+		"UPDATE guild_banktabs SET tabText = '%s' WHERE guildId = %u AND tabId = %u",
+		CharacterDatabase.EscapeString(text).c_str(), g->GetGuildId(), (uint32)tabid);
+
+	// **ArcEmu-style client refresh**:
+	// Send a GUILD_EVENT_TABINFO payload that forces the UI to refresh the tab info immediately.
+	WorldPacket ev(SMSG_GUILD_EVENT, 6);
+	ev << uint8(GUILD_EVENT_TABINFO);
+	ev << uint8(1);
+	ev << uint16(0x30 + tabid);
+	SendPacket(&ev);
+}

@@ -222,6 +222,7 @@ enum GuildEvent
 	GUILD_EVENT_HASGONEOFFLINE	  =0xD,
 	GUILD_EVENT_BANKTABBOUGHT		= 0xF,
 	GUILD_EVENT_SETNEWBALANCE		= 0x11,
+	GUILD_EVENT_TABINFO				= 0x13,
 };
 enum GuildLogEventE
 {
@@ -310,6 +311,7 @@ struct SERVER_DECL GuildBankTab
 	uint8 iTabId;
 	char * szTabName;
 	char * szTabIcon;
+	char * szTabText; // per-tab info text
 	Item * pSlots[MAX_GUILD_BANK_SLOTS];
 	list<GuildBankEvent*> lLog;
 };

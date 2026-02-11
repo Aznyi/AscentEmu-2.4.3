@@ -568,7 +568,9 @@ bool Guild::LoadFromDB(Field * f)
 		delete result;
 	}
 
-	result = CharacterDatabase.Query("SELECT * FROM guild_banktabs WHERE guildId = %u ORDER BY tabId ASC", m_guildId);
+	result = CharacterDatabase.Query(
+		"SELECT guildId, tabId, tabName, tabIcon, tabText FROM guild_banktabs WHERE guildId = %u ORDER BY tabId ASC",
+		m_guildId);
 	sid = 0;
 	if(result)
 	{
@@ -591,6 +593,8 @@ bool Guild::LoadFromDB(Field * f)
 			pTab->iTabId = (uint8)result->Fetch()[1].GetUInt32();
 			pTab->szTabName = (strlen(result->Fetch()[2].GetString()) > 0) ? strdup(result->Fetch()[2].GetString()) : NULL;
 			pTab->szTabIcon = (strlen(result->Fetch()[3].GetString()) > 0) ? strdup(result->Fetch()[3].GetString()) : NULL;
+			pTab->szTabText = (strlen(result->Fetch()[4].GetString()) > 0) ? strdup(result->Fetch()[4].GetString()) : NULL;
+
 			
 			memset(pTab->pSlots, 0, sizeof(Item*) * MAX_GUILD_BANK_SLOTS);
 
@@ -1278,7 +1282,9 @@ void Guild::BuyBankTab(WorldSession * pClient)
 	m_bankTabs.push_back(pTab);
 	m_bankTabCount++;
 
-	CharacterDatabase.Execute("INSERT INTO guild_banktabs VALUES(%u, %u, '', '')", m_guildId, (uint32)pTab->iTabId);
+	CharacterDatabase.Execute(
+		"INSERT INTO guild_banktabs (guildId, tabId, tabName, tabIcon, tabText) VALUES(%u, %u, '', '', '')",
+		m_guildId, (uint32)pTab->iTabId);
 	CharacterDatabase.Execute("UPDATE guilds SET bankTabCount = %u WHERE guildId = %u", m_bankTabCount, m_guildId);
 	m_lock.Release();
 }
