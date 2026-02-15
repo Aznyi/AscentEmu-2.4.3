@@ -90,11 +90,17 @@ bool ChatHandler::CreateGuildCommand(const char* args, WorldSession *m_session)
 	Player * ptarget = getSelectedChar(m_session);
 	if(!ptarget) return false;
 
-	if(strlen((char*)args)>75)
+	size_t len = strlen((char*)args);
+
+	if (len > 75)
 	{
-		// send message to user
+		int overflow = static_cast<int>(len - 75);
+
 		char buf[256];
-		snprintf((char*)buf,256,"The name was too long by %i", strlen((char*)args)-75);
+		snprintf(buf, sizeof(buf),
+			"The name was too long by %d",
+			overflow);
+
 		SystemMessage(m_session, buf);
 		return true;
 	}
