@@ -295,6 +295,81 @@ static void DeriveForcedAuraPolarity(SpellEntry* sp, bool extended)
 }
 
 // -----------------------------------------------------------------------------
+// Proc flag inference (fallback)
+//
+// This is a conservative, DBC-driven fallback for proc-trigger auras that have
+// procFlags left unset (0). When procFlags are missing, the proc system becomes
+// inert for those auras.
+//
+// It ONLY runs when procFlags == 0 and only targets common cases:
+// - weapon-enchant style damage procs (default to melee/ranged hit triggers)
+// - simple cast-trigger procs (default to spell cast triggers)
+//
+// Explicit procFlags from DBC, SpellFixes, or optional DB overrides always win.
+// -----------------------------------------------------------------------------
+static void DeriveProcFlagsIfUnset(SpellEntry* sp)
+{
+	if(sp == nullptr)
+		return;
+
+	if(sp->procFlags != 0)
+		return;
+
+	// 42 = SPELL_AURA_PROC_TRIGGER_SPELL
+	// 43 = SPELL_AURA_PROC_TRIGGER_DAMAGE
+	static const uint32 AURA_PROC_TRIGGER_SPELL  = 42u;
+	static const uint32 AURA_PROC_TRIGGER_DAMAGE = 43u;
+
+	int32 procIdx = -1;
+	uint32 procAura = 0;
+	uint32 triggerSpellId = 0;
+
+	for(uint32 i = 0; i < 3; ++i)
+	{
+		if(sp->Effect[i] != SPELL_EFFECT_APPLY_AURA && sp->Effect[i] != SPELL_EFFECT_APPLY_AREA_AURA)
+			continue;
+
+		const uint32 aura = sp->EffectApplyAuraName[i];
+		if(aura != AURA_PROC_TRIGGER_SPELL && aura != AURA_PROC_TRIGGER_DAMAGE)
+			continue;
+
+		const uint32 trig = sp->EffectTriggerSpell[i];
+		if(trig == 0)
+			continue;
+
+		procIdx = (int32)i;
+		procAura = aura;
+		triggerSpellId = trig;
+		break;
+	}
+
+	if(procIdx < 0)
+		return;
+
+	SpellEntry* triggered = dbcSpell.LookupEntryForced(triggerSpellId);
+	const bool trigIsDamage = (triggered != nullptr) ? IsDamagingSpell(triggered) : false;
+	const bool trigIsHeal   = (triggered != nullptr) ? IsHealingSpell(triggered) : false;
+
+	if(procAura == AURA_PROC_TRIGGER_DAMAGE || trigIsDamage)
+	{
+#ifdef NEW_PROCFLAGS
+		sp->procFlags = (PROC_ON_MELEE_HIT | PROC_ON_RANGED_HIT);
+#else
+		sp->procFlags = (PROC_ON_MELEE_ATTACK | PROC_ON_RANGED_ATTACK);
+#endif
+	}
+	else if(trigIsHeal)
+	{
+		sp->procFlags = PROC_ON_CAST_SPELL;
+	}
+	else
+	{
+		sp->procFlags = PROC_ON_CAST_SPELL;
+	}
+}
+
+
+// -----------------------------------------------------------------------------
 // Effect column normalization (legacy)
 //
 // Some spells (notably Devastate) encode "bonus first then damage" by placing
@@ -356,7 +431,9 @@ void PostProcessSpellDBC()
 	const bool effectSwapFix  = Config.MainConfig.GetBoolDefault("SpellDBC", "EffectSwapFix", true);
 	const bool effectSwapDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "EffectSwapDebug", false);
 	const bool polarityExtended = Config.MainConfig.GetBoolDefault("SpellDBC", "PolarityListExtended", false);
-
+	const bool procInferFix = Config.MainConfig.GetBoolDefault("SpellDBC", "ProcInferFix", true);
+	const bool procInferDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "ProcInferDebug", false);
+ 
 	BuildSkillLineAbilityRegistry();
 	if(skillLineDebug)
 	{
@@ -456,6 +533,16 @@ void PostProcessSpellDBC()
 			if(effectSwapDebug && (pre0 != sp->Effect[0] || pre1 != sp->Effect[1] || pre2 != sp->Effect[2]))
 				Log.Notice("SpellDBC", "EffectSwap: spell=%u (%s) swapped WEAPON_PERCENT_DAMAGE <-> DUMMYMELEE ordering",
 					sp->Id, (sp->Name != NULL ? sp->Name : ""));
+		}
+
+		// Conservative procFlags inference for proc-trigger auras.
+		// Only applies when procFlags are unset (0) to avoid overriding explicit data.
+		if(procInferFix)
+		{
+			const uint32 preProc = sp->procFlags;
+			DeriveProcFlagsIfUnset(sp);
+			if(procInferDebug && preProc == 0 && sp->procFlags != 0)
+				Log.Notice("SpellDBC", "ProcInfer: spell=%u (%s) inferred procFlags=0x%08X", sp->Id, (sp->Name != NULL ? sp->Name : ""), sp->procFlags);
 		}
 
 		// Normalize School: Spell.dbc encodes school as a bitmask; many codepaths expect a single enum.
