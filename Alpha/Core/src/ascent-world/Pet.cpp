@@ -1671,60 +1671,34 @@ bool Pet::UpdateLoyalty( char pts )
 
 AI_Spell * Pet::HandleAutoCastEvent()
 {
-	if(m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size() > 1)
-	{
-		// more than one autocast spell. pick a random one.
-		// WRONG! it should choose the left-most autocast spell! 
-		uint32 c = RandomUInt((uint32)m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size());
-		uint32 j = 0;
-		list<AI_Spell*>::iterator itr = m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin();
+    std::list<AI_Spell*>& spells = m_autoCastSpells[AUTOCAST_EVENT_ATTACK];
+    if(spells.empty())
+        return NULL;
 
-		for(; itr != m_autoCastSpells[AUTOCAST_EVENT_ATTACK].end(), j < c; ++j, ++itr);
-		if(itr == m_autoCastSpells[AUTOCAST_EVENT_ATTACK].end())
-		{
-			if( (*m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin())->autocast_type == AUTOCAST_EVENT_ATTACK 
-				 && getMSTime() >= (*m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin())->cooldowntime //water elemental would spam it's frost nova like hell
-				)
-				return *m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin();
-			else
-			{
-				// bad pointers somehow end up here :S
-				m_autoCastSpells[AUTOCAST_EVENT_ATTACK].erase(m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin());
-				return HandleAutoCastEvent();
-			}
-		}
-		else
-		{
-			if( (*itr)->autocast_type == AUTOCAST_EVENT_ATTACK 
-				 && getMSTime() >= (*itr)->cooldowntime //water elemental would spam it's frost nova like hell
-				)
-				return *itr;
-			else
-			{
-				m_autoCastSpells[AUTOCAST_EVENT_ATTACK].erase(itr);
-				return HandleAutoCastEvent();
-			}
-		}
-	}
-	else if(m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size())
-	{
-		AI_Spell * sp = *m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin();
-		if( sp->autocast_type == AUTOCAST_EVENT_ATTACK )
-		{
-			if( sp->cooldowntime && getMSTime() >= sp->cooldowntime )
-				return *m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin();
-			else
-				return NULL;
-		}
-		else
-		{
-			// bad pointers somehow end up here :S
-			m_autoCastSpells[AUTOCAST_EVENT_ATTACK].erase(m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin());
-			return NULL;
-		}
-	}
-	
-	return NULL;
+    const uint32 now = getMSTime();
+
+    // Clean out invalid entries (null pointers / wrong autocast_type).
+    // Do NOT erase just because the spell is on cooldown; that would permanently remove it from autocast.
+    for(std::list<AI_Spell*>::iterator it = spells.begin(); it != spells.end(); )
+    {
+        AI_Spell* sp = *it;
+        if(sp == NULL || sp->autocast_type != AUTOCAST_EVENT_ATTACK)
+            it = spells.erase(it);
+        else
+            ++it;
+    }
+
+    if(spells.empty())
+        return NULL;
+
+    // Blizzlike/intent: choose the left-most (first) eligible autocast spell.
+    AI_Spell* sp = spells.front();
+
+    // If cooldown is 0, treat as ready. If non-zero, require now >= cooldowntime.
+    if(sp->cooldowntime == 0 || now >= sp->cooldowntime)
+        return sp;
+
+    return NULL;
 }
 
 void Pet::HandleAutoCastEvent(uint32 Type)
@@ -1743,11 +1717,14 @@ void Pet::HandleAutoCastEvent(uint32 Type)
 			uint32 ms = getMSTime();
 			for(i=0;i<m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size();++i)
 			{
-				uint32 c = RandomUInt((uint32)m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size());
+				uint32 sz = (uint32)m_autoCastSpells[AUTOCAST_EVENT_ATTACK].size();
+				uint32 c = (sz > 0) ? RandomUInt(sz - 1) : 0;
 				uint32 j = 0;
 				itr = m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin();
 
-				for(; itr != m_autoCastSpells[AUTOCAST_EVENT_ATTACK].end(), j < c; ++j, ++itr);
+				for(; itr != m_autoCastSpells[AUTOCAST_EVENT_ATTACK].end() && j < c; ++j, ++itr)
+				{
+				}
 				if(itr == m_autoCastSpells[AUTOCAST_EVENT_ATTACK].end())
 				{
 					if(  (*m_autoCastSpells[AUTOCAST_EVENT_ATTACK].begin())->cooldowntime > ms )

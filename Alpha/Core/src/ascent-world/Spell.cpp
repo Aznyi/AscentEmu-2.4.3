@@ -1241,7 +1241,7 @@ void Spell::AddCooldown()
 	ctx.applyStartRecovery = false;
 	ctx.categoryOverrideMs = -1;
 
-	// Option A: central SpellOutcome event
+	// Central SpellOutcome event
 	// If SpellCategory flags indicate the category cooldown starts on event (0x4),
 	// defer applying the category cooldown until Spell::finish() emits the outcome.
 	const bool eventCooldowns = Config.MainConfig.GetBoolDefault("SpellDBC", "EventCooldowns", false);

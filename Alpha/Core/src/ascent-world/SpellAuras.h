@@ -17,6 +17,9 @@
  *
  */
 
+#ifndef _ASCENT_SPELLAURAS_H
+#define _ASCENT_SPELLAURAS_H
+
 //! 4-bit flag
 enum AURA_FLAGS
 {
@@ -724,3 +727,5 @@ public:
 };
 
 typedef void(Aura::*pSpellAura)(bool apply);
+
+#endif // _ASCENT_SPELLAURAS_H

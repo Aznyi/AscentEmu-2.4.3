@@ -12918,17 +12918,9 @@ void ApplyNormalFixes()
 	uint32 group_relation_rogue_shadow_step = 0;
 	uint32 group_relation_rogue_lethality = 0;
 
-	map<uint32, uint32> talentSpells;
-	map<uint32,uint32>::iterator talentSpellIterator;
-	unsigned int i,j;
-	for(i = 0; i < dbcTalent.GetNumRows(); ++i)
-	{
-		TalentEntry * tal = dbcTalent.LookupRow(i);
-		for(j = 0; j < 5; ++j)
-			if(tal->RankID[j] != 0)
-				talentSpells.insert(make_pair(tal->RankID[j], tal->TalentTree));
-	}
+	unsigned int i;
 
+	// Talent tree mapping is handled in PostProcessSpellDBC().
 
 	for(uint32 x=0; x < cnt; x++)
 	{
@@ -12943,29 +12935,12 @@ void ApplyNormalFixes()
 		uint32 type = sp->buffType;     // derived in PostProcessSpellDBC()
 		uint32 namehash = 0;
 	
-		sp->self_cast_only = false;
-		sp->apply_on_shapeshift_change = false;
-		sp->always_apply = false;
-
 		// NameHash / base range / school normalization / aura-state remapping are now handled
 		// in PostProcessSpellDBC() right after Spell.dbc is loaded.
 		// Keep a small fallback here in case ApplyNormalFixes() is called without that pass.
 		if(sp->NameHash == 0 && sp->Name != NULL && sp->Name[0] != 0)
 			sp->NameHash = crc32((const unsigned char*)sp->Name, (unsigned int)strlen(sp->Name));
 		namehash = sp->NameHash;
-
-		if(sp->base_range_or_radius_sqr == 0.0f)
-		{
-			float radius = 0.0f;
-			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[0])), radius);
-			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[1])), radius);
-			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[2])), radius);
-			radius = std::max(GetMaxRange(dbcSpellRange.LookupEntry(sp->rangeIndex)), radius);
-			sp->base_range_or_radius_sqr = radius * radius;
-		}
-
-		if(sp->ai_target_type == 0)
-			sp->ai_target_type = GetAiTargetType(sp);
 
 		/*
 		AURASTATE_FLAG_DODGE_BLOCK			= 1,        //1
@@ -12991,34 +12966,8 @@ void ApplyNormalFixes()
 		if( sp->NameHash == SPELL_HASH_BLOOD_FURY || sp->NameHash == SPELL_HASH_SHADOWSTEP )
 			sp->always_apply = true;
 
-		//there are some spells that change the "damage" value of 1 effect to another : devastate = bonus first then damage
-		//this is a total bullshit so remove it when spell system supports effect overwriting
-		for( uint32 col1_swap = 0; col1_swap < 2 ; col1_swap++ )
-			for( uint32 col2_swap = col1_swap ; col2_swap < 3 ; col2_swap++ )
-				if( sp->Effect[col1_swap] == SPELL_EFFECT_WEAPON_PERCENT_DAMAGE && sp->Effect[col2_swap] == SPELL_EFFECT_DUMMYMELEE )
-				{
-					uint32 temp;
-					float ftemp;
-					temp = sp->Effect[col1_swap];			sp->Effect[col1_swap] = sp->Effect[col2_swap] ;						sp->Effect[col2_swap] = temp;
-					temp = sp->EffectDieSides[col1_swap];	sp->EffectDieSides[col1_swap] = sp->EffectDieSides[col2_swap] ;		sp->EffectDieSides[col2_swap] = temp;
-					temp = sp->EffectBaseDice[col1_swap];	sp->EffectBaseDice[col1_swap] = sp->EffectBaseDice[col2_swap] ;		sp->EffectBaseDice[col2_swap] = temp;
-					ftemp = sp->EffectDicePerLevel[col1_swap];			sp->EffectDicePerLevel[col1_swap] = sp->EffectDicePerLevel[col2_swap] ;				sp->EffectDicePerLevel[col2_swap] = ftemp;
-					ftemp = sp->EffectRealPointsPerLevel[col1_swap];	sp->EffectRealPointsPerLevel[col1_swap] = sp->EffectRealPointsPerLevel[col2_swap] ;	sp->EffectRealPointsPerLevel[col2_swap] = ftemp;
-					temp = sp->EffectBasePoints[col1_swap];	sp->EffectBasePoints[col1_swap] = sp->EffectBasePoints[col2_swap] ;	sp->EffectBasePoints[col2_swap] = temp;
-					temp = sp->EffectMechanic[col1_swap];	sp->EffectMechanic[col1_swap] = sp->EffectMechanic[col2_swap] ;	sp->EffectMechanic[col2_swap] = temp;
-					temp = sp->EffectImplicitTargetA[col1_swap];	sp->EffectImplicitTargetA[col1_swap] = sp->EffectImplicitTargetA[col2_swap] ;	sp->EffectImplicitTargetA[col2_swap] = temp;
-					temp = sp->EffectImplicitTargetB[col1_swap];	sp->EffectImplicitTargetB[col1_swap] = sp->EffectImplicitTargetB[col2_swap] ;	sp->EffectImplicitTargetB[col2_swap] = temp;
-					temp = sp->EffectRadiusIndex[col1_swap];	sp->EffectRadiusIndex[col1_swap] = sp->EffectRadiusIndex[col2_swap] ;	sp->EffectRadiusIndex[col2_swap] = temp;
-					temp = sp->EffectApplyAuraName[col1_swap];	sp->EffectApplyAuraName[col1_swap] = sp->EffectApplyAuraName[col2_swap] ;	sp->EffectApplyAuraName[col2_swap] = temp;
-					temp = sp->EffectAmplitude[col1_swap];		sp->EffectAmplitude[col1_swap] = sp->EffectAmplitude[col2_swap] ;	sp->EffectAmplitude[col2_swap] = temp;
-					ftemp = sp->Effectunknown[col1_swap];		sp->Effectunknown[col1_swap] = sp->Effectunknown[col2_swap] ;	sp->Effectunknown[col2_swap] = ftemp;
-					temp = sp->EffectChainTarget[col1_swap];	sp->EffectChainTarget[col1_swap] = sp->EffectChainTarget[col2_swap] ;	sp->EffectChainTarget[col2_swap] = temp;
-					temp = sp->EffectSpellGroupRelation[col1_swap];	sp->EffectSpellGroupRelation[col1_swap] = sp->EffectSpellGroupRelation[col2_swap] ;	sp->EffectSpellGroupRelation[col2_swap] = temp;
-					temp = sp->EffectMiscValue[col1_swap];		sp->EffectMiscValue[col1_swap] = sp->EffectMiscValue[col2_swap] ;	sp->EffectMiscValue[col2_swap] = temp;
-					temp = sp->EffectMiscValueB[col1_swap];		sp->EffectMiscValueB[col1_swap] = sp->EffectMiscValueB[col2_swap];	sp->EffectMiscValueB[col2_swap] = temp;
-					temp = sp->EffectTriggerSpell[col1_swap];	sp->EffectTriggerSpell[col1_swap] = sp->EffectTriggerSpell[col2_swap] ;	sp->EffectTriggerSpell[col2_swap] = temp;
-					ftemp = sp->EffectPointsPerComboPoint[col1_swap];	sp->EffectPointsPerComboPoint[col1_swap] = sp->EffectPointsPerComboPoint[col2_swap] ;	sp->EffectPointsPerComboPoint[col2_swap] = ftemp;
-				}
+		// Devastate-style effect ordering normalization moved to PostProcessSpellDBC()
+		// (SpellDBC.EffectSwapFix / SpellDBC.EffectSwapDebug).
 
 		for(uint32 b=0;b<3;++b)
 		{
@@ -13069,23 +13018,7 @@ void ApplyNormalFixes()
 		if(!strcmp(sp->Name, "Hearthstone") || !strcmp(sp->Name, "Stuck") || !strcmp(sp->Name, "Astral Recall"))
 			sp->self_cast_only = true;
 
-		sp->proc_interval = 0;//trigger at each event
-		// Do NOT reset c_is_flags here. PostProcessSpellDBC() derives generic flags
-		// (damaging/healing/stealth targeting, etc.) and ApplyNormalFixes() should
-		// only add true exceptions on top of that.
-		//sp->c_is_flags = 0;
-		sp->spell_coef_flags = 0;
-		sp->Dspell_coef_override = -1;
-		sp->OTspell_coef_override = -1;
-		sp->casttime_coef = 0;
-		sp->fixed_dddhcoef = -1;
-		sp->fixed_hotdotcoef = -1;
-
-		talentSpellIterator = talentSpells.find(sp->Id);
-		if(talentSpellIterator == talentSpells.end())
-			sp->talent_tree = 0;
-		else
-			sp->talent_tree = talentSpellIterator->second;
+		// proc/coefficient defaults + talent_tree mapping are handled in PostProcessSpellDBC().
 
 		// RankNumber is derived in PostProcessSpellDBC(). Fallback guard only.
 		if(rank == 0 && sp->Rank != NULL && sp->Rank[0] != 0)

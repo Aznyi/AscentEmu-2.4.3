@@ -6,6 +6,7 @@
 
 #include "StdAfx.h"
 #include "SpellDbcPostProcess.h"
+#include "SpellAuras.h"
 #include <map>
 #include <vector>
 
@@ -40,7 +41,7 @@ static void LoadSpellCategoryDbc_IntoRegistry()
 	}
 
 	sSpellCategoryFlags.clear();
-	const uint32 rows = cat.getRecordCount();
+	const uint32 rows = (uint32)cat.getRecordCount();
 	for(uint32 i = 0; i < rows; ++i)
 	{
 		DBCFile::Record r = cat.getRecord(i);
@@ -64,7 +65,7 @@ static void LoadSpellChainEffectsDbc_IntoRegistry()
 	}
 
 	sSpellChainEffectsIds.clear();
-	const uint32 rows = chain.getRecordCount();
+	const uint32 rows = (uint32)chain.getRecordCount();
 	for(uint32 i = 0; i < rows; ++i)
 	{
 		DBCFile::Record r = chain.getRecord(i);
@@ -129,6 +130,221 @@ static void BuildSkillLineAbilityRegistry()
 		(uint32)sSpellToSkillLine.size(), (uint32)sSkillLineToSpells.size());
 }
 
+// -----------------------------------------------------------------------------
+// Spell polarity helpers
+//
+// Ascent historically decides Aura positivity primarily from caster/target
+// reaction (isAttackable). That breaks for spells that are intrinsically buffs
+// but cast on enemies (common for NPC spells) and for the rare cases of hostile-
+// style auras cast on friendlies.
+//
+// Keep this intentionally conservative: only force polarity when the DBC clearly
+// indicates "buff-only" or "debuff-only" behavior.
+// -----------------------------------------------------------------------------
+static ASCENT_INLINE bool AuraNameIsClearlyNegative(uint32 aura, bool extended)
+{
+	// High-certainty debuff auras.
+	switch(aura)
+	{
+		case SPELL_AURA_PERIODIC_DAMAGE:
+		case SPELL_AURA_MOD_CONFUSE:
+		case SPELL_AURA_MOD_CHARM:
+		case SPELL_AURA_MOD_FEAR:
+		case SPELL_AURA_MOD_TAUNT:
+		case SPELL_AURA_MOD_STUN:
+		case SPELL_AURA_MOD_PACIFY:
+		case SPELL_AURA_MOD_ROOT:
+		case SPELL_AURA_MOD_SILENCE:
+		case SPELL_AURA_MOD_DECREASE_SPEED:
+		case SPELL_AURA_MOD_PACIFY_SILENCE:
+		case SPELL_AURA_MOD_DISARM:
+		case SPELL_AURA_MOD_STALKED:
+			return true;
+		default:
+			return false;
+			break;
+	}
+
+	if(extended)
+	{
+		// Still high-certainty negatives, but gated to allow incremental rollout.
+		switch(aura)
+		{
+			case SPELL_AURA_PERIODIC_DAMAGE_PERCENT:
+			case SPELL_AURA_PERIODIC_LEECH:
+			case SPELL_AURA_PERIODIC_MANA_LEECH:
+				return true;
+			default:
+				break;
+		}
+	}
+
+	return false;
+}
+
+static ASCENT_INLINE bool AuraNameIsClearlyPositive(uint32 aura, bool extended)
+{
+	// High-certainty buff auras.
+	switch(aura)
+	{
+		case SPELL_AURA_PERIODIC_HEAL:
+		case SPELL_AURA_MOD_STEALTH:
+		case SPELL_AURA_MOD_INVISIBILITY:
+		case SPELL_AURA_MOD_RESISTANCE:
+		case SPELL_AURA_MOD_INCREASE_SPEED:
+		case SPELL_AURA_MOD_INCREASE_MOUNTED_SPEED:
+		case SPELL_AURA_MOD_INCREASE_SWIM_SPEED:
+		case SPELL_AURA_MOD_INCREASE_HEALTH:
+		case SPELL_AURA_MOD_INCREASE_ENERGY:
+		case SPELL_AURA_MOD_SHAPESHIFT:
+		case SPELL_AURA_EFFECT_IMMUNITY:
+		case SPELL_AURA_STATE_IMMUNITY:
+		case SPELL_AURA_SCHOOL_IMMUNITY:
+		case SPELL_AURA_DAMAGE_IMMUNITY:
+		case SPELL_AURA_DISPEL_IMMUNITY:
+			return true;
+		default:
+			return false;
+			break;
+	}
+
+	if(extended)
+	{
+		// High-certainty positives, gated to allow incremental rollout.
+		switch(aura)
+		{
+			case SPELL_AURA_PERIODIC_ENERGIZE:
+			case SPELL_AURA_WATER_BREATHING:
+			case SPELL_AURA_MOD_WATER_BREATHING:
+			case SPELL_AURA_WATER_WALK:
+			case SPELL_AURA_FEATHER_FALL:
+				return true;
+			default:
+				break;
+		}
+	}
+
+	return false;
+}
+
+static void DeriveForcedAuraPolarity(SpellEntry* sp, bool extended)
+{
+	if(sp == NULL)
+		return;
+
+	// Respect explicit overrides from hardcoded fixes.
+	if(sp->c_is_flags & (SPELL_FLAG_IS_FORCEDBUFF | SPELL_FLAG_IS_FORCEDDEBUFF))
+		return;
+
+	bool hasPositive = false;
+	bool hasNegative = false;
+
+	for(uint32 i = 0; i < 3; ++i)
+	{
+		const uint32 eff = sp->Effect[i];
+		if(eff == 0)
+			continue;
+
+		// Direct heals / energize are clearly positive.
+		switch(eff)
+		{
+			case SPELL_EFFECT_HEAL:
+			case SPELL_EFFECT_HEAL_MAX_HEALTH:
+			case SPELL_EFFECT_HEAL_MECHANICAL:
+			case SPELL_EFFECT_ENERGIZE:
+				hasPositive = true;
+				break;
+			default:
+				break;
+		}
+
+		// Direct damage / control effects are clearly negative.
+		switch(eff)
+		{
+			case SPELL_EFFECT_SCHOOL_DAMAGE:
+			case SPELL_EFFECT_ENVIRONMENTAL_DAMAGE:
+			case SPELL_EFFECT_WEAPON_DAMAGE:
+			case SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL:
+			case SPELL_EFFECT_WEAPON_PERCENT_DAMAGE:
+			case SPELL_EFFECT_POWER_BURN:
+			case SPELL_EFFECT_HEALTH_LEECH:
+			case SPELL_EFFECT_INTERRUPT_CAST:
+			case SPELL_EFFECT_ATTACK:
+				hasNegative = true;
+				break;
+			default:
+				break;
+		}
+
+		// Aura polarity: decide using only unambiguous aura names.
+		if (eff == SPELL_EFFECT_APPLY_AURA || eff == SPELL_EFFECT_APPLY_AREA_AURA)
+		{
+			const uint32 aura = sp->EffectApplyAuraName[i];
+			if (AuraNameIsClearlyNegative(aura, extended))
+				hasNegative = true;
+			else if (AuraNameIsClearlyPositive(aura, extended))
+				hasPositive = true;
+		}
+	}
+
+	// Only force when it is one-sided.
+	if(hasPositive && !hasNegative)
+		sp->c_is_flags |= SPELL_FLAG_IS_FORCEDBUFF;
+	else if(hasNegative && !hasPositive)
+		sp->c_is_flags |= SPELL_FLAG_IS_FORCEDDEBUFF;
+}
+
+// -----------------------------------------------------------------------------
+// Effect column normalization (legacy)
+//
+// Some spells (notably Devastate) encode "bonus first then damage" by placing
+// SPELL_EFFECT_WEAPON_PERCENT_DAMAGE in one slot and SPELL_EFFECT_DUMMYMELEE in
+// another. Older Ascent spell logic expects the damage-style effect to be first.
+//
+// This is legacy normalization and should be removed once the spell system
+// supports effect overwriting / correct scripted ordering.
+// -----------------------------------------------------------------------------
+static void NormalizeWeaponPercentDamageDummyMeleeOrder(SpellEntry* sp)
+{
+	if(sp == NULL)
+		return;
+
+	for(uint32 col1 = 0; col1 < 2; ++col1)
+	{
+		for(uint32 col2 = col1; col2 < 3; ++col2)
+		{
+			if(sp->Effect[col1] == SPELL_EFFECT_WEAPON_PERCENT_DAMAGE &&
+			   sp->Effect[col2] == SPELL_EFFECT_DUMMYMELEE)
+			{
+				uint32 temp;
+				float ftemp;
+
+				temp = sp->Effect[col1];                         sp->Effect[col1] = sp->Effect[col2];                         sp->Effect[col2] = temp;
+				temp = sp->EffectDieSides[col1];                 sp->EffectDieSides[col1] = sp->EffectDieSides[col2];         sp->EffectDieSides[col2] = temp;
+				temp = sp->EffectBaseDice[col1];                 sp->EffectBaseDice[col1] = sp->EffectBaseDice[col2];         sp->EffectBaseDice[col2] = temp;
+				ftemp = sp->EffectDicePerLevel[col1];            sp->EffectDicePerLevel[col1] = sp->EffectDicePerLevel[col2]; sp->EffectDicePerLevel[col2] = ftemp;
+				ftemp = sp->EffectRealPointsPerLevel[col1];      sp->EffectRealPointsPerLevel[col1] = sp->EffectRealPointsPerLevel[col2]; sp->EffectRealPointsPerLevel[col2] = ftemp;
+				temp = sp->EffectBasePoints[col1];               sp->EffectBasePoints[col1] = sp->EffectBasePoints[col2];     sp->EffectBasePoints[col2] = temp;
+				temp = sp->EffectMechanic[col1];                 sp->EffectMechanic[col1] = sp->EffectMechanic[col2];         sp->EffectMechanic[col2] = temp;
+				temp = sp->EffectImplicitTargetA[col1];          sp->EffectImplicitTargetA[col1] = sp->EffectImplicitTargetA[col2]; sp->EffectImplicitTargetA[col2] = temp;
+				temp = sp->EffectImplicitTargetB[col1];          sp->EffectImplicitTargetB[col1] = sp->EffectImplicitTargetB[col2]; sp->EffectImplicitTargetB[col2] = temp;
+				temp = sp->EffectRadiusIndex[col1];              sp->EffectRadiusIndex[col1] = sp->EffectRadiusIndex[col2];   sp->EffectRadiusIndex[col2] = temp;
+				temp = sp->EffectApplyAuraName[col1];            sp->EffectApplyAuraName[col1] = sp->EffectApplyAuraName[col2]; sp->EffectApplyAuraName[col2] = temp;
+				temp = sp->EffectAmplitude[col1];                sp->EffectAmplitude[col1] = sp->EffectAmplitude[col2];       sp->EffectAmplitude[col2] = temp;
+				ftemp = sp->Effectunknown[col1];                 sp->Effectunknown[col1] = sp->Effectunknown[col2];           sp->Effectunknown[col2] = ftemp;
+				temp = sp->EffectChainTarget[col1];              sp->EffectChainTarget[col1] = sp->EffectChainTarget[col2];   sp->EffectChainTarget[col2] = temp;
+				temp = sp->EffectSpellGroupRelation[col1];       sp->EffectSpellGroupRelation[col1] = sp->EffectSpellGroupRelation[col2]; sp->EffectSpellGroupRelation[col2] = temp;
+				temp = sp->EffectMiscValue[col1];                sp->EffectMiscValue[col1] = sp->EffectMiscValue[col2];       sp->EffectMiscValue[col2] = temp;
+				temp = sp->EffectMiscValueB[col1];               sp->EffectMiscValueB[col1] = sp->EffectMiscValueB[col2];     sp->EffectMiscValueB[col2] = temp;
+				temp = sp->EffectTriggerSpell[col1];             sp->EffectTriggerSpell[col1] = sp->EffectTriggerSpell[col2]; sp->EffectTriggerSpell[col2] = temp;
+				ftemp = sp->EffectPointsPerComboPoint[col1];     sp->EffectPointsPerComboPoint[col1] = sp->EffectPointsPerComboPoint[col2]; sp->EffectPointsPerComboPoint[col2] = ftemp;
+
+				return; // only need to normalize once
+			}
+		}
+	}
+}
+
 void PostProcessSpellDBC()
 {
 	// Always visible once; lets you confirm it triggers even if World.cpp toggle is off.
@@ -136,6 +352,10 @@ void PostProcessSpellDBC()
 
 	// Optional debug
 	const bool skillLineDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "SkillLineDebug", false);
+	const bool polarityDebug  = Config.MainConfig.GetBoolDefault("SpellDBC", "PolarityDebug", false);
+	const bool effectSwapFix  = Config.MainConfig.GetBoolDefault("SpellDBC", "EffectSwapFix", true);
+	const bool effectSwapDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "EffectSwapDebug", false);
+	const bool polarityExtended = Config.MainConfig.GetBoolDefault("SpellDBC", "PolarityListExtended", false);
 
 	BuildSkillLineAbilityRegistry();
 	if(skillLineDebug)
@@ -179,6 +399,16 @@ void PostProcessSpellDBC()
 		sp->apply_on_shapeshift_change = false;
 		sp->always_apply = false;
 
+		// Defaults for server-only spell system scaffolding.
+		// These fields are not backed by Spell.dbc and must be initialized deterministically.
+		sp->proc_interval = 0;          // trigger at each event
+		sp->spell_coef_flags = 0;
+		sp->Dspell_coef_override = -1;
+		sp->OTspell_coef_override = -1;
+		sp->casttime_coef = 0;
+		sp->fixed_dddhcoef = -1;
+		sp->fixed_hotdotcoef = -1;
+
 		// Hash the name (used all over SpellFixes and runtime lookups)
 		if(sp->Name != NULL && sp->Name[0] != 0)
 			sp->NameHash = crc32((const unsigned char*)sp->Name, (unsigned int)strlen(sp->Name));
@@ -213,6 +443,20 @@ void PostProcessSpellDBC()
 
 		// AI target type helper (inline in Spell.h)
 		sp->ai_target_type = GetAiTargetType(sp);
+
+		// Legacy effect ordering normalization (Devastate-style spells).
+		// Keep config-gated so custom servers can opt out once they move to a
+		// more accurate effect overwrite / scripted ordering implementation.
+		if(effectSwapFix)
+		{
+			const uint32 pre0 = sp->Effect[0];
+			const uint32 pre1 = sp->Effect[1];
+			const uint32 pre2 = sp->Effect[2];
+			NormalizeWeaponPercentDamageDummyMeleeOrder(sp);
+			if(effectSwapDebug && (pre0 != sp->Effect[0] || pre1 != sp->Effect[1] || pre2 != sp->Effect[2]))
+				Log.Notice("SpellDBC", "EffectSwap: spell=%u (%s) swapped WEAPON_PERCENT_DAMAGE <-> DUMMYMELEE ordering",
+					sp->Id, (sp->Name != NULL ? sp->Name : ""));
+		}
 
 		// Normalize School: Spell.dbc encodes school as a bitmask; many codepaths expect a single enum.
 #define SET_SCHOOL(x) sp->School = x
@@ -313,6 +557,19 @@ void PostProcessSpellDBC()
 				sp->c_is_flags |= SPELL_FLAG_IS_HEALING;
 			if(IsTargetingStealthed(sp))
 				sp->c_is_flags |= SPELL_FLAG_IS_TARGETINGSTEALTHED;
+		}
+
+		// Derive forced buff/debuff polarity conservatively from DBC data.
+		// Prevents reaction-based positivity from misclassifying intrinsic buffs
+		// cast on enemies (common for NPC spells).
+		const uint32 preFlags = sp->c_is_flags;
+		DeriveForcedAuraPolarity(sp, polarityExtended);
+		if(polarityDebug && (sp->c_is_flags != preFlags) && (sp->c_is_flags & (SPELL_FLAG_IS_FORCEDBUFF | SPELL_FLAG_IS_FORCEDDEBUFF)))
+		{
+			Log.Notice("SpellDBC", "Polarity: spell=%u (%s) forced=%s",
+				sp->Id,
+				(sp->Name != NULL ? sp->Name : ""),
+				(sp->c_is_flags & SPELL_FLAG_IS_FORCEDBUFF) ? "BUFF" : "DEBUFF");
 		}
 
 		// “Apprentice/Journeyman/Expert/Artisan/Master” training spells often come in with spellLevel 0.
