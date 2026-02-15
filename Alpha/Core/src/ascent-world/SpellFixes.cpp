@@ -43,6 +43,10 @@ void CreateDummySpell(uint32 id)
 
 void ApplyExtraDataFixes()
 {
+	// If DBC postprocessing derives in_front_status, keep this legacy list dormant.
+	if(Config.MainConfig.GetBoolDefault("SpellDBC", "DeriveInFrontStatus", true))
+		return;
+
 	SpellEntry * sp;
 	// Spell 53 (Backstab Rank 1) is in behind from spell extra.
 	sp = dbcSpell.LookupEntryForced(53);

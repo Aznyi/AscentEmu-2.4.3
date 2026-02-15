@@ -702,8 +702,12 @@ uint8 Spell::DidHit(uint32 effindex,Unit* target)
 
 		if (res == SPELL_DID_HIT_SUCCESS) // proc handling. mb should be moved outside this function
 		{
-//			u_caster->HandleProc(PROC_ON_SPELL_LAND,target,m_spellInfo);	
-			target->HandleProc(PROC_ON_SPELL_LAND_VICTIM,u_caster,m_spellInfo);	
+			// Caster-side procs: this proc flag model uses PROC_ON_SPELL_HIT for
+			// "spell successfully landed" on the caster.
+			// Skip triggered spells to reduce proc-on-proc feedback loops.
+			if(u_caster != NULL && !m_triggeredSpell)
+				u_caster->HandleProc(PROC_ON_SPELL_HIT, target, m_spellInfo);
+			target->HandleProc(PROC_ON_SPELL_LAND_VICTIM, u_caster, m_spellInfo);	
 		}
 
 		return res;

@@ -433,6 +433,9 @@ void PostProcessSpellDBC()
 	const bool polarityExtended = Config.MainConfig.GetBoolDefault("SpellDBC", "PolarityListExtended", false);
 	const bool procInferFix = Config.MainConfig.GetBoolDefault("SpellDBC", "ProcInferFix", true);
 	const bool procInferDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "ProcInferDebug", false);
+	const bool deriveInFrontStatus = Config.MainConfig.GetBoolDefault("SpellDBC", "DeriveInFrontStatus", true);
+	const bool facingDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "FacingDebug", false);
+  
  
 	BuildSkillLineAbilityRegistry();
 	if(skillLineDebug)
@@ -520,6 +523,22 @@ void PostProcessSpellDBC()
 
 		// AI target type helper (inline in Spell.h)
 		sp->ai_target_type = GetAiTargetType(sp);
+
+		// In-front / behind facing requirements.
+		// Historically, many spells were enumerated in SpellFixes::ApplyExtraDataFixes().
+		// Prefer a DBC-derived default here and keep SpellFixes as exceptions-only.
+		if(deriveInFrontStatus && sp->in_front_status == 0)
+		{
+			if(sp->Attributes & ATTRIBUTES_PASSIVE)
+				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_SKIPCHECK;
+			else if(sp->Attributes & ATTRIBUTES_UNK20) // "must be behind" (TBC DBC attribute)
+				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_INBACK;
+			else
+				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_INFRONT;
+
+			if(facingDebug)
+				Log.Notice("SpellDBC", "Facing: spell=%u (%s) in_front_status=%u", sp->Id, (sp->Name != NULL ? sp->Name : ""), sp->in_front_status);
+		}
 
 		// Legacy effect ordering normalization (Devastate-style spells).
 		// Keep config-gated so custom servers can opt out once they move to a
