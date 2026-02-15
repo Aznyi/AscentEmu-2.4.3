@@ -1202,6 +1202,26 @@ void ObjectMgr::LoadAIThreatToSpellId()
 
 void ObjectMgr::LoadSpellFixes()
 {
+	// The DB table `spellfixes` provides hard overrides (proc flags, group type, etc.).
+	// For a DBC-driven spell system, this should be opt-in to avoid hidden behavior from DB.
+	const bool enableDbOverrides = Config.MainConfig.GetBoolDefault("SpellFixes", "EnableDBOverrides", false);
+	if(!enableDbOverrides)
+		return;
+
+	// If enabled, ensure the table exists. Avoid spamming startup with SQL errors.
+	static bool warnedMissingTable = false;
+	QueryResult* tbl = WorldDatabase.Query("SHOW TABLES LIKE 'spellfixes'");
+	if(tbl == NULL)
+	{
+		if(!warnedMissingTable)
+		{
+			sLog.outString("SpellFixes: DB overrides enabled but table `spellfixes` not found; skipping.");
+			warnedMissingTable = true;
+		}
+		return;
+	}
+	delete tbl;
+
 	SpellEntry* sp;
 	QueryResult * result = WorldDatabase.Query("SELECT * FROM spellfixes");
 	if(result)

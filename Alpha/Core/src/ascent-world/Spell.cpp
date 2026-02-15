@@ -18,6 +18,8 @@
  */
 
 #include "StdAfx.h"
+#include "SpellOutcome.h"
+#include "SpellDbcPostProcess.h"
 
 #define SPELL_CHANNEL_UPDATE_INTERVAL 1000
 
@@ -168,6 +170,11 @@ Spell::Spell(Object* Caster, SpellEntry *info, bool triggered, Aura* aur)
 	//TriggerSpellId = 0;
 	//TriggerSpellTarget = 0;
 	m_triggeredSpell = triggered;
+	m_spellGoSent = false;
+	m_deferCategoryCooldown = false;
+	m_deferredCategoryCooldownMs = 0;
+	m_deferredCategoryId = 0;
+	m_deferredCategoryFlags = 0;
 	m_AreaAura = false;
   
 	m_triggeredByAura = aur;
@@ -1222,14 +1229,51 @@ void Spell::cancel()
 
 void Spell::AddCooldown()
 {
-	if( p_caster != NULL )
-		p_caster->Cooldown_Add( m_spellInfo, i_caster );
+	if(p_caster == nullptr)
+		return;
+
+	// Build unified cooldown context.
+	Player::CooldownContext ctx;
+	ctx.spell = m_spellInfo;
+	ctx.itemCaster = i_caster;
+	ctx.applySpellCooldown = (m_spellInfo != nullptr && m_spellInfo->RecoveryTime > 0);
+	ctx.applyCategoryCooldown = (m_spellInfo != nullptr && m_spellInfo->Category && m_spellInfo->CategoryRecoveryTime > 0);
+	ctx.applyStartRecovery = false;
+	ctx.categoryOverrideMs = -1;
+
+	// Option A: central SpellOutcome event
+	// If SpellCategory flags indicate the category cooldown starts on event (0x4),
+	// defer applying the category cooldown until Spell::finish() emits the outcome.
+	const bool eventCooldowns = Config.MainConfig.GetBoolDefault("SpellDBC", "EventCooldowns", false);
+	if(eventCooldowns && m_spellInfo != nullptr && m_spellInfo->Category && m_spellInfo->CategoryRecoveryTime > 0)
+	{
+		const uint32 catFlags = GetSpellCategoryFlags(m_spellInfo->Category);
+		m_deferredCategoryFlags = catFlags;
+		if((catFlags & 0x4) != 0)
+		{
+			m_deferCategoryCooldown = true;
+			m_deferredCategoryId = m_spellInfo->Category;
+			m_deferredCategoryCooldownMs = (int32)m_spellInfo->CategoryRecoveryTime; // base; SM mods applied in Player
+			ctx.applyCategoryCooldown = false; // deferred
+		}
+	}
+
+	p_caster->ApplyCooldownContext(ctx);
 }
 
 void Spell::AddStartCooldown()
 {
-	if( p_caster != NULL )
-		p_caster->Cooldown_AddStart( m_spellInfo );
+	if(p_caster == nullptr)
+		return;
+
+	Player::CooldownContext ctx;
+	ctx.spell = m_spellInfo;
+	ctx.itemCaster = nullptr;
+	ctx.applySpellCooldown = false;
+	ctx.applyCategoryCooldown = false;
+	ctx.applyStartRecovery = true;
+	ctx.categoryOverrideMs = -1;
+	p_caster->ApplyCooldownContext(ctx);
 }
 
 void Spell::cast(bool check)
@@ -1796,6 +1840,38 @@ void Spell::finish()
 		}
 		i_caster->GetOwner()->Cooldown_AddItem( i_caster->GetProto() , x );
 	}
+
+	// Outcome-based cooldowns
+	if(p_caster != NULL && m_deferCategoryCooldown)
+	{
+		bool anySuccess = false;
+		for(uint32 x = 0; x < 3; ++x)
+		{
+			if(!m_targetUnits[x].empty())
+			{
+				anySuccess = true;
+				break;
+			}
+		}
+		// Spells with no moderated targets and no explicit targets (self/area) are considered successful if SpellGo was sent.
+		if(!anySuccess && ModeratedTargets.empty())
+			anySuccess = true;
+
+		SpellOutcome out;
+		out.spell = m_spellInfo;
+		out.casterGuid = m_caster ? m_caster->GetGUID() : 0;
+		out.primaryTargetGuid = m_targets.m_unitTarget;
+		out.categoryId = m_deferredCategoryId;
+		out.startRecoveryCategoryId = m_spellInfo->StartRecoveryCategory;
+		out.categoryFlags = m_deferredCategoryFlags;
+		out.spellGoSent = m_spellGoSent;
+		out.anySuccessfulTarget = anySuccess;
+		out.wasCancelled = (m_cancelled || GetSpellFailed());
+		out.deferredCategoryCooldownMs = m_deferredCategoryCooldownMs;
+
+		SpellCooldownMgr::OnSpellOutcome(p_caster, out);
+	}
+
 	/*
 	We set current spell only if this spell has cast time or is channeling spell
 	otherwise it's instant spell and we delete it right after completion
@@ -1985,7 +2061,7 @@ enum SpellGoFlags
 
 void Spell::SendSpellGo()
 {
-    
+ 	m_spellGoSent = true;   
 
 	// Fill UniqueTargets
 	TargetsList::iterator i, j;

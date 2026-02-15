@@ -1862,6 +1862,13 @@ protected:
     bool        bRadSet[3];
 	bool        m_cancelled;
 	bool m_isCasting;
+
+	// Outcome-based cooldown support (central SpellOutcome event)
+	bool m_spellGoSent;
+	bool m_deferCategoryCooldown;
+	int32 m_deferredCategoryCooldownMs;
+	uint32 m_deferredCategoryId;
+	uint32 m_deferredCategoryFlags;
     //void _DamageRangeUpdate();
 
 	ASCENT_INLINE bool HasTarget(const uint64& guid, TargetsList* tmpMap)

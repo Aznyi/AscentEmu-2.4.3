@@ -12895,7 +12895,9 @@ void ApplyNormalFixes()
 	// Updating spell.dbc
 	Log.Notice("World", "Processing %u spells...", dbcSpell.GetNumRows());
 
-	Apply112SpellFixes();
+	// Apply112SpellFixes() is invoked from World.cpp during startup before
+	// ApplyExtraDataFixes() / ApplyNormalFixes(). Calling it here as well causes
+	// the entire hardcoded spell pass to be applied twice.
 
 	uint32 cnt = dbcSpell.GetNumRows();
 	uint32 effect;
@@ -12937,44 +12939,33 @@ void ApplyNormalFixes()
 		uint32 result = 0;
 		// SpellID
 		uint32 spellid = sp->Id;
-		uint32 rank = 0;
-		uint32 type = 0;
+		uint32 rank = sp->RankNumber;   // derived in PostProcessSpellDBC()
+		uint32 type = sp->buffType;     // derived in PostProcessSpellDBC()
 		uint32 namehash = 0;
 	
 		sp->self_cast_only = false;
 		sp->apply_on_shapeshift_change = false;
 		sp->always_apply = false;
 
-		// hash the name
-		//!!!!!!! representing all strings on 32 bits is dangerous. There is a chance to get same hash for a lot of strings ;)
-		namehash = crc32((const unsigned char*)sp->Name, (unsigned int)strlen(sp->Name));
-		sp->NameHash   = namehash; //need these set before we start processing spells
+		// NameHash / base range / school normalization / aura-state remapping are now handled
+		// in PostProcessSpellDBC() right after Spell.dbc is loaded.
+		// Keep a small fallback here in case ApplyNormalFixes() is called without that pass.
+		if(sp->NameHash == 0 && sp->Name != NULL && sp->Name[0] != 0)
+			sp->NameHash = crc32((const unsigned char*)sp->Name, (unsigned int)strlen(sp->Name));
+		namehash = sp->NameHash;
 
-		float radius=std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[0])),::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[1])));
-		radius=std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[2])),radius);
-		radius=std::max(GetMaxRange(dbcSpellRange.LookupEntry(sp->rangeIndex)),radius);
-		sp->base_range_or_radius_sqr = radius*radius;
+		if(sp->base_range_or_radius_sqr == 0.0f)
+		{
+			float radius = 0.0f;
+			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[0])), radius);
+			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[1])), radius);
+			radius = std::max(::GetRadius(dbcSpellRadius.LookupEntry(sp->EffectRadiusIndex[2])), radius);
+			radius = std::max(GetMaxRange(dbcSpellRange.LookupEntry(sp->rangeIndex)), radius);
+			sp->base_range_or_radius_sqr = radius * radius;
+		}
 
-		sp->ai_target_type = GetAiTargetType( sp );
-	
-#define SET_SCHOOL(x) sp->School = x
-		if(sp->School & 1)
-			SET_SCHOOL(SCHOOL_NORMAL);
-		else if(sp->School & 2)
-			SET_SCHOOL(SCHOOL_HOLY);
-		else if(sp->School & 4)
-			SET_SCHOOL(SCHOOL_FIRE);
-		else if(sp->School & 8)
-			SET_SCHOOL(SCHOOL_NATURE);
-		else if(sp->School & 16)
-			SET_SCHOOL(SCHOOL_FROST);
-		else if(sp->School & 32)
-			SET_SCHOOL(SCHOOL_SHADOW);
-		else if(sp->School & 64)
-			SET_SCHOOL(SCHOOL_ARCANE);
-		else
-			printf("UNKNOWN SCHOOL %u\n",sp->Id);
-#undef SET_SCHOOL
+		if(sp->ai_target_type == 0)
+			sp->ai_target_type = GetAiTargetType(sp);
 
 		/*
 		AURASTATE_FLAG_DODGE_BLOCK			= 1,        //1
@@ -12990,114 +12981,8 @@ void ApplyNormalFixes()
 		AURASTATE_FLAG_POISON               = 32768,    //16
 		*/
 
-		// correct caster aura state
-		if( sp->CasterAuraState != 0 )
-		{
-			switch( sp->CasterAuraState )
-			{
-			case 1:
-				sp->CasterAuraState = AURASTATE_FLAG_DODGE_BLOCK;
-				break;
-
-			case 2:
-				sp->CasterAuraState = AURASTATE_FLAG_HEALTH20;
-				break;
-
-			case 3:
-				sp->CasterAuraState = AURASTATE_FLAG_BERSERK;
-				break;
-
-			case 5:
-				sp->CasterAuraState = AURASTATE_FLAG_JUDGEMENT;
-				break;
-
-			case 7:
-				sp->CasterAuraState = AURASTATE_FLAG_PARRY;
-				break;
-
-			case 10:
-				sp->CasterAuraState = AURASTATE_FLAG_LASTKILLWITHHONOR;
-				break;
-
-			case 11:
-				sp->CasterAuraState = AURASTATE_FLAG_CRITICAL;
-				break;
-
-			case 13:
-				sp->CasterAuraState = AURASTATE_FLAG_HEALTH35;
-				break;
-
-			case 14:
-				sp->CasterAuraState = AURASTATE_FLAG_IMMOLATE;
-				break;
-
-			case 15:
-				sp->CasterAuraState = AURASTATE_FLAG_REJUVENATE;
-				break;
-
-			case 16:
-				sp->CasterAuraState = AURASTATE_FLAG_POISON;
-				break;
-
-			default:
-				Log.Error("AuraState", "Spell %u (%s) has unknown caster aura state %u\n", sp->Id, sp->Name, sp->CasterAuraState);
-				break;
-			}
-		}
-
-		if( sp->TargetAuraState != 0 )
-		{
-			switch( sp->TargetAuraState )
-			{
-			case 1:
-				sp->TargetAuraState = AURASTATE_FLAG_DODGE_BLOCK;
-				break;
-
-			case 2:
-				sp->TargetAuraState = AURASTATE_FLAG_HEALTH20;
-				break;
-
-			case 3:
-				sp->TargetAuraState = AURASTATE_FLAG_BERSERK;
-				break;
-
-			case 5:
-				sp->TargetAuraState = AURASTATE_FLAG_JUDGEMENT;
-				break;
-
-			case 7:
-				sp->TargetAuraState = AURASTATE_FLAG_PARRY;
-				break;
-
-			case 10:
-				sp->TargetAuraState = AURASTATE_FLAG_LASTKILLWITHHONOR;
-				break;
-
-			case 11:
-				sp->TargetAuraState = AURASTATE_FLAG_CRITICAL;
-				break;
-
-			case 13:
-				sp->TargetAuraState = AURASTATE_FLAG_HEALTH35;
-				break;
-
-			case 14:
-				sp->TargetAuraState = AURASTATE_FLAG_IMMOLATE;
-				break;
-
-			case 15:
-				sp->TargetAuraState = AURASTATE_FLAG_REJUVENATE;
-				break;
-
-			case 16:
-				sp->TargetAuraState = AURASTATE_FLAG_POISON;
-				break;
-
-			default:
-				Log.Error("AuraState", "Spell %u (%s) has unknown target aura state %u\n", sp->Id, sp->Name, sp->TargetAuraState);
-				break;
-			}
-		}
+		// Aura state ordinal remapping is handled in PostProcessSpellDBC().
+		// Keep ApplyNormalFixes() focused on true exceptions and avoid double-remapping.
 
 		// apply on shapeshift change
 		if( sp->NameHash == SPELL_HASH_TRACK_HUMANOIDS )
@@ -13185,7 +13070,10 @@ void ApplyNormalFixes()
 			sp->self_cast_only = true;
 
 		sp->proc_interval = 0;//trigger at each event
-		sp->c_is_flags = 0;
+		// Do NOT reset c_is_flags here. PostProcessSpellDBC() derives generic flags
+		// (damaging/healing/stealth targeting, etc.) and ApplyNormalFixes() should
+		// only add true exceptions on top of that.
+		//sp->c_is_flags = 0;
 		sp->spell_coef_flags = 0;
 		sp->Dspell_coef_override = -1;
 		sp->OTspell_coef_override = -1;
@@ -13199,9 +13087,13 @@ void ApplyNormalFixes()
 		else
 			sp->talent_tree = talentSpellIterator->second;
 
-		// parse rank text
-		if (!sscanf(sp->Rank, "Rank %d", (unsigned int*)&rank))
-			rank = 0;
+		// RankNumber is derived in PostProcessSpellDBC(). Fallback guard only.
+		if(rank == 0 && sp->Rank != NULL && sp->Rank[0] != 0)
+		{
+			if(sscanf(sp->Rank, "Rank %u", (unsigned int*)&rank) != 1)
+				rank = 0;
+			sp->RankNumber = rank;
+		}
 
 		//seal of light 
 		if( namehash == SPELL_HASH_SEAL_OF_LIGHT )			
@@ -13238,116 +13130,17 @@ void ApplyNormalFixes()
         if( strstr( sp->Name, "Sharpen Blade") && sp->Effect[0] == 54 ) //All BS stones
             sp->EffectBasePoints[0] = 3599;
 
-		//these mostly do not mix so we can use else 
-        // look for seal, etc in name
-        if( strstr( sp->Name, "Seal"))
-		{
-            type |= SPELL_TYPE_SEAL;
-			All_Seal_Groups_Combined |= sp->SpellGroupType;
-		}
-        else if( strstr( sp->Name, "Blessing"))
-            type |= SPELL_TYPE_BLESSING;
-        else if( strstr( sp->Name, "Curse"))
-		{
-            type |= SPELL_TYPE_CURSE;
-			sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_SKIPCHECK;
-		}
-        else if( strstr( sp->Name, "Aspect"))
-            type |= SPELL_TYPE_ASPECT;
-        else if( strstr( sp->Name, "Sting") || strstr( sp->Name, "sting"))
-            type |= SPELL_TYPE_STING;
-        // don't break armor items!
-        else if(strcmp(sp->Name, "Armor") && strstr( sp->Name, "Armor") || strstr( sp->Name, "Demon Skin"))
-            type |= SPELL_TYPE_ARMOR;
-        else if( strstr( sp->Name, "Aura"))
-            type |= SPELL_TYPE_AURA;
-		else if( strstr( sp->Name, "Track")==sp->Name)
-            type |= SPELL_TYPE_TRACK;
-		else if( namehash == SPELL_HASH_GIFT_OF_THE_WILD || namehash == SPELL_HASH_MARK_OF_THE_WILD )
-            type |= SPELL_TYPE_MARK_GIFT;
-		else if( namehash == SPELL_HASH_IMMOLATION_TRAP || namehash == SPELL_HASH_FREEZING_TRAP || namehash == SPELL_HASH_FROST_TRAP || namehash == SPELL_HASH_EXPLOSIVE_TRAP || namehash == SPELL_HASH_SNAKE_TRAP )
-            type |= SPELL_TYPE_HUNTER_TRAP;
-		else if( namehash == SPELL_HASH_ARCANE_INTELLECT || namehash == SPELL_HASH_ARCANE_BRILLIANCE )
-            type |= SPELL_TYPE_MAGE_INTEL;
-		else if( namehash == SPELL_HASH_AMPLIFY_MAGIC || namehash == SPELL_HASH_DAMPEN_MAGIC )
-            type |= SPELL_TYPE_MAGE_MAGI;
-		else if( namehash == SPELL_HASH_FIRE_WARD || namehash == SPELL_HASH_FROST_WARD )
-            type |= SPELL_TYPE_MAGE_WARDS;
-		else if( namehash == SPELL_HASH_SHADOW_PROTECTION || namehash == SPELL_HASH_PRAYER_OF_SHADOW_PROTECTION )
-            type |= SPELL_TYPE_PRIEST_SH_PPROT;
-		else if( namehash == SPELL_HASH_WATER_SHIELD || namehash == SPELL_HASH_EARTH_SHIELD || namehash == SPELL_HASH_LIGHTNING_SHIELD )
-            type |= SPELL_TYPE_SHIELD;
-		else if( namehash == SPELL_HASH_POWER_WORD__FORTITUDE || namehash == SPELL_HASH_PRAYER_OF_FORTITUDE )
-            type |= SPELL_TYPE_FORTITUDE;
-		else if( namehash == SPELL_HASH_DIVINE_SPIRIT || namehash == SPELL_HASH_PRAYER_OF_SPIRIT )
-            type |= SPELL_TYPE_SPIRIT;
-//		else if( strstr( sp->Name, "Curse of Weakness") || strstr( sp->Name, "Curse of Agony") || strstr( sp->Name, "Curse of Recklessness") || strstr( sp->Name, "Curse of Tongues") || strstr( sp->Name, "Curse of the Elements") || strstr( sp->Name, "Curse of Idiocy") || strstr( sp->Name, "Curse of Shadow") || strstr( sp->Name, "Curse of Doom"))
-//		else if(namehash==4129426293 || namehash==885131426 || namehash==626036062 || namehash==3551228837 || namehash==2784647472 || namehash==776142553 || namehash==3407058720 || namehash==202747424)
-//		else if( strstr( sp->Name, "Curse of "))
-//            type |= SPELL_TYPE_WARLOCK_CURSES;
-		else if( strstr( sp->Name, "Immolate") || strstr( sp->Name, "Conflagrate"))
-			type |= SPELL_TYPE_WARLOCK_IMMOLATE;
-		else if( strstr( sp->Name, "Amplify Magic") || strstr( sp->Name, "Dampen Magic"))
-			type |= SPELL_TYPE_MAGE_AMPL_DUMP;
-        else if( strstr( sp->Description, "Battle Elixir"))
-            type |= SPELL_TYPE_ELIXIR_BATTLE;
-        else if( strstr( sp->Description, "Guardian Elixir"))
-            type |= SPELL_TYPE_ELIXIR_GUARDIAN;
-        else if( strstr( sp->Description, "Battle and Guardian elixir"))
-            type |= SPELL_TYPE_ELIXIR_FLASK;
-		else if( namehash == SPELL_HASH_HUNTER_S_MARK )		// hunter's mark
-			type |= SPELL_TYPE_HUNTER_MARK;
-        else if( namehash == SPELL_HASH_COMMANDING_SHOUT || namehash == SPELL_HASH_BATTLE_SHOUT )
-            type |= SPELL_TYPE_WARRIOR_SHOUT;
-		else if( strstr( sp->Description, "Finishing move") == sp->Description)
-			sp->c_is_flags |= SPELL_FLAG_IS_FINISHING_MOVE;
-		if( IsDamagingSpell( sp ) )
-			sp->c_is_flags |= SPELL_FLAG_IS_DAMAGING;
-		if( IsHealingSpell( sp ) )
-			sp->c_is_flags |= SPELL_FLAG_IS_HEALING;
-		if( IsTargetingStealthed( sp ) )
-			sp->c_is_flags |= SPELL_FLAG_IS_TARGETINGSTEALTHED;
+		// buffType + c_is_flags derived in PostProcessSpellDBC(). Fallback guard only.
+		type = sp->buffType;
 		
 
-		//stupid spell ranking problem
-		if(sp->spellLevel==0)
-		{
-			uint32 new_level=0;
-			if( strstr( sp->Name, "Apprentice "))
-				new_level = 1;
-			else if( strstr( sp->Name, "Journeyman "))
-				new_level = 2;
-			else if( strstr( sp->Name, "Expert "))
-				new_level = 3;
-			else if( strstr( sp->Name, "Artisan "))
-				new_level = 4;
-			else if( strstr( sp->Name, "Master "))
-				new_level = 5;
-			if(new_level!=0)
-			{
-				uint32 teachspell=0;
-				if(sp->Effect[0]==SPELL_EFFECT_LEARN_SPELL)
-					teachspell = sp->EffectTriggerSpell[0];
-				else if(sp->Effect[1]==SPELL_EFFECT_LEARN_SPELL)
-					teachspell = sp->EffectTriggerSpell[1];
-				else if(sp->Effect[2]==SPELL_EFFECT_LEARN_SPELL)
-					teachspell = sp->EffectTriggerSpell[2];
-				if(teachspell)
-				{
-					SpellEntry *spellInfo;
-					spellInfo = dbcSpell.LookupEntryForced(teachspell);
-					spellInfo->spellLevel = new_level;
-					sp->spellLevel = new_level;
-				}
-			}
-		}
+		// spellLevel training-name fix is handled in PostProcessSpellDBC().
 
 		/*FILE * f = fopen("C:\\spells.txt", "a");
 		fprintf(f, "case 0x%08X:		// %s\n", namehash, sp->Name);
 		fclose(f);*/
 
-		// find diminishing status
-		sp->DiminishStatus = GetDiminishingGroup(namehash);
+		// DiminishStatus is handled in PostProcessSpellDBC().
 		sp->buffIndexType=0;
 		switch(namehash)
 		{
@@ -13401,30 +13194,25 @@ void ApplyNormalFixes()
 			break;
 		}
 
-		// HACK FIX: Break roots/fear on damage.. this needs to be fixed properly!
-		if(!(sp->AuraInterruptFlags & AURA_INTERRUPT_ON_ANY_DAMAGE_TAKEN))
+		// AuraInterruptFlags fear/root helper + melee/ranged classification handled in PostProcessSpellDBC().
+		// Fallback guard only:
+		if((sp->is_melee_spell == false) && (sp->is_ranged_spell == false) &&
+		   ((sp->AuraInterruptFlags & AURA_INTERRUPT_ON_ANY_DAMAGE_TAKEN) != 0))
 		{
-			for(uint32 z = 0; z < 3; ++z) {
+			for(uint32 z = 0; z < 3; ++z)
+			{
 				if(sp->EffectApplyAuraName[z] == SPELL_AURA_MOD_FEAR ||
-					sp->EffectApplyAuraName[z] == SPELL_AURA_MOD_ROOT)
+				   sp->EffectApplyAuraName[z] == SPELL_AURA_MOD_ROOT)
 				{
 					sp->AuraInterruptFlags |= AURA_INTERRUPT_ON_UNUSED2;
 					break;
-				}
-
-				if( ( sp->Effect[z] == SPELL_EFFECT_SCHOOL_DAMAGE && sp->Spell_Dmg_Type == SPELL_DMG_TYPE_MELEE ) || sp->Effect[z] == SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL || sp->Effect[z] == SPELL_EFFECT_WEAPON_DAMAGE || sp->Effect[z] == SPELL_EFFECT_WEAPON_PERCENT_DAMAGE || sp->Effect[z] == SPELL_EFFECT_DUMMYMELEE )
-					sp->is_melee_spell = true;
-				if( ( sp->Effect[z] == SPELL_EFFECT_SCHOOL_DAMAGE && sp->Spell_Dmg_Type == SPELL_DMG_TYPE_RANGED ) )
-				{
-					//Log.Notice( "SpellFixes" , "Ranged Spell: %u [%s]" , sp->Id , sp->Name );
-					sp->is_ranged_spell = true;
 				}
 			}
 		}
 
 		// set extra properties
-		sp->buffType   = type;
-		sp->RankNumber = rank;
+		sp->buffType   = type;  // already derived; keep assignment for safety
+		sp->RankNumber = rank;  // already derived; keep assignment for safety
 
 		uint32 pr=sp->procFlags;
 		for(uint32 y=0;y < 3; y++)

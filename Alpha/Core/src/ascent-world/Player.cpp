@@ -18,6 +18,8 @@
  */
 
 #include "StdAfx.h"
+#include "SpellDbcPostProcess.h"
+
 UpdateMask Player::m_visibleUpdateMask;
 #define COLLISION_MOUNT_CHECK_INTERVAL 1000
 
@@ -6393,19 +6395,13 @@ void Player::JumpToEndTaxiNode(TaxiPath * path)
 
 void Player::RemoveSpellsFromLine(uint32 skill_line)
 {
-	uint32 cnt = dbcSkillLineSpell.GetNumRows();
-	for(uint32 i=0; i < cnt; i++)
-	{
-		skilllinespell * sp = dbcSkillLineSpell.LookupRow(i);
-		if(sp)
-		{
-			if(sp->skilline == skill_line)
-			{
-				// Check ourselves for this spell, and remove it..
-					removeSpell(sp->spell, 0, 0, 0);
-			}
-		}
-	}
+	const std::vector<uint32>* spells = GetSpellsForSkillLine(skill_line);
+	if(spells == NULL)
+		return;
+
+    for(std::vector<uint32>::const_iterator it = spells->begin();
+        it != spells->end(); ++it)
+        removeSpell(*it, 0, 0, 0);
 }
 
 void Player::CalcStat(uint32 type)
@@ -10116,34 +10112,112 @@ void Player::_Cooldown_Add(uint32 Type, uint32 Misc, uint32 Time, uint32 SpellId
 #endif
 }
 
+void Player::Cooldown_ApplyGlobal(uint32 durationMs)
+{
+    if(durationMs == 0)
+        return;
+
+    const uint32 mstime = getMSTime();
+    const uint32 gcEnd = mstime + durationMs;
+    if(m_globalCooldown < gcEnd)
+        m_globalCooldown = gcEnd;
+}
+
+void Player::Cooldown_AddSpellOnly(SpellEntry* pSpell, Item* pItemCaster)
+{
+    if(pSpell == NULL)
+        return;
+
+    if(pSpell->RecoveryTime <= 0)
+        return;
+
+    uint32 mstime = getMSTime();
+    int32 sct = (int32)pSpell->RecoveryTime;
+
+    if(pSpell->SpellGroupType)
+    {
+        SM_FIValue(SM_FCooldownTime, &sct, pSpell->SpellGroupType);
+        SM_PIValue(SM_PCooldownTime, &sct, pSpell->SpellGroupType);
+    }
+
+    if(sct <= 0)
+        return;
+
+    _Cooldown_Add(COOLDOWN_TYPE_SPELL, pSpell->Id, mstime + (uint32)sct, pSpell->Id,
+        pItemCaster ? pItemCaster->GetProto()->ItemId : 0);
+}
+
+void Player::ApplyCooldownContext(const CooldownContext& ctx)
+{
+	if (ctx.spell == nullptr)
+		return;
+
+	// Apply spell-id cooldown (RecoveryTime)
+	if(ctx.applySpellCooldown)
+		Cooldown_AddSpellOnly(ctx.spell, ctx.itemCaster);
+
+	// Apply category cooldown (CategoryRecoveryTime)
+	if(ctx.applyCategoryCooldown)
+		Cooldown_AddCategoryOnly(ctx.spell, ctx.itemCaster, ctx.categoryOverrideMs);
+
+	// Apply start recovery / GCD
+	if(ctx.applyStartRecovery)
+		Cooldown_AddStart(ctx.spell);
+}
+
+void Player::Cooldown_AddCategoryOnly(SpellEntry* pSpell, Item* pItemCaster, int32 overrideCategoryMs)
+{
+    if(pSpell == NULL || pSpell->Category == 0)
+        return;
+
+    int32 cool_time = (overrideCategoryMs >= 0) ? overrideCategoryMs : (int32)pSpell->CategoryRecoveryTime;
+    if(cool_time <= 0)
+        return;
+
+    uint32 mstime = getMSTime();
+
+    if(pSpell->SpellGroupType)
+    {
+        SM_FIValue(SM_FCooldownTime, &cool_time, pSpell->SpellGroupType);
+        SM_PIValue(SM_PCooldownTime, &cool_time, pSpell->SpellGroupType);
+    }
+
+    if(cool_time <= 0)
+        return;
+
+    const bool cdDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "CooldownDebug", false);
+	const bool applyCatFlags = Config.MainConfig.GetBoolDefault("SpellDBC", "ApplyCategoryFlags", false);
+	const uint32 globalFlagMaxMs = (uint32)Config.MainConfig.GetIntDefault("SpellDBC", "CategoryGlobalMaxMs", 10000);
+    if(cdDebug)
+    {
+        const uint32 flags = GetSpellCategoryFlags(pSpell->Category);
+        Log.Notice("Cooldown", "CategoryOnly: spell=%u cat=%u flags=0x%X dur=%dms",
+            pSpell->Id, pSpell->Category, flags, cool_time);
+    }
+
+    _Cooldown_Add(COOLDOWN_TYPE_CATEGORY, pSpell->Category, mstime + (uint32)cool_time, pSpell->Id,
+        pItemCaster ? pItemCaster->GetProto()->ItemId : 0);
+
+	// Optional: apply SpellCategory flag semantics (safe subset)
+	if(applyCatFlags)
+ 	{
+		const uint32 flags = GetSpellCategoryFlags(pSpell->Category);
+		// 0x2: cooldown is global (mirror short category cooldowns into global cooldown)
+		if((flags & 0x2) && (uint32)cool_time <= globalFlagMaxMs)
+			Cooldown_ApplyGlobal((uint32)cool_time);
+ 	}
+}
+ 
 void Player::Cooldown_Add(SpellEntry * pSpell, Item * pItemCaster)
 {
-	uint32 mstime = getMSTime();
-	int32 cool_time;
-
-	if( pSpell->CategoryRecoveryTime > 0 && pSpell->Category )
-	{
-		cool_time = pSpell->CategoryRecoveryTime;
-		if( pSpell->SpellGroupType )
-		{
-			SM_FIValue(SM_FCooldownTime, &cool_time, pSpell->SpellGroupType);
-			SM_PIValue(SM_PCooldownTime, &cool_time, pSpell->SpellGroupType);
-		}
-
-		_Cooldown_Add( COOLDOWN_TYPE_CATEGORY, pSpell->Category, mstime + cool_time, pSpell->Id, pItemCaster ? pItemCaster->GetProto()->ItemId : 0 );
-	}
-	
-	if( pSpell->RecoveryTime > 0 )
-	{
-		cool_time = pSpell->RecoveryTime;
-		if( pSpell->SpellGroupType )
-		{
-			SM_FIValue(SM_FCooldownTime, &cool_time, pSpell->SpellGroupType);
-			SM_PIValue(SM_PCooldownTime, &cool_time, pSpell->SpellGroupType);
-		}
-
-		_Cooldown_Add( COOLDOWN_TYPE_SPELL, pSpell->Id, mstime + cool_time, pSpell->Id, pItemCaster ? pItemCaster->GetProto()->ItemId : 0 );
-	}
+	CooldownContext ctx;
+	ctx.spell = pSpell;
+	ctx.itemCaster = pItemCaster;
+	ctx.applySpellCooldown = (pSpell != nullptr && pSpell->RecoveryTime > 0);
+	ctx.applyCategoryCooldown = (pSpell != nullptr && pSpell->Category && pSpell->CategoryRecoveryTime > 0);
+	ctx.applyStartRecovery = false;
+	ctx.categoryOverrideMs = -1;
+	ApplyCooldownContext(ctx);
 }
 
 void Player::Cooldown_AddStart(SpellEntry * pSpell)
@@ -10151,15 +10225,32 @@ void Player::Cooldown_AddStart(SpellEntry * pSpell)
 	if( pSpell->StartRecoveryTime == 0 )
 		return;
 
+	const bool cdDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "CooldownDebug", false);
+
 	uint32 mstime = getMSTime();
-	int32 atime = float2int32( float(pSpell->StartRecoveryTime) * m_floatValues[UNIT_MOD_CAST_SPEED] );
+	// StartRecoveryTime is the base GCD (ms). Haste can reduce it, but it should not increase beyond base,
+	// and it should not go below 1.0s (Blizzlike clamp).
+	const int32 base = (int32)pSpell->StartRecoveryTime;
+	int32 atime = float2int32( float(base) * m_floatValues[UNIT_MOD_CAST_SPEED] );
 	if( atime <= 0 )
 		return;
-	if( atime >= 1 )
-		atime = 1; // global cooldown is decreased by spell haste, but it's not INCREASED by spell slow.
+	// Don't allow slow effects to increase GCD above base
+	if(atime > base)
+		atime = base;
+	// Minimum GCD clamp (1 second)
+	if(atime < 1000)
+		atime = 1000;
 
-	if( pSpell->StartRecoveryCategory )		// if we have a different cool category to the actual spell category - only used by few spells
-		_Cooldown_Add( COOLDOWN_TYPE_CATEGORY, pSpell->StartRecoveryCategory, mstime + atime, pSpell->Id, 0 );
+	if (pSpell->StartRecoveryCategory)		// if we have a different cool category to the actual spell category - only used by few spells
+	{
+		if (cdDebug)
+		{
+			const uint32 flags = GetSpellCategoryFlags(pSpell->StartRecoveryCategory);
+			Log.Notice("Cooldown", "Add start category cooldown: spell=%u startCat=%u flags=0x%X dur=%dms",
+				pSpell->Id, pSpell->StartRecoveryCategory, flags, atime);
+		}
+		_Cooldown_Add(COOLDOWN_TYPE_CATEGORY, pSpell->StartRecoveryCategory, mstime + atime, pSpell->Id, 0);
+	}
 	/*else if( pSpell->Category )				// cooldowns are grouped
 		_Cooldown_Add( COOLDOWN_TYPE_CATEGORY, pSpell->Category, mstime + pSpell->StartRecoveryTime, pSpell->Id, 0 );*/
 	else									// no category, so it's a gcd
@@ -10167,6 +10258,8 @@ void Player::Cooldown_AddStart(SpellEntry * pSpell)
 #ifdef _DEBUG
 		Log.Debug("Cooldown", "Global cooldown adding: %u ms", atime );
 #endif
+		if(cdDebug)
+			Log.Notice("Cooldown", "Add global cooldown: spell=%u dur=%dms", pSpell->Id, atime);
 		m_globalCooldown = mstime + atime;
 	}
 }
@@ -10175,14 +10268,28 @@ bool Player::Cooldown_CanCast(SpellEntry * pSpell)
 {
 	PlayerCooldownMap::iterator itr;
 	uint32 mstime = getMSTime();
+	const bool cdDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "CooldownDebug", false);
 
-	if( pSpell->Category )
+	// Some spells use StartRecoveryCategory instead of Category for cooldown grouping.
+	// We must check the same category we may have added in Cooldown_AddStart().
+	uint32 categoryToCheck = 0;
+	if(pSpell->StartRecoveryCategory)
+		categoryToCheck = pSpell->StartRecoveryCategory;
+	else
+		categoryToCheck = pSpell->Category;
+
+	if( categoryToCheck )
 	{
-		itr = m_cooldownMap[COOLDOWN_TYPE_CATEGORY].find( pSpell->Category );
+		itr = m_cooldownMap[COOLDOWN_TYPE_CATEGORY].find(categoryToCheck);
 		if( itr != m_cooldownMap[COOLDOWN_TYPE_CATEGORY].end( ) )
 		{
-			if( mstime < itr->second.ExpireTime )
+			if (mstime < itr->second.ExpireTime)
+			{
+				if (cdDebug)
+					Log.Notice("Cooldown", "Blocked by category cooldown: spell=%u cat=%u remaining=%u ms",
+						pSpell->Id, categoryToCheck, (itr->second.ExpireTime - mstime));
 				return false;
+			}
 			else
 				m_cooldownMap[COOLDOWN_TYPE_CATEGORY].erase( itr );
 		}		
@@ -10191,16 +10298,26 @@ bool Player::Cooldown_CanCast(SpellEntry * pSpell)
 	itr = m_cooldownMap[COOLDOWN_TYPE_SPELL].find( pSpell->Id );
 	if( itr != m_cooldownMap[COOLDOWN_TYPE_SPELL].end( ) )
 	{
-		if( mstime < itr->second.ExpireTime )
+		if (mstime < itr->second.ExpireTime)
+		{
+			if (cdDebug)
+				Log.Notice("Cooldown", "Blocked by spell cooldown: spell=%u remaining=%u ms",
+					pSpell->Id, (itr->second.ExpireTime - mstime));
 			return false;
+		}
 		else
 			m_cooldownMap[COOLDOWN_TYPE_SPELL].erase( itr );
 	}
 
 	if( pSpell->StartRecoveryTime && m_globalCooldown )			/* gcd doesn't affect spells without a cooldown it seems */
 	{
-		if( mstime < m_globalCooldown )
+		if (mstime < m_globalCooldown)
+		{
+			if (cdDebug)
+				Log.Notice("Cooldown", "Blocked by global cooldown: spell=%u remaining=%u ms",
+					pSpell->Id, (m_globalCooldown - mstime));
 			return false;
+		}
 		else
 			m_globalCooldown = 0;
 	}

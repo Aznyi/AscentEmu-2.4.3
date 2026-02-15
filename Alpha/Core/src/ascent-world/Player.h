@@ -685,7 +685,36 @@ public:
 	void Cooldown_Add(SpellEntry * pSpell, Item * pItemCaster);
 	void Cooldown_AddItem(ItemPrototype * pProto, uint32 x);
 	bool Cooldown_CanCast(SpellEntry * pSpell);
+
+	// Unified cooldown application context. This is the single entry point used by Spell, SpellOutcome,
+	// and legacy code paths to apply spell/category/start-recovery cooldowns in a consistent, DBC-driven way.
+	struct CooldownContext
+	{
+		SpellEntry* spell;            // Required
+		Item* itemCaster;             // Optional, for item-based casts
+		bool applySpellCooldown;      // RecoveryTime (spell-id cooldown)
+		bool applyCategoryCooldown;   // CategoryRecoveryTime (category cooldown)
+		bool applyStartRecovery;      // StartRecoveryTime / StartRecoveryCategory / GCD
+		int32 categoryOverrideMs;     // -1 uses DBC CategoryRecoveryTime; otherwise override base duration in ms
+		CooldownContext()
+			: spell(nullptr), itemCaster(nullptr),
+			  applySpellCooldown(false), applyCategoryCooldown(false), applyStartRecovery(false),
+			  categoryOverrideMs(-1)
+		{}
+	};
+
+	// Apply cooldowns described by the context. Prefer this over calling the individual Cooldown_Add* APIs.
+	void ApplyCooldownContext(const CooldownContext& ctx);
+
+
+    // Legacy helpers (kept for compatibility). New code should prefer ApplyCooldownContext().
+    void Cooldown_AddSpellOnly(SpellEntry* pSpell, Item* pItemCaster);
+    void Cooldown_AddCategoryOnly(SpellEntry* pSpell, Item* pItemCaster, int32 overrideCategoryMs /* -1 = use DBC */);
 	bool Cooldown_CanCast(ItemPrototype * pProto, uint32 x);
+
+    // Allows external outcome handlers to apply/extend the player's global cooldown without
+    // accessing protected members directly.
+    void Cooldown_ApplyGlobal(uint32 durationMs);
 
 protected:
 	void _Cooldown_Add(uint32 Type, uint32 Misc, uint32 Time, uint32 SpellId, uint32 ItemId);

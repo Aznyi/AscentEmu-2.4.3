@@ -348,9 +348,11 @@
     <ClCompile Include="..\..\src\ascent-world\SpeedDetector.cpp" />
     <ClCompile Include="..\..\src\ascent-world\Spell.cpp" />
     <ClCompile Include="..\..\src\ascent-world\SpellAuras.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\SpellDbcPostProcess.cpp" />
     <ClCompile Include="..\..\src\ascent-world\SpellEffects.cpp" />
     <ClCompile Include="..\..\src\ascent-world\SpellFixes.cpp" />
     <ClCompile Include="..\..\src\ascent-world\SpellHandler.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\SpellOutcome.cpp" />
     <ClCompile Include="..\..\src\ascent-world\SpellTarget.cpp" />
     <ClCompile Include="..\..\src\ascent-world\Stats.cpp" />
     <ClCompile Include="..\..\src\ascent-world\StdAfx.cpp">
@@ -445,7 +447,9 @@
     <ClInclude Include="..\..\src\ascent-world\SpeedDetector.h" />
     <ClInclude Include="..\..\src\ascent-world\Spell.h" />
     <ClInclude Include="..\..\src\ascent-world\SpellAuras.h" />
+    <ClInclude Include="..\..\src\ascent-world\SpellDbcPostProcess.h" />
     <ClInclude Include="..\..\src\ascent-world\SpellFailure.h" />
+    <ClInclude Include="..\..\src\ascent-world\SpellOutcome.h" />
     <ClInclude Include="..\..\src\ascent-world\Stats.h" />
     <ClInclude Include="..\..\src\ascent-world\StdAfx.h" />
     <ClInclude Include="..\..\src\ascent-world\TaxiMgr.h" />

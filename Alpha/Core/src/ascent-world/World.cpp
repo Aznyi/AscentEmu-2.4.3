@@ -18,9 +18,101 @@
  */
 
 #include "StdAfx.h"
+#include <vector>
+#include <cmath>
+#include <cstring> // memcpy
 initialiseSingleton( World );
 
 DayWatcherThread* dw = NULL;
+
+namespace
+{
+	static uint32 SpellEntryCrc(const SpellEntry* sp)
+	{
+		if(sp == NULL) return 0;
+
+		// Ascent's crc32() is 2-arg (no seed). Build a byte buffer and hash once.
+		std::vector<uint8> buf;
+		buf.reserve(512);
+
+		auto add = [&](const void* data, size_t len)
+		{
+			if(data == NULL || len == 0) return;
+			const size_t old = buf.size();
+			buf.resize(old + len);
+			memcpy(&buf[old], data, len);
+		};
+
+ 		// Core identifiers / cooldowns / costs / timing
+		add(&sp->Id, sizeof(sp->Id));
+		add(&sp->Category, sizeof(sp->Category));
+		add(&sp->Attributes, sizeof(sp->Attributes));
+		add(&sp->AttributesEx, sizeof(sp->AttributesEx));
+		add(&sp->AttributesExB, sizeof(sp->AttributesExB));
+		add(&sp->AttributesExC, sizeof(sp->AttributesExC));
+		add(&sp->AttributesExD, sizeof(sp->AttributesExD));
+		add(&sp->AttributesExE, sizeof(sp->AttributesExE));
+		add(&sp->AttributesExF, sizeof(sp->AttributesExF));
+		add(&sp->InterruptFlags, sizeof(sp->InterruptFlags));
+		add(&sp->AuraInterruptFlags, sizeof(sp->AuraInterruptFlags));
+		add(&sp->ChannelInterruptFlags, sizeof(sp->ChannelInterruptFlags));
+		add(&sp->procFlags, sizeof(sp->procFlags));
+		add(&sp->procChance, sizeof(sp->procChance));
+		add(&sp->procCharges, sizeof(sp->procCharges));
+		add(&sp->CastingTimeIndex, sizeof(sp->CastingTimeIndex));
+		add(&sp->RecoveryTime, sizeof(sp->RecoveryTime));
+		add(&sp->CategoryRecoveryTime, sizeof(sp->CategoryRecoveryTime));
+		add(&sp->DurationIndex, sizeof(sp->DurationIndex));
+		add(&sp->powerType, sizeof(sp->powerType));
+		add(&sp->manaCost, sizeof(sp->manaCost));
+		add(&sp->ManaCostPercentage, sizeof(sp->ManaCostPercentage));
+		add(&sp->rangeIndex, sizeof(sp->rangeIndex));
+		add(&sp->speed, sizeof(sp->speed));
+		add(&sp->MaxTargets, sizeof(sp->MaxTargets));
+		add(&sp->Spell_Dmg_Type, sizeof(sp->Spell_Dmg_Type));
+		add(&sp->PreventionType, sizeof(sp->PreventionType));
+		add(&sp->School, sizeof(sp->School));
+ 
+ 		// Effects (most fixes touch these)
+		add(sp->Effect, sizeof(sp->Effect));
+		add(sp->EffectApplyAuraName, sizeof(sp->EffectApplyAuraName));
+		add(sp->EffectImplicitTargetA, sizeof(sp->EffectImplicitTargetA));
+		add(sp->EffectImplicitTargetB, sizeof(sp->EffectImplicitTargetB));
+		add(sp->EffectTriggerSpell, sizeof(sp->EffectTriggerSpell));
+		add(sp->EffectRadiusIndex, sizeof(sp->EffectRadiusIndex));
+		add(sp->EffectAmplitude, sizeof(sp->EffectAmplitude));
+		add(sp->EffectChainTarget, sizeof(sp->EffectChainTarget));
+		add(sp->EffectMiscValue, sizeof(sp->EffectMiscValue));
+		add(sp->EffectMiscValueB, sizeof(sp->EffectMiscValueB));
+		add(sp->EffectBasePoints, sizeof(sp->EffectBasePoints));
+		add(sp->EffectMechanic, sizeof(sp->EffectMechanic));
+ 
+ 		// Custom/server helper fields frequently modified by fixes
+		add(&sp->DiminishStatus, sizeof(sp->DiminishStatus));
+		add(&sp->proc_interval, sizeof(sp->proc_interval));
+		add(&sp->buffIndexType, sizeof(sp->buffIndexType));
+		add(&sp->c_is_flags, sizeof(sp->c_is_flags));
+		add(&sp->buffType, sizeof(sp->buffType));
+		add(&sp->RankNumber, sizeof(sp->RankNumber));
+		add(&sp->NameHash, sizeof(sp->NameHash));
+		add(&sp->talent_tree, sizeof(sp->talent_tree));
+		add(&sp->in_front_status, sizeof(sp->in_front_status));
+		add(&sp->base_range_or_radius_sqr, sizeof(sp->base_range_or_radius_sqr));
+		add(&sp->cone_width, sizeof(sp->cone_width));
+		add(&sp->ai_target_type, sizeof(sp->ai_target_type));
+		add(&sp->self_cast_only, sizeof(sp->self_cast_only));
+		add(&sp->apply_on_shapeshift_change, sizeof(sp->apply_on_shapeshift_change));
+		add(&sp->always_apply, sizeof(sp->always_apply));
+		add(&sp->is_melee_spell, sizeof(sp->is_melee_spell));
+		add(&sp->is_ranged_spell, sizeof(sp->is_ranged_spell));
+		add(&sp->spell_can_crit, sizeof(sp->spell_can_crit));
+
+		if(buf.empty())
+			return 0;
+
+		return (uint32)crc32((const unsigned char*)&buf[0], (unsigned int)buf.size());
+	}
+}
 
 float World::m_movementCompressThreshold;
 float World::m_movementCompressThresholdCreatures;
@@ -263,6 +355,7 @@ bool BasicTaskExecutor::run()
 	return true;
 }
 
+void PostProcessSpellDBC();
 void Apply112SpellFixes();
 void ApplyExtraDataFixes();
 void ApplyNormalFixes();
@@ -336,6 +429,21 @@ bool World::SetInitialWorldSettings()
 		return false;
 	}
 
+	// Compute generic, DBC-driven derived fields for Spell.dbc rows.
+	// Optional debug/timing controlled by config: [SpellDBC] PostProcessDebug = 1
+	const bool spellDbcPPDebug = Config.MainConfig.GetBoolDefault("SpellDBC", "PostProcessDebug", false);
+	uint32 ppStart = 0;
+	if(spellDbcPPDebug)
+	{
+		ppStart = getMSTime();
+		Log.Notice("World", "PostProcessSpellDBC(): begin (called from World.cpp)");
+	}
+
+	PostProcessSpellDBC();
+
+	if(spellDbcPPDebug)
+		Log.Notice("World", "PostProcessSpellDBC(): end (elapsed=%u ms)", (getMSTime() - ppStart));
+ 
 	/* Convert area table ids/flags */
 	DBCFile area;
 
@@ -472,7 +580,153 @@ bool World::SetInitialWorldSettings()
 	Log.Notice("World", "Player size: %u bytes", sizeof(Player) + sizeof(ItemInterface) + 50000 + 30000 + 1000 + sizeof(AIInterface));
 	Log.Notice("World", "GameObject size: %u bytes", sizeof(GameObject));
 
+	// SpellFix audit (optional):
+	//   [SpellFixes] Audit=1 enables a pre/post CRC scan of Spell.dbc rows around Apply112SpellFixes().
+	//   AuditVerbose=1 logs each changed spell ID.
+	//   AuditDump=1 dumps field-level deltas for changed spells (best-effort) up to AuditDumpLimit.
+	const bool spellFixAudit        = Config.MainConfig.GetBoolDefault("SpellFixes", "Audit", false);
+	const bool spellFixAuditVerbose = Config.MainConfig.GetBoolDefault("SpellFixes", "AuditVerbose", false);
+	const bool spellFixAuditDump    = Config.MainConfig.GetBoolDefault("SpellFixes", "AuditDump", false);
+	const uint32 spellFixDumpLimit  = (uint32)Config.MainConfig.GetIntDefault("SpellFixes", "AuditDumpLimit", 25);
+
+	std::vector<uint32> preFixCrc;
+	std::vector<SpellEntry> preFixSnapshot;
+	if(spellFixAudit)
+	{
+		preFixCrc.resize(dbcSpell.GetNumRows());
+		if(spellFixAuditDump)
+			preFixSnapshot.resize(dbcSpell.GetNumRows());
+
+		for(uint32 i = 0; i < dbcSpell.GetNumRows(); ++i)
+		{
+			SpellEntry* sp = dbcSpell.LookupRow(i);
+			preFixCrc[i] = SpellEntryCrc(sp);
+			if(spellFixAuditDump && sp != NULL)
+				preFixSnapshot[i] = *sp; // shallow copy is fine; DBC strings are stable
+		}
+	}
+
 	Apply112SpellFixes();
+
+	if(spellFixAudit)
+	{
+		uint32 changed = 0;
+		uint32 dumped = 0;
+
+		auto DumpSpellDelta = [&](const SpellEntry& before, const SpellEntry& after)
+		{
+#define DUMP_U32(f) do { if(before.f != after.f) Log.Notice("SpellFixAudit", "  %s: %u -> %u", #f, before.f, after.f); } while(0)
+#define DUMP_I32(f) do { if(before.f != after.f) Log.Notice("SpellFixAudit", "  %s: %d -> %d", #f, before.f, after.f); } while(0)
+#define DUMP_F(f)   do { if(fabs(before.f - after.f) > 0.000001f) Log.Notice("SpellFixAudit", "  %s: %.6f -> %.6f", #f, before.f, after.f); } while(0)
+#define DUMP_B(f)   do { if(before.f != after.f) Log.Notice("SpellFixAudit", "  %s: %u -> %u", #f, before.f ? 1u : 0u, after.f ? 1u : 0u); } while(0)
+
+			DUMP_U32(Attributes);
+			DUMP_U32(AttributesEx);
+			DUMP_U32(AttributesExB);
+			DUMP_U32(AttributesExC);
+			DUMP_U32(AttributesExD);
+			DUMP_U32(AttributesExE);
+			DUMP_U32(AttributesExF);
+			DUMP_U32(InterruptFlags);
+			DUMP_U32(AuraInterruptFlags);
+			DUMP_U32(ChannelInterruptFlags);
+			DUMP_U32(procFlags);
+			DUMP_U32(procChance);
+			DUMP_I32(procCharges);
+			DUMP_U32(CastingTimeIndex);
+			DUMP_U32(RecoveryTime);
+			DUMP_U32(CategoryRecoveryTime);
+			DUMP_U32(DurationIndex);
+			DUMP_U32(powerType);
+			DUMP_U32(manaCost);
+			DUMP_U32(ManaCostPercentage);
+			DUMP_U32(rangeIndex);
+			DUMP_F(speed);
+			DUMP_U32(MaxTargets);
+			DUMP_U32(Spell_Dmg_Type);
+			DUMP_U32(PreventionType);
+			DUMP_U32(School);
+
+			for(uint32 j = 0; j < 3; ++j)
+			{
+				if(before.Effect[j] != after.Effect[j])
+					Log.Notice("SpellFixAudit", "  Effect[%u]: %u -> %u", j, before.Effect[j], after.Effect[j]);
+				if(before.EffectApplyAuraName[j] != after.EffectApplyAuraName[j])
+					Log.Notice("SpellFixAudit", "  EffectApplyAuraName[%u]: %u -> %u", j, before.EffectApplyAuraName[j], after.EffectApplyAuraName[j]);
+				if(before.EffectImplicitTargetA[j] != after.EffectImplicitTargetA[j])
+					Log.Notice("SpellFixAudit", "  EffectImplicitTargetA[%u]: %u -> %u", j, before.EffectImplicitTargetA[j], after.EffectImplicitTargetA[j]);
+				if(before.EffectImplicitTargetB[j] != after.EffectImplicitTargetB[j])
+					Log.Notice("SpellFixAudit", "  EffectImplicitTargetB[%u]: %u -> %u", j, before.EffectImplicitTargetB[j], after.EffectImplicitTargetB[j]);
+				if(before.EffectTriggerSpell[j] != after.EffectTriggerSpell[j])
+					Log.Notice("SpellFixAudit", "  EffectTriggerSpell[%u]: %u -> %u", j, before.EffectTriggerSpell[j], after.EffectTriggerSpell[j]);
+				if(before.EffectRadiusIndex[j] != after.EffectRadiusIndex[j])
+					Log.Notice("SpellFixAudit", "  EffectRadiusIndex[%u]: %u -> %u", j, before.EffectRadiusIndex[j], after.EffectRadiusIndex[j]);
+				if(before.EffectAmplitude[j] != after.EffectAmplitude[j])
+					Log.Notice("SpellFixAudit", "  EffectAmplitude[%u]: %u -> %u", j, before.EffectAmplitude[j], after.EffectAmplitude[j]);
+				if(before.EffectChainTarget[j] != after.EffectChainTarget[j])
+					Log.Notice("SpellFixAudit", "  EffectChainTarget[%u]: %u -> %u", j, before.EffectChainTarget[j], after.EffectChainTarget[j]);
+				if(before.EffectMiscValue[j] != after.EffectMiscValue[j])
+					Log.Notice("SpellFixAudit", "  EffectMiscValue[%u]: %d -> %d", j, before.EffectMiscValue[j], after.EffectMiscValue[j]);
+				if(before.EffectMiscValueB[j] != after.EffectMiscValueB[j])
+					Log.Notice("SpellFixAudit", "  EffectMiscValueB[%u]: %u -> %u", j, before.EffectMiscValueB[j], after.EffectMiscValueB[j]);
+				if(before.EffectBasePoints[j] != after.EffectBasePoints[j])
+					Log.Notice("SpellFixAudit", "  EffectBasePoints[%u]: %d -> %d", j, before.EffectBasePoints[j], after.EffectBasePoints[j]);
+				if(before.EffectMechanic[j] != after.EffectMechanic[j])
+					Log.Notice("SpellFixAudit", "  EffectMechanic[%u]: %d -> %d", j, before.EffectMechanic[j], after.EffectMechanic[j]);
+			}
+
+			DUMP_U32(DiminishStatus);
+			DUMP_U32(proc_interval);
+			DUMP_U32(buffIndexType);
+			DUMP_U32(c_is_flags);
+			DUMP_U32(buffType);
+			DUMP_U32(RankNumber);
+			DUMP_U32(NameHash);
+			DUMP_U32(talent_tree);
+			DUMP_U32(in_front_status);
+			DUMP_F(base_range_or_radius_sqr);
+			DUMP_F(cone_width);
+			DUMP_I32(ai_target_type);
+			DUMP_B(self_cast_only);
+			DUMP_B(apply_on_shapeshift_change);
+			DUMP_B(always_apply);
+			DUMP_B(is_melee_spell);
+			DUMP_B(is_ranged_spell);
+			DUMP_B(spell_can_crit);
+
+#undef DUMP_U32
+#undef DUMP_I32
+#undef DUMP_F
+#undef DUMP_B
+		};
+
+		for(uint32 i = 0; i < dbcSpell.GetNumRows(); ++i)
+		{
+			SpellEntry* sp = dbcSpell.LookupRow(i);
+			if(sp == NULL)
+				continue;
+
+			const uint32 post = SpellEntryCrc(sp);
+			if(post != preFixCrc[i])
+			{
+				++changed;
+
+				if(spellFixAuditVerbose)
+					Log.Notice("SpellFixAudit", "Apply112SpellFixes changed spell %u (%s)", sp->Id, sp->Name);
+
+				if(spellFixAuditDump && dumped < spellFixDumpLimit && i < preFixSnapshot.size())
+				{
+					++dumped;
+					Log.Notice("SpellFixAudit", "Delta for spell %u (%s):", sp->Id, sp->Name);
+					DumpSpellDelta(preFixSnapshot[i], *sp);
+				}
+			}
+		}
+
+		Log.Notice("SpellFixAudit", "Apply112SpellFixes changed %u/%u spells.", changed, dbcSpell.GetNumRows());
+		if(spellFixAuditDump)
+			Log.Notice("SpellFixAudit", "Dumped %u/%u field-level deltas (limit %u).", dumped, changed, spellFixDumpLimit);
+	}
 	ApplyExtraDataFixes();
 	ApplyNormalFixes();
 
