@@ -531,10 +531,21 @@ void PostProcessSpellDBC()
 		{
 			if(sp->Attributes & ATTRIBUTES_PASSIVE)
 				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_SKIPCHECK;
-			else if(sp->Attributes & ATTRIBUTES_UNK20) // "must be behind" (TBC DBC attribute)
-				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_INBACK;
 			else
 				sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_INFRONT;
+
+			// Behind-only exceptions (DBC attribute bits are not reliable for facing rules in all 2.4.3 datasets).
+			// Keep this list small and surgical; expand only when validated in-game.
+			switch(sp->NameHash)
+			{
+				case SPELL_HASH_BACKSTAB:
+				case SPELL_HASH_AMBUSH:
+				case SPELL_HASH_GARROTE:
+					sp->in_front_status = SPELL_INFRONT_STATUS_REQUIRE_INBACK;
+					break;
+				default:
+					break;
+			}
 
 			if(facingDebug)
 				Log.Notice("SpellDBC", "Facing: spell=%u (%s) in_front_status=%u", sp->Id, (sp->Name != NULL ? sp->Name : ""), sp->in_front_status);
