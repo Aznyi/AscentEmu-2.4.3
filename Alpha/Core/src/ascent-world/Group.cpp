@@ -136,6 +136,7 @@ bool Group::AddMember(PlayerInfo * info, int32 subgroupid/* =-1 */)
 {
 	m_groupLock.Acquire();
 	Player * pPlayer = info->m_loggedInPlayer;
+	bool removeFromLfgQueue = false;
 
 	if(m_isqueued)
 	{
@@ -154,8 +155,7 @@ bool Group::AddMember(PlayerInfo * info, int32 subgroupid/* =-1 */)
 
 		if(subgroup->AddPlayer(info))
 		{
-			if(pPlayer)
-				sLfgMgr.RemovePlayerFromLfgQueues(pPlayer);
+			removeFromLfgQueue = (pPlayer != NULL);
 
 			if(pPlayer)
 				sEventMgr.AddEvent(pPlayer,&Player::EventGroupFullUpdate,EVENT_PLAYER_UPDATE,1500,1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
@@ -173,6 +173,10 @@ bool Group::AddMember(PlayerInfo * info, int32 subgroupid/* =-1 */)
 			info->subGroup = (int8)subgroup->GetID();
 
 			m_groupLock.Release();
+
+			if(removeFromLfgQueue)
+				sLfgMgr.RemovePlayerFromLfgQueues(pPlayer);
+
 			return true;
 		}
 		else
