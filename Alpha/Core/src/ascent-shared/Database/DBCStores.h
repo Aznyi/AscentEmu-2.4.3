@@ -1074,29 +1074,65 @@ public:
 		uint32 i;
 		uint32 string_length;
 		long pos;
+		size_t format_len = strlen(format);
 
 		FILE * f = fopen(filename, "rb");
 		if(f == NULL)
+		{
+			Log.Error("DBC", "Unable to open %s.", filename);
 			return false;
+		}
 
 		/* read the number of rows, and allocate our block on the heap */
-		fread(&header,4,1,f);
-		fread(&rows, 4, 1, f);
-		fread(&cols, 4, 1, f);
-		fread(&useless_shit, 4, 1, f);
-		fread(&string_length, 4, 1, f);
+		if(fread(&header, 4, 1, f) != 1 ||
+			fread(&rows, 4, 1, f) != 1 ||
+			fread(&cols, 4, 1, f) != 1 ||
+			fread(&useless_shit, 4, 1, f) != 1 ||
+			fread(&string_length, 4, 1, f) != 1)
+		{
+			Log.Error("DBC", "Unable to read header for %s.", filename);
+			fclose(f);
+			return false;
+		}
 		pos = ftell(f);
 
 #ifdef USING_BIG_ENDIAN
 		swap32(&rows); swap32(&cols); swap32(&useless_shit); swap32(&string_length);
+		swap32(&header);
 #endif
+
+		if(header != 0x43424457)
+		{
+			Log.Error("DBC", "Invalid magic in %s (expected WDBC).", filename);
+			fclose(f);
+			return false;
+		}
+
+		if(useless_shit != (cols * 4))
+		{
+			Log.Error("DBC", "Invalid record size in %s (record=%u, expected=%u).", filename, useless_shit, cols * 4);
+			fclose(f);
+			return false;
+		}
+
+		if(format_len != cols)
+		{
+			Log.Error("DBC", "Invalid format for %s (format columns=%u, dbc columns=%u).", filename, (uint32)format_len, cols);
+			fclose(f);
+			return false;
+		}
 
 		if( load_strings )
 		{
 			fseek( f, 20 + ( rows * cols * 4 ), SEEK_SET );
 			m_stringData = (char*)malloc(string_length);
 			m_stringlength = string_length;
-			fread( m_stringData, string_length, 1, f );
+			if(m_stringData == NULL || fread(m_stringData, string_length, 1, f) != 1)
+			{
+				Log.Error("DBC", "Unable to read string table for %s.", filename);
+				fclose(f);
+				return false;
+			}
 		}
 
 		fseek(f, pos, SEEK_SET);
@@ -1108,7 +1144,12 @@ public:
 		for(i = 0; i < rows; ++i)
 		{
 			memset(&m_heapBlock[i], 0, sizeof(T));
-			ReadEntry(f, &m_heapBlock[i], format, cols, filename);
+			if(!ReadEntry(f, &m_heapBlock[i], format, cols, filename))
+			{
+				Log.Error("DBC", "Unable to read row %u in %s.", i, filename);
+				fclose(f);
+				return false;
+			}
 
 			if(load_indexed)
 			{
@@ -1139,26 +1180,23 @@ public:
 		return true;
 	}
 
-	void ReadEntry(FILE * f, T * dest, const char * format, uint32 cols, const char * filename)
+	bool ReadEntry(FILE * f, T * dest, const char * format, uint32 cols, const char * filename)
 	{
 		const char * t = format;
 		uint32 * dest_ptr = (uint32*)dest;
 		uint32 c = 0;
 		uint32 val;
-		size_t len = strlen(format);
-		if(len!= cols)
-			printf("!!! possible invalid format in file %s (us: %zd, them: %u)\n", filename, len, cols);
 
 		while(*t != 0)
 		{
 			if((++c) > cols)
 			{
-				++t;
-				printf("!!! Read buffer overflow in DBC reading of file %s\n", filename);
-				continue;
+				Log.Error("DBC", "Read buffer overflow in DBC reading of file %s.", filename);
+				return false;
 			}
 
-			fread(&val, 4, 1, f);
+			if(fread(&val, 4, 1, f) != 1)
+				return false;
 			if(*t == 'x')
 			{
 				++t;
@@ -1189,6 +1227,8 @@ public:
 
 			++t;
 		}
+
+		return true;
 	}
 
 	ASCENT_INLINE uint32 GetNumRows()

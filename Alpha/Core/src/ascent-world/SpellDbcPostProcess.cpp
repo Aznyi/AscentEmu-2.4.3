@@ -30,15 +30,23 @@ bool HasSpellChainEffects(uint32 chainEffectsId)
 	return sSpellChainEffectsIds.find(chainEffectsId) != sSpellChainEffectsIds.end();
 }
 
+static bool OpenSpellDbcWithFallback(DBCFile& dbc, const char* uppercasePath, const char* lowercasePath, const char* shortName)
+{
+	if(dbc.open(uppercasePath))
+		return true;
+	if(dbc.open(lowercasePath))
+		return true;
+
+	Log.Error("World", "PostProcessSpellDBC(): could not open %s or %s (skipping %s registry).", uppercasePath, lowercasePath, shortName);
+	return false;
+}
+
 static void LoadSpellCategoryDbc_IntoRegistry()
 {
 	// SpellCategory.dbc (TBC): typically [0]=ID (u32), [1]=Flags (u32)
 	DBCFile cat;
-	if(!cat.open("dbc/SpellCategory.dbc"))
-	{
-		Log.Error("World", "PostProcessSpellDBC(): could not open dbc/SpellCategory.dbc (skipping category flags registry).");
+	if(!OpenSpellDbcWithFallback(cat, "DBC/SpellCategory.dbc", "dbc/SpellCategory.dbc", "category flags"))
 		return;
-	}
 
 	sSpellCategoryFlags.clear();
 	const uint32 rows = (uint32)cat.getRecordCount();
@@ -58,11 +66,8 @@ static void LoadSpellChainEffectsDbc_IntoRegistry()
 {
 	// SpellChainEffects.dbc: primarily a visual table; we register IDs for debug/validation.
 	DBCFile chain;
-	if(!chain.open("dbc/SpellChainEffects.dbc"))
-	{
-		Log.Error("World", "PostProcessSpellDBC(): could not open dbc/SpellChainEffects.dbc (skipping chain effects registry).");
+	if(!OpenSpellDbcWithFallback(chain, "DBC/SpellChainEffects.dbc", "dbc/SpellChainEffects.dbc", "chain effects"))
 		return;
-	}
 
 	sSpellChainEffectsIds.clear();
 	const uint32 rows = (uint32)chain.getRecordCount();
@@ -689,8 +694,8 @@ void PostProcessSpellDBC()
 				(sp->c_is_flags & SPELL_FLAG_IS_FORCEDBUFF) ? "BUFF" : "DEBUFF");
 		}
 
-		// “Apprentice/Journeyman/Expert/Artisan/Master” training spells often come in with spellLevel 0.
-		// Fix both the trainer spell and the taught spell’s spellLevel.
+		// Â“Apprentice/Journeyman/Expert/Artisan/MasterÂ” training spells often come in with spellLevel 0.
+		// Fix both the trainer spell and the taught spellÂ’s spellLevel.
 		if(sp->spellLevel == 0 && sp->Name != NULL)
 		{
 			uint32 new_level = 0;
