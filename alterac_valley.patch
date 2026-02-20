@@ -1,0 +1,556 @@
+diff --git a/Alpha/Core/src/ascent-world/AlteracValley.cpp b/Alpha/Core/src/ascent-world/AlteracValley.cpp
+index 8aae2ab..af25e65 100644
+--- a/Alpha/Core/src/ascent-world/AlteracValley.cpp
++++ b/Alpha/Core/src/ascent-world/AlteracValley.cpp
+@@ -18,3 +18,446 @@
+  */
+ 
+ #include "StdAfx.h"
++
++#define AV_OBJECTIVE_COUNT 13
++#define EVENT_AV_OBJECTIVES_UPDATE 9900
++#define EVENT_AV_MINE_TICK 9901
++
++#define AV_WS_ALLIANCE_SCORE 3127
++#define AV_WS_HORDE_SCORE 3128
++#define AV_WS_SHOW_ALLIANCE_SCORE 3133
++#define AV_WS_SHOW_HORDE_SCORE 3134
++#define AV_WS_SCOREBOARD_SHOW 3131
++
++#define AV_NPC_VANNDAR 11948
++#define AV_NPC_DREKTHAR 11946
++#define AV_NPC_BALINDA 11949
++#define AV_NPC_GALVANGAR 11947
++
++static const AlteracValley::AVObjectiveTemplate AV_OBJECTIVES[AV_OBJECTIVE_COUNT] =
++{
++	{ AV_OBJECTIVE_GRAVEYARD, "Stormpike Graveyard", 179286, 179286, AV_CONTROLED_STORMPIKE_GRAVE_ALLIANCE, 0, 669.0f, -294.0f, 30.0f, 1.57f, 0, 0 },
++	{ AV_OBJECTIVE_GRAVEYARD, "Stonehearth Graveyard", 179286, 179286, AV_CONTROLED_STONEHEART_GRAVE_ALLIANCE, 0, -149.0f, -343.0f, 6.0f, 0.0f, 0, 0 },
++	{ AV_OBJECTIVE_GRAVEYARD, "Snowfall Graveyard", 179286, 179286, AV_UNCONTROLED_SNOWFALL_GRAVE, 0, -1088.0f, -299.0f, 55.0f, 0.0f, -1, 0 },
++	{ AV_OBJECTIVE_GRAVEYARD, "Iceblood Graveyard", 179286, 179286, 0, AV_CONTROLED_ICEBLOOD_GRAVE_HORDE, -483.0f, -393.0f, 42.0f, 0.0f, 1, 0 },
++	{ AV_OBJECTIVE_GRAVEYARD, "Frostwolf Graveyard", 179286, 179286, 0, AV_CONTROLED_FROSTWOLF_GRAVE_HORDE, -1088.0f, -347.0f, 55.0f, 0.0f, 1, 0 },
++
++	{ AV_OBJECTIVE_BUNKER, "Dun Baldar South Bunker", 179286, 179286, AV_CONTROLED_DUBALDER_SOUTH_BUNKER_ALLIANCE, 0, 666.0f, -32.0f, 41.0f, 0.0f, 0, 14762 },
++	{ AV_OBJECTIVE_BUNKER, "Dun Baldar North Bunker", 179286, 179286, AV_CONTROLED_DUBALDER_NORTH_BUNKER_ALLIANCE, 0, 571.0f, -143.0f, 63.0f, 0.0f, 0, 14762 },
++	{ AV_OBJECTIVE_BUNKER, "Icewing Bunker", 179286, 179286, AV_CONTROLED_ICEWING_BUNKER_ALLIANCE, 0, 233.0f, -396.0f, 43.0f, 0.0f, 0, 14762 },
++	{ AV_OBJECTIVE_BUNKER, "Stonehearth Bunker", 179286, 179286, AV_CONTROLED_STONEHEART_BUNKER_ALLIANCE, 0, -153.0f, -441.0f, 40.0f, 0.0f, 0, 14762 },
++	{ AV_OBJECTIVE_TOWER, "Iceblood Tower", 179286, 179286, 0, AV_CONTROLED_ICEBLOOD_TOWER_HORDE, -607.0f, -396.0f, 60.0f, 0.0f, 1, 14777 },
++	{ AV_OBJECTIVE_TOWER, "Tower Point", 179286, 179286, 0, AV_CONTROLED_TOWER_POINT_HORDE, -768.0f, -368.0f, 59.0f, 0.0f, 1, 14777 },
++	{ AV_OBJECTIVE_TOWER, "East Frostwolf Tower", 179286, 179286, 0, AV_CONTROLED_EAST_FROSTWOLF_TOWER_HORDE, -1335.0f, -289.0f, 90.0f, 0.0f, 1, 14777 },
++	{ AV_OBJECTIVE_TOWER, "West Frostwolf Tower", 179286, 179286, 0, AV_CONTROLED_WEST_FROSTWOLF_TOWER_HORDE, -1317.0f, -339.0f, 90.0f, 0.0f, 1, 14777 },
++};
++
++static const float AV_HOME_GRAVEYARDS[2][4] =
++{
++	{ 876.0f, -491.0f, 96.0f, 0.0f },
++	{ -1426.0f, -307.0f, 101.0f, 0.0f },
++};
++
++AlteracValley::AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t) : CBattleground(mgr, id, lgroup, t)
++{
++	m_playerCountPerTeam = 40;
++	m_reinforcements[0] = AV_MAX_REINFORCEMENTS;
++	m_reinforcements[1] = AV_MAX_REINFORCEMENTS;
++	m_mineOwner[0] = -1;
++	m_mineOwner[1] = -1;
++	m_captainDead[0] = false;
++	m_captainDead[1] = false;
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		m_objectiveStates[i].owner = AV_OBJECTIVES[i].initialOwner;
++		m_objectiveStates[i].assaultingTeam = -1;
++		m_objectiveStates[i].timer = 0;
++		m_objectiveStates[i].destroyed = false;
++		m_objectiveStates[i].spiritGuide = NULL;
++		m_objectiveStates[i].linkedUnit = NULL;
++	}
++}
++
++AlteracValley::~AlteracValley()
++{
++}
++
++void AlteracValley::OnCreate()
++{
++	SetWorldState(AV_WS_SHOW_ALLIANCE_SCORE, 1);
++	SetWorldState(AV_WS_SHOW_HORDE_SCORE, 1);
++	SetWorldState(AV_WS_SCOREBOARD_SHOW, 1);
++	UpdateReinforcementWorldStates();
++
++	SetWorldState(AV_CONTROLED_IRONDEEP_MINE_TROGG, 0);
++	SetWorldState(AV_CONTROLED_COLDTHOOT_MINE_KOBOLT, 0);
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++		UpdateObjectiveWorldStates(i);
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		if(AV_OBJECTIVES[i].type == AV_OBJECTIVE_GRAVEYARD && m_objectiveStates[i].owner >= 0)
++		{
++			m_objectiveStates[i].spiritGuide = SpawnSpiritGuide(AV_OBJECTIVES[i].x, AV_OBJECTIVES[i].y, AV_OBJECTIVES[i].z, AV_OBJECTIVES[i].o, m_objectiveStates[i].owner);
++			if(m_objectiveStates[i].spiritGuide != NULL)
++				AddSpiritGuide(m_objectiveStates[i].spiritGuide);
++		}
++		else if((AV_OBJECTIVES[i].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[i].type == AV_OBJECTIVE_BUNKER) && AV_OBJECTIVES[i].linkedNpcEntry != 0)
++		{
++			m_objectiveStates[i].linkedUnit = FindLinkedCreature(AV_OBJECTIVES[i].linkedNpcEntry, AV_OBJECTIVES[i].x, AV_OBJECTIVES[i].y, AV_OBJECTIVES[i].z);
++			if(m_objectiveStates[i].linkedUnit != NULL)
++				m_objectiveStates[i].linkedUnit->GetAIInterface()->setOutOfCombatRange(90);
++		}
++	}
++
++	for(uint32 i = 0; i < 2; ++i)
++	{
++		Creature* spirit = SpawnSpiritGuide(AV_HOME_GRAVEYARDS[i][0], AV_HOME_GRAVEYARDS[i][1], AV_HOME_GRAVEYARDS[i][2], AV_HOME_GRAVEYARDS[i][3], i);
++		if(spirit != NULL)
++			AddSpiritGuide(spirit);
++	}
++}
++
++void AlteracValley::OnStart()
++{
++	for(uint32 i = 0; i < 2; ++i)
++		for(set<Player*>::iterator itr = m_players[i].begin(); itr != m_players[i].end(); ++itr)
++			(*itr)->RemoveAura(BG_PREPARATION);
++
++	m_started = true;
++	PlaySoundToAll(SOUND_BATTLEGROUND_BEGIN);
++
++	sEventMgr.AddEvent(this, &AlteracValley::EventUpdateObjectives, EVENT_AV_OBJECTIVES_UPDATE, 1000, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
++	sEventMgr.AddEvent(this, &AlteracValley::EventMineTick, EVENT_AV_MINE_TICK, AV_MINE_TICK_MS, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
++}
++
++void AlteracValley::OnAddPlayer(Player* plr)
++{
++	if(!m_started)
++		plr->CastSpell(plr, BG_PREPARATION, true);
++}
++
++void AlteracValley::OnRemovePlayer(Player* plr)
++{
++	plr->RemoveAura(BG_PREPARATION);
++}
++
++LocationVector AlteracValley::GetStartingCoords(uint32 Team)
++{
++	if(Team == 0)
++		return LocationVector(878.56f, -489.94f, 96.5f, 3.1f);
++	return LocationVector(-1426.64f, -307.27f, 100.9f, 0.07f);
++}
++
++void AlteracValley::HookOnPlayerDeath(Player* plr)
++{
++	plr->m_bgScore.Deaths++;
++	ModifyReinforcements(plr->GetTeam(), -1);
++	UpdatePvPData();
++}
++
++void AlteracValley::HookOnPlayerKill(Player* plr, Unit* pVictim)
++{
++	if(pVictim == NULL)
++		return;
++
++	if(pVictim->IsPlayer())
++	{
++		plr->m_bgScore.KillingBlows++;
++		UpdatePvPData();
++		return;
++	}
++
++	if(!pVictim->IsCreature())
++		return;
++
++	uint32 entry = TO_CREATURE(pVictim)->GetEntry();
++	if(entry == AV_NPC_VANNDAR)
++		EndBattleground(1);
++	else if(entry == AV_NPC_DREKTHAR)
++		EndBattleground(0);
++	else if(entry == AV_NPC_BALINDA && !m_captainDead[0])
++	{
++		m_captainDead[0] = true;
++		ModifyReinforcements(0, -AV_REINFORCEMENT_CAPTAIN_LOSS);
++	}
++	else if(entry == AV_NPC_GALVANGAR && !m_captainDead[1])
++	{
++		m_captainDead[1] = true;
++		ModifyReinforcements(1, -AV_REINFORCEMENT_CAPTAIN_LOSS);
++	}
++}
++
++void AlteracValley::HookOnHK(Player* plr)
++{
++	plr->m_bgScore.HonorableKills++;
++	UpdatePvPData();
++}
++
++void AlteracValley::HookFlagDrop(Player* plr, GameObject* obj)
++{
++}
++
++void AlteracValley::HookFlagStand(Player* plr, GameObject* obj)
++{
++}
++
++void AlteracValley::HookOnMount(Player* plr)
++{
++}
++
++bool AlteracValley::HookHandleRepop(Player* plr)
++{
++	LocationVector destination(AV_HOME_GRAVEYARDS[plr->m_bgTeam][0], AV_HOME_GRAVEYARDS[plr->m_bgTeam][1], AV_HOME_GRAVEYARDS[plr->m_bgTeam][2], AV_HOME_GRAVEYARDS[plr->m_bgTeam][3]);
++	float nearest = 999999999.0f;
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		if(AV_OBJECTIVES[i].type != AV_OBJECTIVE_GRAVEYARD)
++			continue;
++
++		if(m_objectiveStates[i].owner != (int32)plr->m_bgTeam)
++			continue;
++
++		float dist = plr->GetPositionV()->Distance2DSq(AV_OBJECTIVES[i].x, AV_OBJECTIVES[i].y);
++		if(dist < nearest)
++		{
++			nearest = dist;
++			destination.ChangeCoords(AV_OBJECTIVES[i].x, AV_OBJECTIVES[i].y, AV_OBJECTIVES[i].z, AV_OBJECTIVES[i].o);
++		}
++	}
++
++	plr->SafeTeleport(plr->GetMapId(), plr->GetInstanceID(), destination);
++	return true;
++}
++
++void AlteracValley::HookOnAreaTrigger(Player* plr, uint32 id)
++{
++	switch(id)
++	{
++	case AV_AREATRIGGER_IRONDEEP:
++		if(m_mineOwner[0] != (int32)plr->GetTeam())
++		{
++			m_mineOwner[0] = plr->GetTeam();
++			SetWorldState(AV_CONTROLED_IRONDEEP_MINE_TROGG, (plr->GetTeam() == 0) ? 0 : 1);
++			SendChatMessage(plr->GetTeam() ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, plr->GetGUID(), "$N has taken Irondeep Mine!");
++		}
++		break;
++	case AV_AREATRIGGER_COLDTOOTH:
++		if(m_mineOwner[1] != (int32)plr->GetTeam())
++		{
++			m_mineOwner[1] = plr->GetTeam();
++			SetWorldState(AV_CONTROLED_COLDTHOOT_MINE_KOBOLT, (plr->GetTeam() == 0) ? 0 : 1);
++			SendChatMessage(plr->GetTeam() ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, plr->GetGUID(), "$N has taken Coldtooth Mine!");
++		}
++		break;
++	default:
++		break;
++	}
++}
++
++bool AlteracValley::HookSlowLockOpen(GameObject* pGo, Player* pPlayer, Spell* pSpell)
++{
++	if(pGo == NULL || pPlayer == NULL)
++		return false;
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		if(pGo->GetEntry() == AV_OBJECTIVES[i].assaultGoEntryAlliance || pGo->GetEntry() == AV_OBJECTIVES[i].assaultGoEntryHorde)
++		{
++			AssaultObjective(pPlayer, i);
++			return true;
++		}
++	}
++
++	return false;
++}
++
++void AlteracValley::AssaultObjective(Player* pPlayer, uint32 index)
++{
++	if(index >= AV_OBJECTIVE_COUNT || m_ended)
++		return;
++
++	int32 team = pPlayer->GetTeam();
++	if(m_objectiveStates[index].owner == team || m_objectiveStates[index].destroyed)
++		return;
++
++	m_objectiveStates[index].assaultingTeam = team;
++	m_objectiveStates[index].timer = (AV_OBJECTIVES[index].type == AV_OBJECTIVE_GRAVEYARD || AV_OBJECTIVES[index].type == AV_OBJECTIVE_MINE) ? 1 : AV_BURN_TIMER_MS;
++	UpdateObjectiveWorldStates(index);
++
++	SendChatMessage(team ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, pPlayer->GetGUID(), "$N assaults the %s!", AV_OBJECTIVES[index].name);
++}
++
++void AlteracValley::EventUpdateObjectives()
++{
++	if(!m_started || m_ended)
++		return;
++
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		if(m_objectiveStates[i].assaultingTeam == -1 || m_objectiveStates[i].destroyed)
++			continue;
++
++		if(m_objectiveStates[i].timer > 1000)
++		{
++			m_objectiveStates[i].timer -= 1000;
++			continue;
++		}
++
++		FinalizeObjective(i);
++	}
++}
++
++void AlteracValley::FinalizeObjective(uint32 index)
++{
++	if(index >= AV_OBJECTIVE_COUNT)
++		return;
++
++	int32 newOwner = m_objectiveStates[index].assaultingTeam;
++	m_objectiveStates[index].assaultingTeam = -1;
++	m_objectiveStates[index].timer = 0;
++
++	if(AV_OBJECTIVES[index].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[index].type == AV_OBJECTIVE_BUNKER)
++	{
++		m_objectiveStates[index].destroyed = true;
++		ModifyReinforcements((newOwner == 0) ? 1 : 0, -AV_REINFORCEMENT_TOWER_LOSS);
++		if(m_objectiveStates[index].linkedUnit != NULL)
++			m_objectiveStates[index].linkedUnit->Despawn(0, 0);
++		UpdateBossRoomGuards();
++	}
++	else
++	{
++		m_objectiveStates[index].owner = newOwner;
++		if(AV_OBJECTIVES[index].type == AV_OBJECTIVE_GRAVEYARD)
++		{
++			if(m_objectiveStates[index].spiritGuide != NULL)
++			{
++				RemoveSpiritGuide(m_objectiveStates[index].spiritGuide);
++				m_objectiveStates[index].spiritGuide->Despawn(0, 0);
++			}
++
++			m_objectiveStates[index].spiritGuide = SpawnSpiritGuide(AV_OBJECTIVES[index].x, AV_OBJECTIVES[index].y, AV_OBJECTIVES[index].z, AV_OBJECTIVES[index].o, newOwner);
++			if(m_objectiveStates[index].spiritGuide != NULL)
++				AddSpiritGuide(m_objectiveStates[index].spiritGuide);
++		}
++	}
++
++	UpdateObjectiveWorldStates(index);
++}
++
++void AlteracValley::EventMineTick()
++{
++	if(!m_started || m_ended)
++		return;
++
++	for(uint32 i = 0; i < 2; ++i)
++	{
++		if(m_mineOwner[i] >= 0)
++			ModifyReinforcements((uint32)m_mineOwner[i], 1);
++	}
++}
++
++void AlteracValley::UpdateObjectiveWorldStates(uint32 index)
++{
++	if(index >= AV_OBJECTIVE_COUNT)
++		return;
++
++	if(AV_OBJECTIVES[index].worldStateAlliance)
++		SetWorldState(AV_OBJECTIVES[index].worldStateAlliance, (m_objectiveStates[index].owner == 0 && !m_objectiveStates[index].destroyed) ? 1 : 0);
++	if(AV_OBJECTIVES[index].worldStateHorde)
++		SetWorldState(AV_OBJECTIVES[index].worldStateHorde, (m_objectiveStates[index].owner == 1 && !m_objectiveStates[index].destroyed) ? 1 : 0);
++	if(AV_OBJECTIVES[index].type == AV_OBJECTIVE_GRAVEYARD && AV_OBJECTIVES[index].worldStateAlliance == AV_UNCONTROLED_SNOWFALL_GRAVE)
++		SetWorldState(AV_UNCONTROLED_SNOWFALL_GRAVE, m_objectiveStates[index].owner < 0 ? 1 : 0);
++}
++
++void AlteracValley::ModifyReinforcements(uint32 team, int32 delta)
++{
++	if(team > 1)
++		return;
++
++	m_reinforcements[team] += delta;
++	if(m_reinforcements[team] < 0)
++		m_reinforcements[team] = 0;
++	if(m_reinforcements[team] > AV_MAX_REINFORCEMENTS)
++		m_reinforcements[team] = AV_MAX_REINFORCEMENTS;
++
++	UpdateReinforcementWorldStates();
++	CheckForEnd();
++}
++
++void AlteracValley::UpdateReinforcementWorldStates()
++{
++	SetWorldState(AV_WS_ALLIANCE_SCORE, (uint32)m_reinforcements[0]);
++	SetWorldState(AV_WS_HORDE_SCORE, (uint32)m_reinforcements[1]);
++}
++
++void AlteracValley::CheckForEnd()
++{
++	if(m_reinforcements[0] == 0)
++		EndBattleground(1);
++	else if(m_reinforcements[1] == 0)
++		EndBattleground(0);
++}
++
++void AlteracValley::UpdateBossRoomGuards()
++{
++	uint32 destroyedAlliance = 0;
++	uint32 destroyedHorde = 0;
++	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
++	{
++		if(!(AV_OBJECTIVES[i].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[i].type == AV_OBJECTIVE_BUNKER))
++			continue;
++		if(!m_objectiveStates[i].destroyed)
++			continue;
++		if(AV_OBJECTIVES[i].initialOwner == 0)
++			++destroyedAlliance;
++		else if(AV_OBJECTIVES[i].initialOwner == 1)
++			++destroyedHorde;
++	}
++
++	Creature* vanndar = FindLinkedCreature(AV_NPC_VANNDAR, 726.0f, -10.0f, 50.0f);
++	Creature* drekthar = FindLinkedCreature(AV_NPC_DREKTHAR, -1377.0f, -229.0f, 98.0f);
++	if(vanndar != NULL)
++		vanndar->GetAIInterface()->setOutOfCombatRange(30 + (destroyedAlliance * 5));
++	if(drekthar != NULL)
++		drekthar->GetAIInterface()->setOutOfCombatRange(30 + (destroyedHorde * 5));
++}
++
++Creature* AlteracValley::FindLinkedCreature(uint32 entry, float x, float y, float z)
++{
++	return m_mapMgr->GetInterface()->GetCreatureNearestCoords(x, y, z, entry);
++}
++
++void AlteracValley::EndBattleground(uint32 winningTeam)
++{
++	if(m_ended)
++		return;
++
++	m_ended = true;
++	m_winningteam = (uint8)winningTeam;
++	m_nextPvPUpdateTime = 0;
++
++	sEventMgr.RemoveEvents(this);
++	sEventMgr.AddEvent(((CBattleground*)this), &CBattleground::Close, EVENT_BATTLEGROUND_CLOSE, 120000, 1, 0);
++
++	SpellEntry* winnerSpell = dbcSpell.LookupEntry(24953);
++	SpellEntry* loserSpell = dbcSpell.LookupEntry(24952);
++
++	for(uint32 i = 0; i < 2; ++i)
++	{
++		for(set<Player*>::iterator itr = m_players[i].begin(); itr != m_players[i].end(); ++itr)
++		{
++			(*itr)->Root();
++			if(i == winningTeam && winnerSpell != NULL)
++				(*itr)->CastSpell((*itr), winnerSpell, true);
++			else if(i != winningTeam && loserSpell != NULL)
++				(*itr)->CastSpell((*itr), loserSpell, true);
++		}
++	}
++
++	PlaySoundToAll(winningTeam ? SOUND_HORDEWINS : SOUND_ALLIANCEWINS);
++	UpdatePvPData();
++}
+diff --git a/Alpha/Core/src/ascent-world/AlteracValley.h b/Alpha/Core/src/ascent-world/AlteracValley.h
+index 2fcd98e..cf627d5 100644
+--- a/Alpha/Core/src/ascent-world/AlteracValley.h
++++ b/Alpha/Core/src/ascent-world/AlteracValley.h
+@@ -17,4 +17,87 @@
+  *
+  */
+ 
++enum AVObjectiveType
++{
++	AV_OBJECTIVE_GRAVEYARD = 0,
++	AV_OBJECTIVE_TOWER,
++	AV_OBJECTIVE_BUNKER,
++	AV_OBJECTIVE_MINE,
++};
+ 
++class AlteracValley : public CBattleground
++{
++public:
++	enum
++	{
++		AV_MAX_REINFORCEMENTS = 600,
++		AV_REINFORCEMENT_TOWER_LOSS = 75,
++		AV_REINFORCEMENT_CAPTAIN_LOSS = 100,
++		AV_MINE_TICK_MS = 45000,
++		AV_BURN_TIMER_MS = 240000,
++		AV_AREATRIGGER_IRONDEEP = 5892,
++		AV_AREATRIGGER_COLDTOOTH = 5893,
++	};
++
++	struct AVObjectiveTemplate
++	{
++		AVObjectiveType type;
++		const char* name;
++		uint32 assaultGoEntryAlliance;
++		uint32 assaultGoEntryHorde;
++		uint32 worldStateAlliance;
++		uint32 worldStateHorde;
++		float x, y, z, o;
++		int32 initialOwner; // 0 alliance, 1 horde, -1 neutral
++		uint32 linkedNpcEntry;
++	};
++
++	struct AVObjectiveState
++	{
++		int32 owner;
++		int32 assaultingTeam;
++		uint32 timer;
++		bool destroyed;
++		Creature* spiritGuide;
++		Creature* linkedUnit;
++	};
++
++	AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t);
++	~AlteracValley();
++
++	void HookOnPlayerDeath(Player* plr);
++	void HookFlagDrop(Player* plr, GameObject* obj);
++	void HookFlagStand(Player* plr, GameObject* obj);
++	void HookOnMount(Player* plr);
++	void HookOnAreaTrigger(Player* plr, uint32 id);
++	bool HookHandleRepop(Player* plr);
++	void OnAddPlayer(Player* plr);
++	void OnRemovePlayer(Player* plr);
++	void OnCreate();
++	void HookOnPlayerKill(Player* plr, Unit* pVictim);
++	void HookOnHK(Player* plr);
++	LocationVector GetStartingCoords(uint32 Team);
++	void OnStart();
++	bool HookSlowLockOpen(GameObject* pGo, Player* pPlayer, Spell* pSpell);
++
++	static CBattleground* Create(MapMgr* m, uint32 i, uint32 l, uint32 t) { return new AlteracValley(m, i, l, t); }
++	const char* GetName() { return "Alterac Valley"; }
++
++private:
++	void EventUpdateObjectives();
++	void EventMineTick();
++	void AssaultObjective(Player* pPlayer, uint32 index);
++	void FinalizeObjective(uint32 index);
++	void UpdateObjectiveWorldStates(uint32 index);
++	void UpdateReinforcementWorldStates();
++	void ModifyReinforcements(uint32 team, int32 delta);
++	void CheckForEnd();
++	void EndBattleground(uint32 winningTeam);
++	void UpdateBossRoomGuards();
++	Creature* FindLinkedCreature(uint32 entry, float x, float y, float z);
++
++	AVObjectiveState m_objectiveStates[13];
++	int32 m_reinforcements[2];
++	int32 m_mineOwner[2];
++	bool m_captainDead[2];
++};
+diff --git a/Alpha/Core/src/ascent-world/BattlegroundMgr.cpp b/Alpha/Core/src/ascent-world/BattlegroundMgr.cpp
+index add6f6e..2d087e0 100644
+--- a/Alpha/Core/src/ascent-world/BattlegroundMgr.cpp
++++ b/Alpha/Core/src/ascent-world/BattlegroundMgr.cpp
+@@ -39,7 +39,7 @@ const static uint32 BGMapIds[BATTLEGROUND_NUM_TYPES] = {
+ 
+ const static CreateBattlegroundFunc BGCFuncs[BATTLEGROUND_NUM_TYPES] = {
+ 	NULL,                  // 0
+-	NULL,                  // AV
++	&AlteracValley::Create,      // AV
+ 	&WarsongGulch::Create,      // WSG
+ #ifdef ENABLE_AB
+ 	&ArathiBasin::Create,      // AB
