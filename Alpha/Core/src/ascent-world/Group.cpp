@@ -155,6 +155,9 @@ bool Group::AddMember(PlayerInfo * info, int32 subgroupid/* =-1 */)
 		if(subgroup->AddPlayer(info))
 		{
 			if(pPlayer)
+				sLfgMgr.RemovePlayerFromLfgQueues(pPlayer);
+
+			if(pPlayer)
 				sEventMgr.AddEvent(pPlayer,&Player::EventGroupFullUpdate,EVENT_PLAYER_UPDATE,1500,1,EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
             
 			m_dirty=true;

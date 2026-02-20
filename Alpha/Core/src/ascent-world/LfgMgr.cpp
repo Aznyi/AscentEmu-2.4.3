@@ -20,23 +20,62 @@
 #include "StdAfx.h"
 
 uint32 LfgDungeonTypes[MAX_DUNGEONS];
+static uint32 LfgDungeonMinLevel[MAX_DUNGEONS];
+static uint32 LfgDungeonMaxLevel[MAX_DUNGEONS];
 initialiseSingleton( LfgMgr );
+
+static bool IsAutoJoinDungeon(uint32 dungeonId)
+{
+	if(dungeonId >= MAX_DUNGEONS)
+		return false;
+
+	return (LfgDungeonTypes[dungeonId] == LFG_INSTANCE || LfgDungeonTypes[dungeonId] == LFG_HEROIC_DUNGEON);
+}
+
+static bool IsEligibleForDungeon(Player * pl, uint32 dungeonId)
+{
+	if(pl == NULL || !pl->IsInWorld())
+		return false;
+
+	if(pl->GetGroup() != NULL)
+		return false;
+
+	if(pl->m_lfgInviterGuid || pl->m_lfgMatch != NULL)
+		return false;
+
+	uint32 minLevel = LfgDungeonMinLevel[dungeonId];
+	uint32 maxLevel = LfgDungeonMaxLevel[dungeonId];
+	if(minLevel && pl->getLevel() < minLevel)
+		return false;
+
+	if(maxLevel && maxLevel >= minLevel && pl->getLevel() > maxLevel)
+		return false;
+
+	return true;
+}
 
 LfgMgr::LfgMgr()
 {
 	DBCFile f;
 	if(f.open("DBC/LFGDungeons.dbc"))
 	{
+		size_t fieldCount = f.getFieldCount();
 		for(uint32 i = 0; i < f.getRecordCount(); ++i)
 		{
 			DBCFile::Record r = f.getRecord(i);
 			uint32 id = r.getUInt(0);
-			uint32 typ = r.getUInt(20);
+			uint32 typ = (fieldCount > 20) ? r.getUInt(20) : LFG_NONE;
+			uint32 minLevel = (fieldCount > 17) ? r.getUInt(17) : 0;
+			uint32 maxLevel = (fieldCount > 18) ? r.getUInt(18) : 0;
 
 			if(id >= MAX_DUNGEONS)
 				printf("!! warning: LFGDungeons contains an out of range dungeon id %u.\n", id);
 			else
+			{
 				LfgDungeonTypes[id] = typ;
+				LfgDungeonMinLevel[id] = minLevel;
+				LfgDungeonMaxLevel[id] = maxLevel;
+			}
 		}
 	}
 	else
@@ -56,32 +95,50 @@ bool LfgMgr::AttemptLfgJoin(Player * pl, uint32 LfgDungeonId)
 
 	if( !pl->IsInWorld() )
 		return false;
-
-	// if the player has autojoin enabled,
-	// search for any groups that have auto add members enabled, also have this dungeon, and add him
-	// if one is found.
-	/*LfgPlayerList itr;
-	Player * plr;
-
-	// make sure the dungeon is usable by autojoin (should never be true)
-	if(LfgDungeonTypes[LfgDungeonId] != LFG_INSTANCE && LfgDungeonTypes[LfgDungeonId] != LFG_HEROIC_DUNGEON)
+	if(!pl->m_Autojoin || !IsAutoJoinDungeon(LfgDungeonId) || !IsEligibleForDungeon(pl, LfgDungeonId))
 		return false;
+
+	LfgPlayerList::iterator itr;
+	Player * plr;
 
 	m_lock.Acquire();
 
-	for(itr = m_lookingForGroup[LfgDungeonId].begin(); itr != m_lookingForGroup[LfgDungeonId].end(); ++itr) {
+	for(itr = m_lookingForMore[LfgDungeonId].begin(); itr != m_lookingForMore[LfgDungeonId].end(); ++itr) {
 		plr = *itr;
-		if(plr->m_AutoAddMem) {
-			if(plr->GetGroup() && !plr->GetGroup()->IsFull() && plr->GetGroup()->GetGroupType() == GROUP_TYPE_PARTY) {
-				plr->GetGroup()->AddMember(pl->m_playerInfo);
-				pl->SendMeetingStoneQueue(LfgDungeonId, 0);
-				m_lock.Release();
-				return true;
+		if(plr == NULL || plr == pl || !plr->m_AutoAddMem)
+			continue;
+
+		Group * pGroup = plr->GetGroup();
+		if(pGroup == NULL || pGroup->GetGroupType() != GROUP_TYPE_PARTY || pGroup->IsFull() || pGroup->GetLeader() != plr->m_playerInfo)
+			continue;
+
+		if(plr->GetTeam() != pl->GetTeam())
+			continue;
+
+		if(!pGroup->AddMember(pl->m_playerInfo))
+			continue;
+
+		m_lookingForGroup[LfgDungeonId].remove(pl);
+		for(uint32 i = 0; i < MAX_LFG_QUEUE_ID; ++i)
+		{
+			if(pl->LfgDungeonId[i] == LfgDungeonId)
+			{
+				pl->LfgDungeonId[i] = 0;
+				pl->LfgType[i] = 0;
 			}
 		}
+
+		pl->m_lfgInviterGuid = 0;
+		pl->m_lfgMatch = NULL;
+		pl->PartLFGChannel();
+		if(pl->m_Autojoin)
+			pl->SendMeetingStoneQueue(LfgDungeonId, 0);
+
+		m_lock.Release();
+		return true;
 	}
 
-	m_lock.Release();*/
+	m_lock.Release();
 	return false;
 }
 
@@ -93,13 +150,18 @@ void LfgMgr::SetPlayerInLFGqueue(Player *pl,uint32 LfgDungeonId)
 	if( LfgDungeonId >= MAX_DUNGEONS )
 		return;
 
+	bool tryJoin = pl->m_Autojoin;
 	m_lock.Acquire();
+	m_lookingForGroup[LfgDungeonId].remove(pl);
 
 	// there are either no groups free or we don't have autojoin enabled, put us in the queue.
 	m_lookingForGroup[LfgDungeonId].push_back(pl);
 
 	// release the lock
 	m_lock.Release();
+
+	if(tryJoin)
+		AttemptLfgJoin(pl, LfgDungeonId);
 }
 
 void LfgMgr::RemovePlayerFromLfgQueues(Player * pl)
@@ -153,7 +215,7 @@ void LfgMgr::RemovePlayerFromLfgQueue( Player* plr, uint32 LfgDungeonId )
 
 void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 {
-	if( LfgDungeonId > MAX_DUNGEONS )
+	if( LfgDungeonId >= MAX_DUNGEONS )
 		return;
 
 	LfgPlayerList possibleGroupLeaders;
@@ -166,7 +228,7 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 	//LfgMatch * pMatch;
 
 	// only update on autojoinable dungeons
-	if(LfgDungeonTypes[LfgDungeonId] != LFG_INSTANCE && LfgDungeonTypes[LfgDungeonId] != LFG_HEROIC_DUNGEON)
+	if(!IsAutoJoinDungeon(LfgDungeonId))
 		return;
 
 	m_lock.Acquire();
@@ -174,16 +236,16 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 	{
         plr = *itr;
 
-		if(plr->m_lfgInviterGuid || plr->m_lfgMatch != NULL)
-			continue;
-
-		// possible member?
-		if(plr->m_Autojoin)
+		if(plr->m_Autojoin && IsEligibleForDungeon(plr, LfgDungeonId))
 			possibleMembers.push_back(plr);
 	}
 
 	for(itr = m_lookingForMore[LfgDungeonId].begin(); itr != m_lookingForMore[LfgDungeonId].end(); ++itr)
 	{
+		plr = *itr;
+		if(plr == NULL || !plr->IsInWorld())
+			continue;
+
 		if(plr->GetGroup())
 		{
 			// check if this is a suitable candidate for a group for others to join
@@ -192,9 +254,6 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 				possibleGroupLeaders.push_back(plr);
 				continue;
 			}
-
-			if(plr->m_lfgInviterGuid || plr->m_lfgMatch != NULL)
-				continue;
 
 			// just a guy in a group
 			continue;
@@ -208,6 +267,9 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 	{
 		for(itr = possibleGroupLeaders.begin(); itr != possibleGroupLeaders.end(); ++itr)
 		{
+			if((*itr)->GetGroup() == NULL)
+				continue;
+
 			for(it2 = possibleMembers.begin(); it2 != possibleMembers.end();)
 			{
 				if((*itr)->GetGroup()->IsFull())
@@ -217,14 +279,27 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 				}
 
 				// found a group for him, lets insert him.
-				if((*itr)->GetGroup()->AddMember((*it2)->m_playerInfo))
+				if((*it2)->GetTeam() == (*itr)->GetTeam() && (*itr)->GetGroup()->AddMember((*it2)->m_playerInfo))
 				{
-					(*it2)->m_lfgInviterGuid = (*itr)->GetLowGUID();
+					(*it2)->PartLFGChannel();
+					(*it2)->m_lfgInviterGuid = 0;
+					(*it2)->m_lfgMatch = NULL;
+					for(uint32 j = 0; j < MAX_LFG_QUEUE_ID; ++j)
+					{
+						if((*it2)->LfgDungeonId[j] == LfgDungeonId)
+						{
+							(*it2)->LfgDungeonId[j] = 0;
+							(*it2)->LfgType[j] = 0;
+						}
+					}
+					if((*it2)->m_Autojoin)
+						(*it2)->SendMeetingStoneQueue(LfgDungeonId, 0);
 
 					it3 = it2;
 					++it2;
 
-					possibleMembers.erase(it2);
+					m_lookingForGroup[LfgDungeonId].remove(*it3);
+					possibleMembers.erase(it3);
 				}
 				else
 					++it2;
@@ -250,6 +325,17 @@ void LfgMgr::UpdateLfgQueue(uint32 LfgDungeonId)
 		for(i = 0; i < 5 && possibleMembers.size() > 0; ++i)
 		{
 			pGroup->AddMember( possibleMembers.front()->m_playerInfo );
+			possibleMembers.front()->PartLFGChannel();
+			possibleMembers.front()->m_lfgInviterGuid = 0;
+			possibleMembers.front()->m_lfgMatch = NULL;
+			for(uint32 j = 0; j < MAX_LFG_QUEUE_ID; ++j)
+			{
+				if(possibleMembers.front()->LfgDungeonId[j] == LfgDungeonId)
+				{
+					possibleMembers.front()->LfgDungeonId[j] = 0;
+					possibleMembers.front()->LfgType[j] = 0;
+				}
+			}
 			possibleMembers.front()->SendMeetingStoneQueue( LfgDungeonId, 0 );
 			m_lookingForGroup[LfgDungeonId].remove( possibleMembers.front() );
 			possibleMembers.pop_front();
@@ -365,6 +451,7 @@ void LfgMgr::SetPlayerInLfmList(Player * pl, uint32 LfgDungeonId)
 		return;
 
 	m_lock.Acquire();
+	m_lookingForMore[LfgDungeonId].remove(pl);
 	m_lookingForMore[LfgDungeonId].push_back(pl);
 	m_lock.Release();
 }

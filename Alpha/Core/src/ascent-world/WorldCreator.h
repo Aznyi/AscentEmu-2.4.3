@@ -133,10 +133,27 @@ public:
 	// player left a group, boot him out of any instances he's not supposed to be in.
 	void PlayerLeftGroup(Group * pGroup, Player * pPlayer);
 
+	ASCENT_INLINE bool IsPersistentInstance(Instance * pInstance)
+	{
+		if(pInstance->m_mapInfo->type == INSTANCE_NONRAID)
+			return false;
+
+		if(pInstance->m_mapInfo->type == INSTANCE_MULTIMODE && pInstance->m_difficulty == MODE_NORMAL)
+			return false;
+
+		return true;
+	}
+
 	// has an instance expired?
 	// can a player join?
-    ASCENT_INLINE bool PlayerOwnsInstance(Instance * pInstance, Player * pPlayer)
+    ASCENT_INLINE bool PlayerOwnsInstance(Instance * pInstance, Player * pPlayer, int32 requestedDifficulty = -1)
 	{
+		if(requestedDifficulty < 0)
+			requestedDifficulty = pPlayer->iInstanceType;
+
+		if(pInstance->m_mapInfo->type == INSTANCE_MULTIMODE && pInstance->m_difficulty != (uint32)requestedDifficulty)
+			return false;
+
 		// expired?
 		if( pInstance->m_expiration && (UNIXTIME+20) >= pInstance->m_expiration)
 		{
@@ -154,6 +171,9 @@ public:
 	// has an instance expired?
 	ASCENT_INLINE bool HasInstanceExpired(Instance * pInstance)
 	{
+		if(!IsPersistentInstance(pInstance))
+			return false;
+
 		// expired?
 		if( pInstance->m_expiration && (UNIXTIME+20) >= pInstance->m_expiration)
 			return true;
