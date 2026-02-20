@@ -26,6 +26,35 @@
 initialiseSingleton(CBattlegroundManager);
 typedef CBattleground*(*CreateBattlegroundFunc)(MapMgr* mgr,uint32 iid,uint32 group, uint32 type);
 
+
+static inline bool BattlemasterListDebugEnabled()
+{
+	return Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false);
+}
+
+static void BattlemasterListDebugHexdump(WorldPacket& data)
+{
+	if(!BattlemasterListDebugEnabled())
+		return;
+
+	const size_t totalLen = data.size();
+	const size_t dumpLen = (totalLen > 64 ? 64 : totalLen);
+	std::ostringstream hex;
+	hex.setf(std::ios::hex, std::ios::basefield);
+	hex.setf(std::ios::uppercase);
+	hex.fill('0');
+
+	for(size_t i = 0; i < dumpLen; ++i)
+	{
+		hex.width(2);
+		hex << static_cast<uint32>(data.contents()[i]);
+		if((i + 1) < dumpLen)
+			hex << ' ';
+	}
+
+	sLog.outDebug("[Battlegrounds] SMSG_BATTLEFIELD_LIST len=%u first=%u bytes: %s", (uint32)totalLen, (uint32)dumpLen, hex.str().c_str());
+}
+
 const static uint32 BGMapIds[BATTLEGROUND_NUM_TYPES] = {
 	0,      // 0
 	30,      // AV
@@ -67,12 +96,16 @@ CBattlegroundManager::~CBattlegroundManager()
 
 }
 
-void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session, uint32 BattlegroundType)
+void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session, uint32 BattlegroundType, uint64 battlemasterGuid, uint32 battlemasterEntry)
 {
 	if(BattlegroundType == BATTLEGROUND_ARENA_2V2 || BattlegroundType == BATTLEGROUND_ARENA_3V3 || BattlegroundType == BATTLEGROUND_ARENA_5V5)
 	{
 		WorldPacket data(SMSG_BATTLEFIELD_LIST, 17);
+		// Preserve the existing arena list layout/behavior.
 		data << m_session->GetPlayer()->GetGUID() << uint32(6) << uint32(0xC) << uint8(0);
+		if(BattlemasterListDebugEnabled())
+			sLog.outDebug("[Battlegrounds] Arena list: type=%u bmEntry=%u bmGuid=" I64FMT, BattlegroundType, battlemasterEntry, battlemasterGuid);
+		BattlemasterListDebugHexdump(data);
 		m_session->SendPacket(&data);
 		return;
 	}
@@ -80,10 +113,18 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 	uint32 LevelGroup = GetLevelGrouping(m_session->GetPlayer()->getLevel());
 	uint32 Count = 0;
 	WorldPacket data(SMSG_BATTLEFIELD_LIST, 200);
-	data << m_session->GetPlayer()->GetGUID();
+
+	// TBC 2.4.3 battleground list follows CMaNGOS BuildBattleGroundListPacket layout:
+	// packed battlemaster guid, battleground type, list-from-gossip flag, instance count, instance ids.
+	FastGUIDPack(data, battlemasterGuid);
 	data << BattlegroundType;
-	data << uint8(2);
-	data << uint32(0);      // Count
+	data << uint8(0);
+	const size_t countPos = data.wpos();
+	data << uint32(0);
+
+	if(BattlemasterListDebugEnabled())
+		sLog.outDebug("[Battlegrounds] BG list: type=%u bmGuid=" I64FMT " bmEntry=%u levelGroup=%u", BattlegroundType, battlemasterGuid,
+			battlemasterEntry, LevelGroup);
 
 	/* Append the battlegrounds */
 	m_instanceLock.Acquire();
@@ -92,15 +133,17 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 		if( itr->second->GetLevelGroup() == LevelGroup && itr->second->CanPlayerJoin(m_session->GetPlayer()) && !itr->second->HasEnded() )
 		{
 			data << itr->first;
+			if(BattlemasterListDebugEnabled())
+				sLog.outDebug("[Battlegrounds]   appended instanceId=%u", itr->first);
 			++Count;
 		}
 	}
 	m_instanceLock.Release();
-#ifdef USING_BIG_ENDIAN
-	*(uint32*)&data.contents()[13] = swap32(Count);
-#else
-	*(uint32*)&data.contents()[13] = Count;
-#endif
+	data.put<uint32>(countPos, Count);
+
+	if(BattlemasterListDebugEnabled())
+		sLog.outDebug("[Battlegrounds] BG list count=%u", Count);
+	BattlemasterListDebugHexdump(data);
 	m_session->SendPacket(&data);
 }
 

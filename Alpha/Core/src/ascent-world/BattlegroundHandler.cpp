@@ -60,6 +60,9 @@ void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 	uint64 guid;
 	recv_data >> guid;
 
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		sLog.outDebug("[Battlegrounds] HandleBattlefieldListOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
+
 	CHECK_INWORLD_RETURN;
 	Creature * pCreature = _player->GetMapMgr()->GetCreature( GET_LOWGUID_PART(guid) );
 	if( pCreature == NULL )
@@ -92,7 +95,7 @@ void WorldSession::SendBattlegroundList(Creature* pCreature, uint32 mapid)
 	else
 		t = mapid;
 
-    BattlegroundManager.HandleBattlegroundListPacket(this, t);
+    BattlegroundManager.HandleBattlegroundListPacket(this, t, pCreature->GetGUID(), pCreature->GetEntry());
 }
 
 void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
@@ -101,7 +104,8 @@ void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
 
 	uint64 guid;
 	recv_data >> guid;
-	sLog.outString("Received CMSG_BATTLEMASTER_HELLO from " I64FMT, guid);
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		sLog.outDebug("[Battlegrounds] HandleBattleMasterHelloOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
 
 	Creature * bm = _player->GetMapMgr()->GetCreature(GET_LOWGUID_PART(guid));
 
