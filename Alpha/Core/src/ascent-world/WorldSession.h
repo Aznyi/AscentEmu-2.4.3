@@ -683,6 +683,8 @@ public:
 	void SendCharterRequest(Creature* pCreature);
 	void SendTaxiList(Creature* pCreature);
 	void SendInnkeeperBind(Creature* pCreature);
+	uint32 ResolveBattlemasterType(Creature* pCreature);
+	bool SendBattlegroundListForBattlemaster(Creature* pCreature);
 	void SendBattlegroundList(Creature* pCreature, uint32 mapid);
 	void SendBankerList(Creature* pCreature);
 	void SendTabardHelp(Creature* pCreature);

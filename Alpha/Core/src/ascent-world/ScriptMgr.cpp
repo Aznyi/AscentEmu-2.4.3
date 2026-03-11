@@ -663,7 +663,7 @@ void GossipScript::GossipSelectOption(Object* pObject, Player* Plr, uint32 Id, u
 		break;
 	case 10:
 		// battlefield
-		Plr->GetSession()->SendBattlegroundList(pCreature, 0);
+		Plr->GetSession()->SendBattlegroundListForBattlemaster(pCreature);
 		break;
 	case 11:
 		// switch to talent reset message

@@ -68,7 +68,84 @@ void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 	if( pCreature == NULL )
 		return;
 
-	SendBattlegroundList( pCreature, 0 );
+	SendBattlegroundListForBattlemaster(pCreature);
+}
+
+uint32 WorldSession::ResolveBattlemasterType(Creature* pCreature)
+{
+	if(!pCreature)
+		return 0;
+
+	switch(pCreature->GetEntry())
+	{
+		// Warsong Gulch
+		case 19910: case 15105: case 20118: case 16696: case 2804: case 20272: case 20269:
+		case 19908: case 15102: case 14981: case 14982: case 2302: case 10360: case 3890:
+			return BATTLEGROUND_WARSUNG_GULCH;
+
+		// Arathi Basin
+		case 20273: case 16694: case 20274: case 15007: case 19855: case 19905: case 20120:
+		case 15008: case 857: case 907: case 12198: case 14990: case 15006: case 14991:
+			return BATTLEGROUND_ARATHI_BASIN;
+
+		// Alterac Valley
+		case 347: case 19907: case 16695: case 20271: case 20119: case 19906: case 20276:
+		case 7410: case 12197: case 5118: case 15106: case 15103: case 14942:
+			return BATTLEGROUND_ALTERAC_VALLEY;
+	}
+
+	if(pCreature->GetCreatureName() && pCreature->GetCreatureName()->SubName)
+	{
+		uint32 t = 0;
+		if(strstr(pCreature->GetCreatureName()->SubName, "Arena") != NULL)
+			t = BATTLEGROUND_ARENA_2V2;
+		else if(strstr(pCreature->GetCreatureName()->SubName, "Arathi") != NULL)
+			t = BATTLEGROUND_ARATHI_BASIN;
+		else if(strstr(pCreature->GetCreatureName()->SubName, "Eye of the Storm") != NULL)
+			t = BATTLEGROUND_EYE_OF_THE_STORM;
+		else if(strstr(pCreature->GetCreatureName()->SubName, "Warsong") != NULL)
+			t = BATTLEGROUND_WARSUNG_GULCH;
+		else if(strstr(pCreature->GetCreatureName()->SubName, "Alterac") != NULL)
+			t = BATTLEGROUND_ALTERAC_VALLEY;
+
+		if(t != 0)
+		{
+			if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+				sLog.outDebug("[Battlegrounds] ResolveBattlemasterType fallback: entry=%u subname='%s' type=%u", pCreature->GetEntry(), pCreature->GetCreatureName()->SubName, t);
+			return t;
+		}
+	}
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		sLog.outDebug("[Battlegrounds] ResolveBattlemasterType failed: entry=%u guid=" I64FMT, pCreature->GetEntry(), pCreature->GetGUID());
+
+	return 0;
+}
+
+bool WorldSession::SendBattlegroundListForBattlemaster(Creature* pCreature)
+{
+	if(!pCreature)
+		return false;
+
+	if(pCreature->GetTypeId() != TYPEID_UNIT)
+		return false;
+
+	if(!pCreature->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_BATTLEFIELDPERSON))
+		return false;
+
+	uint32 t = ResolveBattlemasterType(pCreature);
+	if(t == 0)
+	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			sLog.outDebug("[Battlegrounds] SendBattlegroundListForBattlemaster aborted: unresolved entry=%u guid=" I64FMT, pCreature->GetEntry(), pCreature->GetGUID());
+		return false;
+	}
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		sLog.outDebug("[Battlegrounds] SendBattlegroundListForBattlemaster: entry=%u type=%u guid=" I64FMT, pCreature->GetEntry(), t, pCreature->GetGUID());
+
+	BattlegroundManager.HandleBattlegroundListPacket(this, t, pCreature->GetGUID(), pCreature->GetEntry());
+	return true;
 }
 
 void WorldSession::SendBattlegroundList(Creature* pCreature, uint32 mapid)
@@ -76,26 +153,13 @@ void WorldSession::SendBattlegroundList(Creature* pCreature, uint32 mapid)
 	if(!pCreature)
 		return;
 
-	/* we should have a bg id selection here. */
-	uint32 t = BATTLEGROUND_WARSUNG_GULCH;
-	if (mapid == 0)
+	if(mapid == 0)
 	{
-		if(pCreature->GetCreatureName())
-		{
-			if(strstr(pCreature->GetCreatureName()->SubName, "Arena") != NULL)
-				t = BATTLEGROUND_ARENA_2V2;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Arathi") != NULL)
-				t = BATTLEGROUND_ARATHI_BASIN;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Eye of the Storm") != NULL)
-				t = BATTLEGROUND_EYE_OF_THE_STORM;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Warsong") != NULL)
-				t = BATTLEGROUND_WARSUNG_GULCH;
-		}
+		SendBattlegroundListForBattlemaster(pCreature);
+		return;
 	}
-	else
-		t = mapid;
 
-    BattlegroundManager.HandleBattlegroundListPacket(this, t, pCreature->GetGUID(), pCreature->GetEntry());
+	BattlegroundManager.HandleBattlegroundListPacket(this, mapid, pCreature->GetGUID(), pCreature->GetEntry());
 }
 
 void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
@@ -112,10 +176,7 @@ void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
 	if(!bm)
 		return;
 
-	if(!bm->HasFlag( UNIT_NPC_FLAGS, UNIT_NPC_FLAG_BATTLEFIELDPERSON ))		// Not a Battlemaster
-		return;
-
-	SendBattlegroundList(bm, 0);
+	SendBattlegroundListForBattlemaster(bm);
 }
 
 void WorldSession::HandleLeaveBattlefieldOpcode(WorldPacket &recv_data)

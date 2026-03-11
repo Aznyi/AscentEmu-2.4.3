@@ -1,146 +1,62 @@
 #include "StdAfx.h"
 #include "Setup.h"
 
-class SCRIPT_DECL WarsongGulchBattlemaster : public GossipScript
+class SCRIPT_DECL BattlemasterGossip : public GossipScript
 {
 public:
-    void GossipHello(Object* pObject, Player * plr, bool AutoSend)
-    {
-        GossipMenu *Menu;
-        uint32 Team = plr->GetTeam();
-        if(Team > 1) Team = 1;
-        
-        // Check if the player can be entered into the bg or not.
-        if(plr->getLevel() < 10)
-        {
-            uint32 FactMessages[2] = { 7599, 7688 };
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-        }
-        else
-        {
-            uint32 FactMessages[2] = { 7689, 7705 }; // need to find the second one
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-            Menu->AddItem( 0, "I would like to enter the battleground.", 1);
-        }
-        
-        if(AutoSend)
-            Menu->SendTo(plr);
-    }
-
-    void GossipSelectOption(Object* pObject, Player * plr, uint32 Id, uint32 IntId, const char * Code)
-    {
-        // Send battleground list.
-		if(pObject->GetTypeId()!=TYPEID_UNIT)
-			return;
-
-        plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 2);  // WSG = 2
-    }
-
-    void Destroy()
-    {
-        delete this;
-    }
-};
-
-class SCRIPT_DECL ArathiBasinBattlemaster : public GossipScript
-{
-public:
-    void GossipHello(Object* pObject, Player * plr, bool AutoSend)
-    {
-        GossipMenu *Menu;
-        uint32 Team = plr->GetTeam();
-        if(Team > 1) Team = 1;
-
-        // Check if the player can be entered into the bg or not.
-        if(plr->getLevel() < 20)
-        {
-            uint32 FactMessages[2] = { 7700, 7667 };
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-        }
-        else
-        {
-            uint32 FactMessages[2] = { 7700, 7555 }; // need to find the second one
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-            Menu->AddItem( 0, "I would like to enter the battleground.", 1);
-        }
-
-        if(AutoSend)
-            Menu->SendTo(plr);
-    }
-
-    void GossipSelectOption(Object* pObject, Player * plr, uint32 Id, uint32 IntId, const char * Code)
-    {
-		// Send battleground list.
-		if(pObject->GetTypeId()!=TYPEID_UNIT)
-			return;
-
-		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 3);  // WSG = 2
-    }
-
-    void Destroy()
-    {
-        delete this;
-    }
-};
-
-class SCRIPT_DECL AlteracValleyBattlemaster : public GossipScript
-{
-public:
-    void GossipHello(Object* pObject, Player * plr, bool AutoSend)
+	BattlemasterGossip(uint32 minLevel, uint32 allianceTextId, uint32 hordeTextId) :
+		m_minLevel(minLevel), m_allianceTextId(allianceTextId), m_hordeTextId(hordeTextId)
 	{
-        GossipMenu *Menu;
-        uint32 Team = plr->GetTeam();
-        if(Team > 1) Team = 1;
+	}
 
-        // Check if the player can be entered into the bg or not.
-        if(plr->getLevel() < 60)
-        {
-            uint32 FactMessages[2] = { 7658, 7658 };
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-        }
-        else
-        {
-            uint32 FactMessages[2] = { 7658, 7659 }; // need to find the second one
-
-            // Send "you cannot enter" message.
-            objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), FactMessages[Team], plr);
-            Menu->AddItem( 0, "I would like to enter the battleground.", 1);
-        }
-
-        if(AutoSend)
-            Menu->SendTo(plr);
-    }
-
-    void GossipSelectOption(Object* pObject, Player * plr, uint32 Id, uint32 IntId, const char * Code)
-    {
-		// Send battleground list.
-		if(pObject->GetTypeId()!=TYPEID_UNIT)
+	void GossipHello(Object* pObject, Player* plr, bool AutoSend)
+	{
+		if(pObject == NULL || plr == NULL)
 			return;
 
-		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 0);  // WSG = 2
-    }
+		GossipMenu* Menu;
+		uint32 team = plr->GetTeam();
+		if(team > 1)
+			team = 1;
 
-    void Destroy()
-    {
-        delete this;
-    }
+		uint32 textId = (team == 0) ? m_allianceTextId : m_hordeTextId;
+		objmgr.CreateGossipMenuForPlayer(&Menu, pObject->GetGUID(), textId, plr);
+
+		if(plr->getLevel() >= m_minLevel)
+			Menu->AddItem(0, "I would like to enter the battleground.", 1);
+
+		if(AutoSend)
+			Menu->SendTo(plr);
+	}
+
+	void GossipSelectOption(Object* pObject, Player* plr, uint32 Id, uint32 IntId, const char* Code)
+	{
+		if(pObject == NULL || plr == NULL || pObject->GetTypeId() != TYPEID_UNIT)
+			return;
+
+		if(IntId != 1)
+			return;
+
+		plr->Gossip_Complete();
+		plr->GetSession()->SendBattlegroundListForBattlemaster(static_cast< Creature* >(pObject));
+	}
+
+	void Destroy()
+	{
+		delete this;
+	}
+
+private:
+	uint32 m_minLevel;
+	uint32 m_allianceTextId;
+	uint32 m_hordeTextId;
 };
 
 void SetupBattlemaster(ScriptMgr * mgr)
 {
-	GossipScript * wsg = (GossipScript*) new WarsongGulchBattlemaster;
-	GossipScript * ab = (GossipScript*) new ArathiBasinBattlemaster;
-	GossipScript * av = (GossipScript*) new AlteracValleyBattlemaster;
+	GossipScript* wsg = (GossipScript*)new BattlemasterGossip(10, 7689, 7705);
+	GossipScript* ab = (GossipScript*)new BattlemasterGossip(20, 7700, 7555);
+	GossipScript* av = (GossipScript*)new BattlemasterGossip(60, 7658, 7659);
 
     /* Battlemaster List */
     mgr->register_gossip_script(19910, wsg); // Gargok
@@ -186,6 +102,6 @@ void SetupBattlemaster(ScriptMgr * mgr)
     mgr->register_gossip_script(14942, av); // Kartra Bloodsnarl
 
    //cleanup:
-   //removed Sandfury Soul Eater(hes a npc in Zul'Farrak and has noting to do whit the battleground masters) 
+   //removed Sandfury Soul Eater(hes a npc in Zul'Farrak and has noting to do whit the battleground masters)
    //added Warsong Emissary, Stormpike Emissary , League of Arathor Emissary
 }
