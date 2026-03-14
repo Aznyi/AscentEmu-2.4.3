@@ -25,7 +25,6 @@
 /* echo send/received packets to console */
 //#define ECHO_PACKET_LOG_TO_CONSOLE 1
 
-#ifndef CLUSTERING
 #pragma pack(push, 1)
 struct ClientPktHeader
 {
@@ -595,8 +594,6 @@ void WorldSocket::OnRead()
 		}
 	}
 }
-
-#endif
 
 void WorldLog::LogPacket(uint32 len, uint16 opcode, const uint8* data, uint8 direction)
 {

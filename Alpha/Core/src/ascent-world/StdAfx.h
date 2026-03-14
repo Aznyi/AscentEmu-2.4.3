@@ -48,7 +48,7 @@
 #include "../ascent-shared/crc32.h"
 #include "../ascent-shared/LocationVector.h"
 
-#include <../dep/zlib.h>
+#include <zlib.h>
 
 #include "../ascent-shared/Database/DatabaseEnv.h"
 #include "../ascent-shared/Database/DBCStores.h"
@@ -70,10 +70,6 @@
 #include "UpdateFields.h"
 #include "UpdateMask.h"
 #include "Opcodes.h"
-
-#ifdef CLUSTERING
-	#include "../ascent-realmserver/WorkerOpcodes.h"
-#endif
 
 #include "Packets.h"
 
@@ -159,11 +155,6 @@
 #include "DayWatcherThread.h"
 #include "VoiceChatHandler.h"
 #include "LocalizationMgr.h"
-
-#ifdef CLUSTERING
-	#include "WorkerServerClient.h"
-	#include "ClusterInterface.h"
-#endif
 
 #ifdef COLLISION
 #include "CollideInterface.h"

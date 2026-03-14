@@ -295,7 +295,6 @@ protected:
 	void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
 
 	/// Authentification and misc opcodes (MiscHandler.cpp):
-	void HandlePingOpcode(WorldPacket& recvPacket);
 	void HandleAuthSessionOpcode(WorldPacket& recvPacket);
 	void HandleRepopRequestOpcode(WorldPacket& recvPacket);
 	void HandleAutostoreLootItemOpcode(WorldPacket& recvPacket);

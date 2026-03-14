@@ -23,7 +23,6 @@
 #include "Common.h"
 #include "ByteBuffer.h"
 
-//#include "openssl/bn.h"
 struct bignum_st;
 
 class BigNumber

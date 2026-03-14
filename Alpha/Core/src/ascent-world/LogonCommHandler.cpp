@@ -19,7 +19,6 @@
 
 #include "StdAfx.h"
 initialiseSingleton(LogonCommHandler);
-#ifndef CLUSTERING
 LogonCommHandler::LogonCommHandler()
 {
 	idhigh = 1;
@@ -524,5 +523,3 @@ void LogonCommHandler::IPBan_Remove(const char * ip)
 	data << ip;
 	itr->second->SendPacket(&data, false);
 }
-
-#endif

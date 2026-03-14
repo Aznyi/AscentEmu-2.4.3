@@ -437,12 +437,12 @@ Scripting system exports/imports
 */
 
 #ifdef WIN32
-	#ifndef SCRIPTLIB
-		#define SERVER_DECL __declspec(dllexport)
-		#define SCRIPT_DECL __declspec(dllimport)
-	#else
+	#ifdef SCRIPTLIB
 		#define SERVER_DECL __declspec(dllimport)
 		#define SCRIPT_DECL __declspec(dllexport)
+	#else
+		#define SERVER_DECL __declspec(dllexport)
+		#define SCRIPT_DECL __declspec(dllimport)
 	#endif
 #else
 	#define SERVER_DECL 

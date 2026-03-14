@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <AscentRoot>$(MSBuildThisFileDirectory)..\</AscentRoot>
+    <AscentRoot>$([System.IO.Path]::GetFullPath('$(AscentRoot)'))</AscentRoot>
+    <AscentDepsRoot>$(AscentRoot).deps\</AscentDepsRoot>
+    <AscentVendorDepsRoot>$(AscentRoot)src\dep\</AscentVendorDepsRoot>
+    <AscentVendoredSourceDepsRoot>$(AscentRoot)extras\Sources\</AscentVendoredSourceDepsRoot>
+    <AscentWindowsToolset>v145</AscentWindowsToolset>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <LanguageStandard>stdcpp20</LanguageStandard>
+    <ConformanceMode>true</ConformanceMode>
+    <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)'=='x64'">
+    <AscentPlatformDir>x64</AscentPlatformDir>
+    <AscentLegacyPlatformDir>X64</AscentLegacyPlatformDir>
+    <AscentBinaryConfigurationDir>$(Configuration)_$(AscentPlatformDir)</AscentBinaryConfigurationDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Platform)'=='Win32'">
+    <AscentPlatformDir>Win32</AscentPlatformDir>
+    <AscentLegacyPlatformDir>X32</AscentLegacyPlatformDir>
+    <AscentBinaryConfigurationDir>$(Configuration)</AscentBinaryConfigurationDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AscentBinaryDir>$(AscentRoot)bin\$(AscentBinaryConfigurationDir)\</AscentBinaryDir>
+    <AscentScriptBinaryDir>$(AscentBinaryDir)script_bin\</AscentScriptBinaryDir>
+    <AscentIntermediateDir>$(AscentRoot)obj\$(ProjectName)\$(Configuration)_$(AscentPlatformDir)\</AscentIntermediateDir>
+    <AscentDependencyLibraryDir>$(AscentDepsRoot)lib\$(AscentPlatformDir)\</AscentDependencyLibraryDir>
+    <AscentDependencyIncludeDir>$(AscentDepsRoot)include\</AscentDependencyIncludeDir>
+    <AscentFallbackLibraryDir>$(AscentVendorDepsRoot)lib\$(AscentLegacyPlatformDir)\</AscentFallbackLibraryDir>
+    <AscentCommonIncludeDirs>$(AscentDependencyIncludeDir);$(AscentVendorDepsRoot);$(AscentVendorDepsRoot)mysql;$(AscentVendorDepsRoot)openssl;$(AscentVendoredSourceDepsRoot)pcre;$(AscentVendoredSourceDepsRoot)zlib</AscentCommonIncludeDirs>
+    <AscentCommonLibraryDirs>$(AscentDependencyLibraryDir);$(AscentFallbackLibraryDir)</AscentCommonLibraryDirs>
+    <IncludePath>$(AscentCommonIncludeDirs);$(IncludePath)</IncludePath>
+    <LibraryPath>$(AscentCommonLibraryDirs);$(LibraryPath)</LibraryPath>
+    <PlatformToolset>$(AscentWindowsToolset)</PlatformToolset>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>$(LanguageStandard)</LanguageStandard>
+      <ConformanceMode>$(ConformanceMode)</ConformanceMode>
+      <MultiProcessorCompilation>$(MultiProcessorCompilation)</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(AscentCommonIncludeDirs);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <WarningLevel>Level3</WarningLevel>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(AscentCommonLibraryDirs);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <!-- Keep release objects individually linkable so COMDAT folding and LTCG can operate without linker restarts. -->
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release' and '$(Platform)'=='Win32'">
+    <Link>
+      <!-- The legacy Win32 release projects already compile with /GL; matching LTCG on the link step avoids fallback relinks. -->
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

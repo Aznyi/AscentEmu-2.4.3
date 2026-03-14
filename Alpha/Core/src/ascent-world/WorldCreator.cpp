@@ -152,8 +152,8 @@ uint32 InstanceMgr::PreTeleport(uint32 mapid, Player * plr, uint32 instanceid)
 	// main continent check.
 	if(inf->type == INSTANCE_NULL)
 	{
-		// this will be useful when clustering comes into play.
-		// we can check if the destination world server is online or not and then cancel them before they load.
+		// Single-map continents stay resident while a map manager is active.
+		// If no map manager exists yet, the caller must delay the teleport until startup finishes.
 		return (m_singleMaps[mapid] != NULL) ? INSTANCE_OK : INSTANCE_ABORT_NOT_FOUND;
 	}
 

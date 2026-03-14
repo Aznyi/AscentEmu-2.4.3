@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -50,43 +50,36 @@
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <Import Project="..\..\..\win\Ascent.Build.props" Condition="Exists('..\..\..\win\Ascent.Build.props')" />
   <PropertyGroup>
     <_ProjectFileVersion>18.0.11312.151</_ProjectFileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>..\..\..\bin\debug\script_bin\</OutDir>
-    <IntDir>2008_int_debug_spellhandlers\</IntDir>
+    <OutDir>$(AscentScriptBinaryDir)</OutDir>
+    <IntDir>$(AscentIntermediateDir)</IntDir>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>..\..\..\bin\debug\script_bin\</OutDir>
-    <IntDir>2008_int_debug_spellhandlers_x64\</IntDir>
+    <OutDir>$(AscentScriptBinaryDir)</OutDir>
+    <IntDir>$(AscentIntermediateDir)</IntDir>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>..\..\..\bin\debug\script_bin\</OutDir>
-    <IntDir>2008_int_release_spellhandlers\</IntDir>
+    <OutDir>$(AscentScriptBinaryDir)</OutDir>
+    <IntDir>$(AscentIntermediateDir)</IntDir>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>..\..\..\bin\release_x64\script_bin\</OutDir>
-    <IntDir>2008_int_release_spellhandlers_x64\</IntDir>
+    <OutDir>$(AscentScriptBinaryDir)</OutDir>
+    <IntDir>$(AscentIntermediateDir)</IntDir>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -95,7 +88,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>..\..\ascent-shared;..\..\ascent-world;..\..\..\dep\include;..\..\..\dep\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;SCRIPTLIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <PrecompiledHeader />
@@ -103,11 +96,11 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ascent-world.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>../../../bin/debug/script_bin/SpellHandlers.dll</OutputFile>
-      <AdditionalLibraryDirectories>..\..\..\bin\debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ascent-world.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(AscentScriptBinaryDir)SpellHandlers.dll</OutputFile>
+      <AdditionalLibraryDirectories>$(AscentBinaryDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDatabaseFile>../../../bin/debug/script_bin/SpellHandlers.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(AscentScriptBinaryDir)SpellHandlers.pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
@@ -124,7 +117,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>..\..\ascent-shared;..\..\ascent-world;..\..\..\dep\include;..\..\..\dep\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;SCRIPTLIB;X64;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader />
@@ -132,11 +125,11 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ascent-world.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>../../../bin/debug_x64/script_bin/SpellHandlers.dll</OutputFile>
-      <AdditionalLibraryDirectories>..\..\..\bin\debug_x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ascent-world.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(AscentScriptBinaryDir)SpellHandlers.dll</OutputFile>
+      <AdditionalLibraryDirectories>$(AscentBinaryDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDatabaseFile>../../../bin/debug_x64/script_bin/SpellHandlers.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(AscentScriptBinaryDir)SpellHandlers.pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
@@ -165,11 +158,11 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ascent-world.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>../../../bin/release/script_bin/SpellHandlers.dll</OutputFile>
-      <AdditionalLibraryDirectories>..\..\..\bin\release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ascent-world.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(AscentScriptBinaryDir)SpellHandlers.dll</OutputFile>
+      <AdditionalLibraryDirectories>$(AscentBinaryDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDatabaseFile>../../../bin/release/script_bin/SpellHandlers.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(AscentScriptBinaryDir)SpellHandlers.pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -187,17 +180,17 @@
     <ClCompile>
       <AdditionalIncludeDirectories>..\..\ascent-shared;..\..\ascent-world;..\..\..\dep\include;..\..\..\dep\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;SCRIPTLIB;X64;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <PrecompiledHeader />
       <WarningLevel>Level3</WarningLevel>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ascent-world.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <OutputFile>../../../bin/release_x64/script_bin/SpellHandlers.dll</OutputFile>
-      <AdditionalLibraryDirectories>..\..\..\bin\release_x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ascent-world.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(AscentScriptBinaryDir)SpellHandlers.dll</OutputFile>
+      <AdditionalLibraryDirectories>$(AscentBinaryDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ProgramDatabaseFile>../../../bin/release_x64/script_bin/SpellHandlers.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(AscentScriptBinaryDir)SpellHandlers.pdb</ProgramDatabaseFile>
       <SubSystem>Windows</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -208,6 +201,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\win\VC90\ascent-world.vcxproj">
+      <Project>{1DC6C4DA-A028-41F3-877D-D5400C594F88}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\ScriptStackWalker.cpp" />
+    <ClCompile Include="..\..\ascent-shared\StackWalker.cpp" />
     <ClCompile Include="..\src\SpellHandlers\HunterSpells.cpp" />
     <ClCompile Include="..\src\SpellHandlers\ItemSpells_1.cpp" />
     <ClCompile Include="..\src\SpellHandlers\MageSpells.cpp" />
@@ -221,7 +222,9 @@
   <ItemGroup>
     <ClInclude Include="..\src\SpellHandlers\Setup.h" />
   </ItemGroup>
+  <Import Project="..\..\..\win\Ascent.Build.targets" Condition="Exists('..\..\..\win\Ascent.Build.targets')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
+

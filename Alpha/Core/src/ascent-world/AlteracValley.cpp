@@ -173,7 +173,7 @@ void AlteracValley::HookOnPlayerKill(Player* plr, Unit* pVictim)
 	if(!pVictim->IsCreature())
 		return;
 
-	uint32 entry = TO_CREATURE(pVictim)->GetEntry();
+	uint32 entry = pVictim->GetEntry();
 	if(entry == AV_NPC_VANNDAR)
 		EndBattleground(1);
 	else if(entry == AV_NPC_DREKTHAR)

@@ -397,7 +397,6 @@ bool Master::Run(int argc, char ** argv)
 	uint32 loopcounter = 0;
 	//ThreadPool.Gobble();
 
-#ifndef CLUSTERING
 	/* Connect to realmlist servers / logon servers */
 	new LogonCommHandler();
 	sLogonCommHandler.Startup();
@@ -416,11 +415,6 @@ bool Master::Run(int argc, char ** argv)
 		ThreadPool.ExecuteTask(ls);
 #endif
 	while( !m_stopEvent && listnersockcreate )
-#else
-	new ClusterInterface;
-	sClusterInterface.ConnectToRealmServer();
-	while(!m_stopEvent)
-#endif
 	{
 		start = now();
 		diff = start - last_time;
@@ -438,12 +432,8 @@ bool Master::Run(int argc, char ** argv)
 			g_localTime = *localtime(&curTime);
 		}
 
-#ifndef CLUSTERING
 #ifdef VOICE_CHAT
 		sVoiceChatHandler.Update();
-#endif
-#else
-		sClusterInterface.Update();
 #endif
 		sSocketGarbageCollector.Update();
 
@@ -535,9 +525,7 @@ bool Master::Run(int argc, char ** argv)
 	dw->terminate();
 	dw = NULL;
 
-#ifndef CLUSTERING
 	ls->Close();
-#endif
 
 	CloseConsoleListener();
 	sWorld.SaveAllPlayers();
@@ -580,11 +568,6 @@ bool Master::Run(int argc, char ** argv)
 #ifdef GM_SCRIPT
 	Log.Notice("GM-scripting:", "Closing ScriptEngine...");
 	delete ScriptSystem;
-#endif
-
-#ifdef ENABLE_LUA_SCRIPTING
-	sLog.outString("Deleting Script Engine...");
-	LuaEngineMgr::getSingleton().Unload();
 #endif
 
 	delete GMCommand_Log;

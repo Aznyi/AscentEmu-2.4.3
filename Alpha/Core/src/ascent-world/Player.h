@@ -1423,11 +1423,7 @@ public:
 	}
 	uint64 m_GM_SelectedGO;
 	
-#ifndef CLUSTERING
 	void _Relocate(uint32 mapid,const LocationVector & v, bool sendpending, bool force_new_world, uint32 instance_id);
-#else
-	void RelocateCallback(uint32 instance_were_going_to);
-#endif
 	void AddItemsToWorld();
 	void RemoveItemsFromWorld();
 	
@@ -1693,12 +1689,6 @@ public:
 	void save_InstanceType();
 	void save_Zone();
 	void save_PVP();
-#endif
-
-#ifdef CLUSTERING
-	void EventRemoveAndDelete();
-	void PackPlayerData(ByteBuffer & data);
-	bool UnpackPlayerData(ByteBuffer & data);
 #endif
 
 	Creature * m_tempSummon;

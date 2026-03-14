@@ -168,7 +168,7 @@ bool IsServerAllowedMod(unsigned int IP)
 bool Rehash()
 {
 #ifdef WIN32
-	char * config_file = "ascent-logonserver.conf";
+	const char * config_file = "ascent-logonserver.conf";
 #else
 	char * config_file = (char*)CONFDIR "/ascent-logonserver.conf";
 #endif
@@ -255,7 +255,7 @@ void LogonServer::Run(int argc, char ** argv)
 	UNIXTIME = time(NULL);
 	g_localTime = *localtime(&UNIXTIME);
 #ifdef WIN32
-	char * config_file = "ascent-logonserver.conf";
+	const char * config_file = "ascent-logonserver.conf";
 #else
 	char * config_file = (char*)CONFDIR "/ascent-logonserver.conf";
 #endif
@@ -281,8 +281,12 @@ void LogonServer::Run(int argc, char ** argv)
 		{
 		case 'c':
 			/* Log filename was set */
-			config_file = new char[strlen(ascent_optarg)];
-			strcpy(config_file,ascent_optarg);
+			{
+				size_t config_path_len = strlen(ascent_optarg) + 1;
+				char * config_override = new char[config_path_len];
+				strcpy(config_override, ascent_optarg);
+				config_file = config_override;
+			}
 			break;
 		case 0:
 			break;

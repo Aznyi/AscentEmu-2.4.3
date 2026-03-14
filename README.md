@@ -28,7 +28,13 @@ The same directory includes:
 - Supported Platform: Windows (currently)
 - Build Configuration: Release x64
 - Debug builds are not recommended for normal operation.
+- Supported server topology: single-realm deployments using `ascent-world` and `ascent-logonserver`
+- Legacy `realmserver`/clustering support has been retired from the active build.
 - Support for additional platforms is planned for future development.
+
+Windows build documentation:
+- `Alpha/Core/win/BUILD_WINDOWS.md`
+- `Alpha/Core/win/DEPENDENCIES.md`
 
 
 # Project Status

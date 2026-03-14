@@ -54,7 +54,7 @@ bool MySQLDatabase::Initialize(const char* Hostname, unsigned int port, const ch
 	uint32 i;
 	MYSQL * temp, * temp2;
 	MySQLDatabaseConnection ** conns;
-	my_bool my_true = true;
+	const bool reconnect = true;
 
 	mHostname = string(Hostname);
 	mConnectionCount = ConnectionCount;
@@ -72,7 +72,9 @@ bool MySQLDatabase::Initialize(const char* Hostname, unsigned int port, const ch
 		if(mysql_options(temp, MYSQL_SET_CHARSET_NAME, "utf8"))
 			Log.Error("MySQLDatabase", "Could not set utf8 character set.");
 
-		if (mysql_options(temp, MYSQL_OPT_RECONNECT, &my_true))
+		// Keep connector-managed reconnects enabled so transient network drops do not
+		// permanently strand a pooled connection between the auth/world threads and SQL.
+		if (mysql_options(temp, MYSQL_OPT_RECONNECT, &reconnect))
 			Log.Error("MySQLDatabase", "MYSQL_OPT_RECONNECT could not be set, connection drops may occur but will be counteracted.");
 
 		temp2 = mysql_real_connect( temp, Hostname, Username, Password, DatabaseName, port, NULL, 0 );
@@ -139,7 +141,8 @@ void MySQLDatabase::Shutdown()
 
 bool MySQLDatabase::_SendQuery(DatabaseConnection *con, const char* Sql, bool Self)
 {
-	//dunno what it does ...leaving untouched 
+	// Retry exactly once after a reconnect so a single dropped socket does not force
+	// the caller to replay the query or risk an infinite resend loop here.
 	int result = mysql_query(static_cast<MySQLDatabaseConnection*>(con)->MySql, Sql);
 	if(result > 0)
 	{

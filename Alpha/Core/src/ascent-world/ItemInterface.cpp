@@ -370,9 +370,9 @@ Item *ItemInterface::SafeRemoveAndRetreiveItemFromSlot(int8 ContainerSlot, int8 
 
 		if(pItem->GetProto()->ContainerSlots > 0 && pItem->GetTypeId() == TYPEID_CONTAINER && ((Container*)pItem)->HasItems())
 		{
-			/* sounds weird? no. this will trigger a callstack display due to my other debug code. */
+			// Keep the removal atomic: a non-empty bag cannot be detached from the inventory as a standalone item.
 			pItem->DeleteFromDB();
-			return false;
+			return NULL;
 		}
 
 		m_pItems[(int)slot] = NULL;

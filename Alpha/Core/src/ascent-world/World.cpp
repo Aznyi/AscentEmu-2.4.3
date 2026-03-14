@@ -153,10 +153,8 @@ World::World()
 	NameinWAnnounce = false;
 	announce_output = true;
 	map_unload_time=0;
-#ifndef CLUSTERING
 	SocketSendBufSize = WORLDSOCKET_SENDBUF_SIZE;
 	SocketRecvBufSize = WORLDSOCKET_RECVBUF_SIZE;
-#endif
 	m_levelCap=70;
 	m_genLevelCap=70;
 	start_level=1;
@@ -1119,7 +1117,6 @@ uint32 World::GetQueuePos(WorldSocket* Socket)
 
 void World::UpdateQueuedSessions(uint32 diff)
 {
-#ifndef CLUSTERING
 	if(diff >= m_queueUpdateTimer) 
 	{
 		m_queueUpdateTimer = mQueueUpdateInterval;
@@ -1173,7 +1170,6 @@ void World::UpdateQueuedSessions(uint32 diff)
 	{
 		m_queueUpdateTimer -= diff;
 	}
-#endif
 }
 
 void World::SaveAllPlayers()
@@ -1451,10 +1447,8 @@ void World::Rehash(bool load)
 	sLog.SetFileLoggingLevel(Config.MainConfig.GetIntDefault("LogLevel", "File", -1));
 	Log.log_level = Config.MainConfig.GetIntDefault("LogLevel", "Screen", 1);
 	gm_skip_attunement = Config.MainConfig.GetBoolDefault("Server", "SkipAttunementsForGM", true);
-#ifndef CLUSTERING
 	SocketRecvBufSize = Config.MainConfig.GetIntDefault("WorldSocket", "RecvBufSize", WORLDSOCKET_RECVBUF_SIZE);
 	SocketSendBufSize = Config.MainConfig.GetIntDefault("WorldSocket", "SendBufSize", WORLDSOCKET_SENDBUF_SIZE);
-#endif
 
 	bool log_enabled = Config.MainConfig.GetBoolDefault("Log", "Cheaters", false);
 	if(Anticheat_Log->IsOpen())

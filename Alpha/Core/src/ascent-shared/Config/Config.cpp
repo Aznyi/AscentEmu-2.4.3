@@ -103,9 +103,9 @@ void apply_setting(string & str, ConfigSetting & setting)
 
 uint32 ahash(const char * str)
 {
-	register size_t len = strlen(str);
-	register uint32 ret = 0;
-	register size_t i = 0;
+	size_t len = strlen(str);
+	uint32 ret = 0;
+	size_t i = 0;
 	for(; i < len; ++i)
 		ret += 5 * ret + (tolower(str[i]));
 

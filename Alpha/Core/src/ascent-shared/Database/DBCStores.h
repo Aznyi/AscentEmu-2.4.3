@@ -22,6 +22,7 @@
 
 #include "Common.h"
 #include "DataStore.h"
+#include "../NGLog.h"
 #include "Timer.h"
 
 #pragma pack(push,1)

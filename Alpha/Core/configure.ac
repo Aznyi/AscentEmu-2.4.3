@@ -26,7 +26,6 @@ AC_PROG_LIBTOOL
 AH_TEMPLATE([USE_EPOLL], Define if you want to use the epoll socket engine module.)
 AH_TEMPLATE([USE_KQUEUE], Define if you want to use the kqueue socket engine module.)
 AH_TEMPLATE([HAVE_DARWIN], Define if you have MacOSX Darwin, to include the correct headers for kevent)
-AH_TEMPLATE([ENABLE_CLUSTERING], Define if you want to enable clustering, this is experimental.)
 AH_TEMPLATE([ENABLE_COLLISION], Define if you want to enable collision calculation, warning. this can cause. a heavy load)
 AH_TEMPLATE([ENABLE_VOICECHAT], Define this if you want to enable voice chat system)
 AH_TEMPLATE([USING_BIG_ENDIAN], Define this if you are on a big-endian system.)
@@ -122,14 +121,6 @@ else
 	LIB_EXPORT="-Wl,--export-dynamic"
 	AC_SUBST(LIB_EXPORT)
 fi
-
-AC_ARG_ENABLE(clustering,
-     AC_HELP_STRING([--enable-clustering],enable clustering. warning this is experimental.),
-     [ if test "x$enable_clustering" = "xyes" ; then
-   	AC_DEFINE(ENABLE_CLUSTERING)
-       fi
-     ],
-)
 
 AC_ARG_ENABLE(collision,
      AC_HELP_STRING([--enable-collision],enable collision calculation. warning this can cause a high load),
@@ -279,14 +270,12 @@ AC_CONFIG_FILES([
    src/ascent-world/Makefile
    src/ascent-logonserver/Makefile
    src/ascent-voicechat/Makefile
-   src/ascent-realmserver/Makefile
    src/scripts/Makefile
    src/scripts/src/Makefile
    src/scripts/src/GossipScripts/Makefile
    src/scripts/src/InstanceScripts/Makefile
    src/scripts/src/ServerStatusPlugin/Makefile
    src/scripts/src/SpellHandlers/Makefile
-   src/scripts/src/LUAScripting/Makefile
    extras/Makefile
    extras/collision/Makefile
    extras/collision/collision_dll/Makefile
@@ -327,13 +316,6 @@ fi
 
 echo -n "    collision: "
 if test "x$enable_collision" = "xyes" ; then
-  echo "enabled"
-else
-  echo "disabled"
-fi
-
-echo -n "   clustering: "
-if test "x$enable_clustering" = "xyes" ; then
   echo "enabled"
 else
   echo "disabled"

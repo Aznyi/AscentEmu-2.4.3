@@ -99,7 +99,7 @@ static const TCHAR *GetExceptionDescription(DWORD ExceptionCode)
 	struct ExceptionNames
 	{
 		DWORD	ExceptionCode;
-		TCHAR *	ExceptionName;
+		const TCHAR * ExceptionName;
 	};
 
 #if 0  // from winnt.h

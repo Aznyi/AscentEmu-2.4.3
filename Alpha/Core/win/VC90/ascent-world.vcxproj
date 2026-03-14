@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -52,18 +52,15 @@
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <Import Project="..\Ascent.Build.props" Condition="Exists('..\Ascent.Build.props')" />
   <PropertyGroup>
     <_ProjectFileVersion>16.0.30323.82</_ProjectFileVersion>
   </PropertyGroup>
@@ -111,7 +108,7 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;zlib.lib;pcre.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>..\..\extras\collision\collision_dll\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
@@ -131,7 +128,7 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>..\..\src\ascent-shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;X64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <FunctionLevelLinking>false</FunctionLevelLinking>
@@ -152,8 +149,8 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;zlib.lib;pcre.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\src\dep\lib\X64;..\..\extras\collision\collision_dll\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\extras\collision\collision_dll\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
@@ -196,7 +193,7 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;zlib.lib;pcre.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>..\..\extras\collision\collision_dll\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
@@ -240,8 +237,8 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;zlib.lib;pcre.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\..\src\dep\lib\X64;..\..\extras\collision\collision_dll\x64\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;libmysql.lib;libeay32.lib;dbghelp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\..\extras\collision\collision_dll\x64\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
@@ -279,7 +276,6 @@
     <ClCompile Include="..\..\src\ascent-world\CharacterHandler.cpp" />
     <ClCompile Include="..\..\src\ascent-world\Chat.cpp" />
     <ClCompile Include="..\..\src\ascent-world\ChatHandler.cpp" />
-    <ClCompile Include="..\..\src\ascent-world\ClusterInterface.cpp" />
     <ClCompile Include="..\..\src\ascent-world\CollideInterface.cpp" />
     <ClCompile Include="..\..\src\ascent-world\CombatHandler.cpp" />
     <ClCompile Include="..\..\src\ascent-world\ConsoleCommands.cpp" />
@@ -373,8 +369,6 @@
     <ClCompile Include="..\..\src\ascent-world\WayPoints.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WeatherMgr.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WordFilter.cpp" />
-    <ClCompile Include="..\..\src\ascent-world\WorkdSocketCluster.cpp" />
-    <ClCompile Include="..\..\src\ascent-world\WorkerServerClient.cpp" />
     <ClCompile Include="..\..\src\ascent-world\World.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WorldCreator.cpp" />
     <ClCompile Include="..\..\src\ascent-world\WorldRunnable.cpp" />
@@ -399,7 +393,6 @@
     <ClInclude Include="..\..\src\ascent-world\Channel.h" />
     <ClInclude Include="..\..\src\ascent-world\ChannelMgr.h" />
     <ClInclude Include="..\..\src\ascent-world\Chat.h" />
-    <ClInclude Include="..\..\src\ascent-world\ClusterInterface.h" />
     <ClInclude Include="..\..\src\ascent-world\CollideInterface.h" />
     <ClInclude Include="..\..\src\ascent-world\ConsoleCommands.h" />
     <ClInclude Include="..\..\src\ascent-world\Container.h" />
@@ -463,7 +456,6 @@
     <ClInclude Include="..\..\src\ascent-world\WarsongGulch.h" />
     <ClInclude Include="..\..\src\ascent-world\WeatherMgr.h" />
     <ClInclude Include="..\..\src\ascent-world\WordFilter.h" />
-    <ClInclude Include="..\..\src\ascent-world\WorkerServerClient.h" />
     <ClInclude Include="..\..\src\ascent-world\World.h" />
     <ClInclude Include="..\..\src\ascent-world\WorldCreator.h" />
     <ClInclude Include="..\..\src\ascent-world\WorldRunnable.h" />
@@ -476,8 +468,18 @@
       <Project>{90297c34-f231-4df4-848e-a74bcc0e40ed}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\..\extras\Sources\VC90-pcre.vcxproj">
+      <Project>{311f016d-f785-47ef-b032-5350397f16b6}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\..\extras\Sources\VC90-zlib.vcxproj">
+      <Project>{8f1dea42-6a5b-4b62-839d-c141a7bfacf2}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
+  <Import Project="..\Ascent.Build.targets" Condition="Exists('..\Ascent.Build.targets')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
+

@@ -1,7 +1,7 @@
 #ifndef __MYSQLDATABASE_H
 #define __MYSQLDATABASE_H
 
-#include <../dep/mysql/mysql.h>
+#include <mysql.h>
 
 struct MySQLDatabaseConnection : public DatabaseConnection
 {
