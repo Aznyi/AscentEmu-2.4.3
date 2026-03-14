@@ -517,6 +517,7 @@ void CommandTableStorage::Init()
 		{ "gotrig",		'v', &ChatHandler::HandleTriggerCommand,	   "Warps to areatrigger <id>",	  NULL, 0, 0, 0 },
 		{ "exitinstance",  'm', &ChatHandler::HandleExitInstanceCommand,  "Exits current instance, return to entry point.", NULL, 0, 0, 0 },
 		{ "reloadtable",	  'm', &ChatHandler::HandleDBReloadCommand,	  "Reloads some of the database tables", NULL, 0, 0, 0 },
+		{ "spawnstate", 'm', &ChatHandler::HandleSpawnStateCommand, "Controls timed world spawn states.", NULL, 0, 0, 0 },
 		{ "servershutdown", 'z', &ChatHandler::HandleShutdownCommand, "Initiates server shutdown in <x> seconds.", NULL, 0, 0, 0 },
 		{ "serverrestart", 'z', &ChatHandler::HandleShutdownRestartCommand, "Initiates server restart in <x> seconds.", NULL, 0, 0, 0 },
 		{ "allowwhispers", 'c', &ChatHandler::HandleAllowWhispersCommand, "Allows whispers from player <s> while in gmon mode.", NULL, 0, 0, 0 },

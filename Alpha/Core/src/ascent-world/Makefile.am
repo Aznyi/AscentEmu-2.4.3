@@ -61,6 +61,10 @@ ascent_world_SOURCES = \
     EyeOfTheStorm.cpp \
     EyeOfTheStorm.h \
     EventableObject.h \
+    GameEventMgr.cpp \
+    GameEventMgr.h \
+    SpawnStateMgr.cpp \
+    SpawnStateMgr.h \
     EventMgr.cpp \
     EventMgr.h \
     faction.h \

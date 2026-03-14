@@ -189,6 +189,12 @@ World::~World()
 	Log.Notice("LocalizationMgr", "~LocalizationMgr()");
 	sLocalizationMgr.Shutdown();
 
+	Log.Notice("GameEventMgr", "~GameEventMgr()");
+	delete GameEventMgr::getSingletonPtr();
+
+	Log.Notice("SpawnStateMgr", "~SpawnStateMgr()");
+	delete SpawnStateMgr::getSingletonPtr();
+
 	Log.Notice("WorldLog", "~WorldLog()");
 	delete WorldLog::getSingletonPtr();
 
@@ -481,6 +487,8 @@ bool World::SetInitialWorldSettings()
 	new WeatherMgr;
 	new TaxiMgr;
 	new AddonMgr;
+	new GameEventMgr;
+	new SpawnStateMgr;
 	new WorldLog;
 	new ChatHandler;
 
@@ -508,6 +516,8 @@ bool World::SetInitialWorldSettings()
 	MAKE_TASK(ObjectMgr, LoadPlayersInfo);
 	tl.wait();
 
+	MAKE_TASK(GameEventMgr, LoadFromDB);
+	MAKE_TASK(SpawnStateMgr, LoadFromDB);
 	MAKE_TASK(ObjectMgr, LoadCreatureWaypoints);
 	MAKE_TASK(ObjectMgr, LoadCreatureTimedEmotes);
 	MAKE_TASK(ObjectMgr, LoadTrainers);

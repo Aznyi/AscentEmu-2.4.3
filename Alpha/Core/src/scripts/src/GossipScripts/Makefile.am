@@ -5,4 +5,4 @@ AM_CXXFLAGS = -DSCRIPTLIB
 
 lib_LTLIBRARIES = libGossipScripts.la
 
-libGossipScripts_la_SOURCES = Gossip_Battlemaster.cpp Gossip_Innkeepers.cpp GuardGossip.cpp Setup.cpp
+libGossipScripts_la_SOURCES = Gossip_Battlemaster.cpp Gossip_Innkeepers.cpp GuardGossip.cpp Quest_WorldBuffs.cpp Setup.cpp

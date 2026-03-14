@@ -388,6 +388,7 @@ protected:
 	bool HandleLandCommand(const char* args, WorldSession* m_session);
 	bool HandleRemoveRessurectionSickessAuraCommand(const char *args, WorldSession *m_session);
 	bool HandleDBReloadCommand(const char* args, WorldSession* m_session);
+	bool HandleSpawnStateCommand(const char* args, WorldSession* m_session);
 	
 	// honor
 	bool HandleAddHonorCommand(const char* args, WorldSession* m_session);

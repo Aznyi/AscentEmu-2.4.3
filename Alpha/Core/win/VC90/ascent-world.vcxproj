@@ -292,6 +292,8 @@
     <ClCompile Include="..\..\src\ascent-world\EventMgr.cpp" />
     <ClCompile Include="..\..\src\ascent-world\EyeOfTheStorm.cpp" />
     <ClCompile Include="..\..\src\ascent-world\faction.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\GameEventMgr.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\SpawnStateMgr.cpp" />
     <ClCompile Include="..\..\src\ascent-world\GameObject.cpp" />
     <ClCompile Include="..\..\src\ascent-world\GMTicket.cpp" />
     <ClCompile Include="..\..\src\ascent-world\Group.cpp" />
@@ -405,6 +407,8 @@
     <ClInclude Include="..\..\src\ascent-world\EventMgr.h" />
     <ClInclude Include="..\..\src\ascent-world\EyeOfTheStorm.h" />
     <ClInclude Include="..\..\src\ascent-world\faction.h" />
+    <ClInclude Include="..\..\src\ascent-world\GameEventMgr.h" />
+    <ClInclude Include="..\..\src\ascent-world\SpawnStateMgr.h" />
     <ClInclude Include="..\..\src\ascent-world\GameObject.h" />
     <ClInclude Include="..\..\src\ascent-world\Group.h" />
     <ClInclude Include="..\..\src\ascent-world\Guild.h" />

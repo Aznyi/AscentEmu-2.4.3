@@ -499,6 +499,81 @@ CREATE TABLE `graveyards` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Graveyard System';
 
 -- ----------------------------
+-- Table structure for game_event
+-- ----------------------------
+CREATE TABLE `game_event` (
+  `entry` mediumint(8) unsigned NOT NULL,
+  `schedule_type` int(11) NOT NULL default '0',
+  `occurence` bigint(20) unsigned NOT NULL default '5184000',
+  `length` bigint(20) unsigned NOT NULL default '2592000',
+  `holiday` mediumint(8) unsigned NOT NULL default '0',
+  `linkedTo` mediumint(8) unsigned NOT NULL default '0',
+  `EventGroup` mediumint(8) unsigned NOT NULL default '0',
+  `description` varchar(255) default NULL,
+  PRIMARY KEY  (`entry`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Game event system';
+
+-- ----------------------------
+-- Table structure for game_event_creature
+-- ----------------------------
+CREATE TABLE `game_event_creature` (
+  `guid` int(10) unsigned NOT NULL,
+  `event` smallint(6) NOT NULL default '0',
+  PRIMARY KEY  (`guid`,`event`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Game event system';
+
+-- ----------------------------
+-- Table structure for game_event_gameobject
+-- ----------------------------
+CREATE TABLE `game_event_gameobject` (
+  `guid` int(10) unsigned NOT NULL,
+  `event` smallint(6) NOT NULL default '0',
+  PRIMARY KEY  (`guid`,`event`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Game event system';
+
+-- ----------------------------
+-- Table structure for game_event_time
+-- ----------------------------
+CREATE TABLE `game_event_time` (
+  `entry` mediumint(8) unsigned NOT NULL,
+  `start_time` datetime NOT NULL default '1970-01-01 00:00:00',
+  `end_time` datetime NOT NULL default '1970-01-01 00:00:00',
+  PRIMARY KEY  (`entry`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Game event system';
+
+-- ----------------------------
+-- Table structure for spawn_state
+-- ----------------------------
+CREATE TABLE `spawn_state` (
+  `state_key` varchar(64) NOT NULL,
+  `active_until` int(10) unsigned NOT NULL default '0',
+  `description` varchar(255) NOT NULL default '',
+  PRIMARY KEY  (`state_key`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Timed world-state spawns';
+
+-- ----------------------------
+-- Table structure for spawn_state_creature
+-- ----------------------------
+CREATE TABLE `spawn_state_creature` (
+  `guid` int(10) unsigned NOT NULL,
+  `state_key` varchar(64) NOT NULL,
+  `mode` tinyint(3) unsigned NOT NULL default '1',
+  PRIMARY KEY  (`guid`,`state_key`),
+  KEY `state_key` (`state_key`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Timed world-state creature bindings';
+
+-- ----------------------------
+-- Table structure for spawn_state_gameobject
+-- ----------------------------
+CREATE TABLE `spawn_state_gameobject` (
+  `guid` int(10) unsigned NOT NULL,
+  `state_key` varchar(64) NOT NULL,
+  `mode` tinyint(3) unsigned NOT NULL default '1',
+  PRIMARY KEY  (`guid`,`state_key`),
+  KEY `state_key` (`state_key`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COMMENT='Timed world-state gameobject bindings';
+
+-- ----------------------------
 -- Table structure for item_quest_association
 -- ----------------------------
 CREATE TABLE `item_quest_association` (

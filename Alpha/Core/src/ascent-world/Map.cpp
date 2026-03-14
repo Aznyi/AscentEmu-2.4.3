@@ -120,6 +120,66 @@ bool CheckResultLengthGameObject(QueryResult * res)
 		return true;
 }
 
+CreatureSpawn* Map::FindCreatureSpawn(uint32 spawn_id)
+{
+	for(CreatureSpawnList::iterator itr = staticSpawns.CreatureSpawns.begin(); itr != staticSpawns.CreatureSpawns.end(); ++itr)
+	{
+		if((*itr)->id == spawn_id)
+			return (*itr);
+	}
+
+	for(uint32 x = 0; x < _sizeX; ++x)
+	{
+		if(spawns[x] == NULL)
+			continue;
+
+		for(uint32 y = 0; y < _sizeY; ++y)
+		{
+			CellSpawns* cell = spawns[x][y];
+			if(cell == NULL)
+				continue;
+
+			for(CreatureSpawnList::iterator itr = cell->CreatureSpawns.begin(); itr != cell->CreatureSpawns.end(); ++itr)
+			{
+				if((*itr)->id == spawn_id)
+					return (*itr);
+			}
+		}
+	}
+
+	return NULL;
+}
+
+GOSpawn* Map::FindGameObjectSpawn(uint32 spawn_id)
+{
+	for(GOSpawnList::iterator itr = staticSpawns.GOSpawns.begin(); itr != staticSpawns.GOSpawns.end(); ++itr)
+	{
+		if((*itr)->id == spawn_id)
+			return (*itr);
+	}
+
+	for(uint32 x = 0; x < _sizeX; ++x)
+	{
+		if(spawns[x] == NULL)
+			continue;
+
+		for(uint32 y = 0; y < _sizeY; ++y)
+		{
+			CellSpawns* cell = spawns[x][y];
+			if(cell == NULL)
+				continue;
+
+			for(GOSpawnList::iterator itr = cell->GOSpawns.begin(); itr != cell->GOSpawns.end(); ++itr)
+			{
+				if((*itr)->id == spawn_id)
+					return (*itr);
+			}
+		}
+	}
+
+	return NULL;
+}
+
 void Map::LoadSpawns(bool reload)
 {
 	//uint32 st=getMSTime();
@@ -150,6 +210,10 @@ void Map::LoadSpawns(bool reload)
 			{
 				do{
 					Field * fields = result->Fetch();
+					if(!sGameEventMgr.IsCreatureSpawnEnabled(fields[0].GetUInt32()) ||
+						!sSpawnStateMgr.IsCreatureSpawnEnabled(fields[0].GetUInt32()))
+						continue;
+
 					CreatureSpawn * cspawn = new CreatureSpawn;
 					cspawn->id = fields[0].GetUInt32();
 					cspawn->form = FormationMgr::getSingleton().GetFormation(cspawn->id);
@@ -267,6 +331,10 @@ void Map::LoadSpawns(bool reload)
 				{
 				do{
 					Field * fields = result->Fetch();
+					if(!sGameEventMgr.IsGameObjectSpawnEnabled(fields[0].GetUInt32()) ||
+						!sSpawnStateMgr.IsGameObjectSpawnEnabled(fields[0].GetUInt32()))
+						continue;
+
 					GOSpawn * gspawn = new GOSpawn;
 					gspawn->entry = fields[1].GetUInt32();
 					gspawn->id = fields[0].GetUInt32();

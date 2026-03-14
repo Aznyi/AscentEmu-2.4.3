@@ -13,6 +13,7 @@ extern "C" SCRIPT_DECL void _exp_script_register(ScriptMgr* mgr)
     SetupInnkeepers(mgr);
     SetupBattlemaster(mgr);
     SetupGuardGossip(mgr);
+    SetupWorldBuffs(mgr);
 }
 
 #ifdef WIN32

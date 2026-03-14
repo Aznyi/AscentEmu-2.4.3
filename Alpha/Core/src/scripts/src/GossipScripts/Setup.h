@@ -4,5 +4,6 @@
 void SetupInnkeepers(ScriptMgr * mgr);
 void SetupGuardGossip(ScriptMgr * mgr);
 void SetupBattlemaster(ScriptMgr * mgr);
+void SetupWorldBuffs(ScriptMgr * mgr);
 
 #endif

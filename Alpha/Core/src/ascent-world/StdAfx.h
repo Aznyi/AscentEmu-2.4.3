@@ -96,6 +96,8 @@
 #include "QuestMgr.h"
 #include "Creature.h"
 #include "DynamicObject.h"
+#include "GameEventMgr.h"
+#include "SpawnStateMgr.h"
 #include "GameObject.h"
 #include "Group.h"
 #include "Guild.h"

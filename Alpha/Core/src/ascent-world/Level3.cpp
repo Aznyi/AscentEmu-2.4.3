@@ -1214,6 +1214,120 @@ bool ChatHandler::HandleDBReloadCommand(const char* args, WorldSession* m_sessio
 	return true;
 }
 
+bool ChatHandler::HandleSpawnStateCommand(const char* args, WorldSession* m_session)
+{
+	if(args == NULL || args[0] == 0)
+		return false;
+
+	char* command = strdup(args);
+	char* subcommand = strtok(command, " ");
+	if(subcommand == NULL)
+	{
+		free(command);
+		return false;
+	}
+
+	if(!stricmp(subcommand, "set") || !stricmp(subcommand, "activate"))
+	{
+		char* state_key = strtok(NULL, " ");
+		char* duration = strtok(NULL, " ");
+		char* description = strtok(NULL, "");
+		if(state_key == NULL || duration == NULL)
+		{
+			free(command);
+			return false;
+		}
+
+		int32 timeperiod = GetTimePeriodFromString(duration);
+		if(timeperiod <= 0)
+		{
+			free(command);
+			return false;
+		}
+
+		if(!sSpawnStateMgr.SetStateDuration(state_key, static_cast<uint32>(timeperiod), description))
+		{
+			free(command);
+			return false;
+		}
+
+		SpawnStateDefinition def;
+		if(sSpawnStateMgr.GetStateDefinition(state_key, def))
+		{
+			GreenSystemMessage(m_session, "Spawn state '%s' is active until %s.", state_key, ConvertTimeStampToDataTime(static_cast<uint32>(def.active_until)).c_str());
+		}
+		else
+		{
+			GreenSystemMessage(m_session, "Spawn state '%s' is active.", state_key);
+		}
+
+		sGMLog.writefromsession(m_session, "set spawn state %s for %s", state_key, duration);
+		free(command);
+		return true;
+	}
+
+	if(!stricmp(subcommand, "clear") || !stricmp(subcommand, "deactivate"))
+	{
+		char* state_key = strtok(NULL, " ");
+		if(state_key == NULL)
+		{
+			free(command);
+			return false;
+		}
+
+		if(!sSpawnStateMgr.ClearState(state_key))
+		{
+			free(command);
+			return false;
+		}
+
+		GreenSystemMessage(m_session, "Spawn state '%s' is no longer active.", state_key);
+		sGMLog.writefromsession(m_session, "cleared spawn state %s", state_key);
+		free(command);
+		return true;
+	}
+
+	if(!stricmp(subcommand, "info"))
+	{
+		char* state_key = strtok(NULL, " ");
+		if(state_key == NULL)
+		{
+			SystemMessage(m_session, "Usage: .spawnstate info <key>");
+			free(command);
+			return true;
+		}
+
+		SpawnStateDefinition def;
+		if(!sSpawnStateMgr.GetStateDefinition(state_key, def))
+		{
+			RedSystemMessage(m_session, "Spawn state '%s' does not exist.", state_key);
+			free(command);
+			return true;
+		}
+
+		SystemMessage(m_session, "Spawn state '%s': %s", state_key, sSpawnStateMgr.IsStateActive(state_key) ? "active" : "inactive");
+		if(def.active_until != 0)
+			SystemMessage(m_session, "Active until: %s", ConvertTimeStampToDataTime(static_cast<uint32>(def.active_until)).c_str());
+		if(!def.description.empty())
+			SystemMessage(m_session, "Description: %s", def.description.c_str());
+
+		free(command);
+		return true;
+	}
+
+	if(!stricmp(subcommand, "refresh"))
+	{
+		sSpawnStateMgr.Update();
+		GreenSystemMessage(m_session, "Timed spawn states refreshed.");
+		sGMLog.writefromsession(m_session, "refreshed timed spawn states");
+		free(command);
+		return true;
+	}
+
+	free(command);
+	return false;
+}
+
 bool ChatHandler::HandleFlySpeedCheatCommand(const char* args, WorldSession* m_session)
 {
 	float Speed = (float)atof(args);

@@ -118,6 +118,9 @@ public:
 		return spawns[cellx][celly];
 	}
 
+	CreatureSpawn* FindCreatureSpawn(uint32 spawn_id);
+	GOSpawn* FindGameObjectSpawn(uint32 spawn_id);
+
 	void LoadSpawns(bool reload);//set to true to make clean up
 	uint32 CreatureSpawnCount;
 	uint32 GameObjectSpawnCount;
