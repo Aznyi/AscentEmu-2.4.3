@@ -375,15 +375,19 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 	Auction * auct = ah->GetAuction(auction_id);
 	if(auct == 0 || !auct->Owner || !_player || auct->Owner == _player->GetLowGUID())
 		return;
-
-	if(auct->HighestBid > price && price != auct->BuyoutPrice)
+	if(auct->Deleted)
 		return;
 
-	if(_player->GetUInt32Value(PLAYER_FIELD_COINAGE) < price)
+	if(price <= auct->HighestBid && price != auct->BuyoutPrice)
 		return;
 
-	_player->ModUnsigned32Value(PLAYER_FIELD_COINAGE, -((int32)price));
-	if(auct->HighestBidder != 0)
+	const bool sameBidder = (auct->HighestBidder == _player->GetLowGUID());
+	const uint32 requiredMoney = sameBidder ? (price - auct->HighestBid) : price;
+	if(_player->GetUInt32Value(PLAYER_FIELD_COINAGE) < requiredMoney)
+		return;
+
+	_player->ModUnsigned32Value(PLAYER_FIELD_COINAGE, -((int32)requiredMoney));
+	if(auct->HighestBidder != 0 && !sameBidder)
 	{
 		// Return the money to the last highest bidder.
 		char subject[100];
