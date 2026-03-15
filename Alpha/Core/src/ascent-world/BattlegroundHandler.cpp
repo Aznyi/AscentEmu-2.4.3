@@ -19,6 +19,26 @@
 
 #include "StdAfx.h"
 
+static uint32 GetBattlegroundTypeForBattlemaster(Creature* pCreature)
+{
+	if(pCreature == NULL || pCreature->GetCreatureName() == NULL || pCreature->GetCreatureName()->SubName == NULL)
+		return BATTLEGROUND_WARSUNG_GULCH;
+
+	const char* subName = pCreature->GetCreatureName()->SubName;
+	if(strstr(subName, "Arena") != NULL)
+		return BATTLEGROUND_ARENA_2V2;
+	if(strstr(subName, "Alterac") != NULL)
+		return BATTLEGROUND_ALTERAC_VALLEY;
+	if(strstr(subName, "Arathi") != NULL)
+		return BATTLEGROUND_ARATHI_BASIN;
+	if(strstr(subName, "Eye of the Storm") != NULL)
+		return BATTLEGROUND_EYE_OF_THE_STORM;
+	if(strstr(subName, "Warsong") != NULL)
+		return BATTLEGROUND_WARSUNG_GULCH;
+
+	return BATTLEGROUND_WARSUNG_GULCH;
+}
+
 void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 {
 	CHECK_PACKET_SIZE(recv_data, 9);
@@ -84,25 +104,7 @@ void WorldSession::SendBattlegroundList(Creature* pCreature, uint32 mapid)
 	if(!pCreature)
 		return;
 
-	/* we should have a bg id selection here. */
-	uint32 t = BATTLEGROUND_WARSUNG_GULCH;
-	if (mapid == 0)
-	{
-		if(pCreature->GetCreatureName())
-		{
-			if(strstr(pCreature->GetCreatureName()->SubName, "Arena") != NULL)
-				t = BATTLEGROUND_ARENA_2V2;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Arathi") != NULL)
-				t = BATTLEGROUND_ARATHI_BASIN;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Eye of the Storm") != NULL)
-				t = BATTLEGROUND_EYE_OF_THE_STORM;
-			else if(strstr(pCreature->GetCreatureName()->SubName, "Warsong") != NULL)
-				t = BATTLEGROUND_WARSUNG_GULCH;
-		}
-	}
-	else
-		t = mapid;
-
+	uint32 t = (mapid == 0) ? GetBattlegroundTypeForBattlemaster(pCreature) : mapid;
     BattlegroundManager.HandleBattlegroundListPacket(this, t, pCreature->GetGUID(), pCreature->GetEntry());
 }
 

@@ -55,6 +55,29 @@ static void BattlemasterListDebugHexdump(WorldPacket& data)
 	sLog.outDebug("[Battlegrounds] SMSG_BATTLEFIELD_LIST len=%u first=%u bytes: %s", (uint32)totalLen, (uint32)dumpLen, hex.str().c_str());
 }
 
+static const char* GetBattlegroundTypeName(uint32 type)
+{
+	switch(type)
+	{
+	case BATTLEGROUND_ALTERAC_VALLEY:
+		return "Alterac Valley";
+	case BATTLEGROUND_WARSUNG_GULCH:
+		return "Warsong Gulch";
+	case BATTLEGROUND_ARATHI_BASIN:
+		return "Arathi Basin";
+	case BATTLEGROUND_EYE_OF_THE_STORM:
+		return "Eye of the Storm";
+	case BATTLEGROUND_ARENA_2V2:
+		return "2v2 Arena";
+	case BATTLEGROUND_ARENA_3V3:
+		return "3v3 Arena";
+	case BATTLEGROUND_ARENA_5V5:
+		return "5v5 Arena";
+	default:
+		return "Battleground";
+	}
+}
+
 const static uint32 BGMapIds[BATTLEGROUND_NUM_TYPES] = {
 	0,      // 0
 	30,      // AV
@@ -102,10 +125,12 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 	uint32 Count = 0;
 	WorldPacket data(SMSG_BATTLEFIELD_LIST, 200);
 
-	// TBC 2.4.3 SMSG_BATTLEFIELD_LIST contains the battlemaster guid,
-	// battleground type, instance count, and listed instance ids.
+	// TBC 2.4.3 SMSG_BATTLEFIELD_LIST includes a battlemaster-context byte
+	// before the battleground type and a trailing holiday-weekend flag.
 	data << battlemasterGuid;
-	data << BattlegroundType;
+	data << uint8(0);
+	data << uint32(BattlegroundType);
+	data << uint8(0);
 	const size_t countPos = data.wpos();
 	data << uint32(0);
 
@@ -115,21 +140,15 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 
 	if(BattlegroundType != BATTLEGROUND_ARENA_2V2 && BattlegroundType != BATTLEGROUND_ARENA_3V3 && BattlegroundType != BATTLEGROUND_ARENA_5V5)
 	{
-		/* Append the battlegrounds */
-		m_instanceLock.Acquire();
-		for(map<uint32, CBattleground*>::iterator itr = m_instances[BattlegroundType].begin(); itr != m_instances[BattlegroundType].end(); ++itr)
-		{
-			if( itr->second->GetLevelGroup() == LevelGroup && itr->second->CanPlayerJoin(m_session->GetPlayer()) && !itr->second->HasEnded() )
-			{
-				data << itr->first;
-				if(BattlemasterListDebugEnabled())
-					sLog.outDebug("[Battlegrounds]   appended instanceId=%u", itr->first);
-				++Count;
-			}
-		}
-		m_instanceLock.Release();
+		/* Ascent tracks battleground instances with internal ids that are used server-side
+		 * for queue routing, but those ids do not map cleanly onto the client-visible
+		 * battleground list entries. Advertising them here leads to broken repeated
+		 * "<Battleground> 0" rows in the TBC client. Keep the list on "First Available"
+		 * until client-compatible per-instance identifiers are implemented.
+		 */
 	}
 	data.put<uint32>(countPos, Count);
+	data << uint8(0);
 
 	if(BattlemasterListDebugEnabled())
 		sLog.outDebug("[Battlegrounds] BG list count=%u", Count);
@@ -181,6 +200,7 @@ void CBattlegroundManager::HandleBattlegroundJoin(WorldSession * m_session, Worl
 	m_session->GetPlayer()->m_bgQueueRated = false;
 	m_session->GetPlayer()->m_bgQueueInstanceId = instance;
 	m_session->GetPlayer()->m_bgQueueType = bgtype;
+	m_session->SystemMessage("You have joined the queue for %s.", GetBattlegroundTypeName(bgtype));
 
 	/* Set battleground entry point */
 	m_session->GetPlayer()->m_bgEntryPointX = m_session->GetPlayer()->GetPositionX();

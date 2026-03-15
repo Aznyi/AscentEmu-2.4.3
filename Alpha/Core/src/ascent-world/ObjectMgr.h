@@ -216,6 +216,7 @@ public:
 	void BuildPacket(WorldPacket& Packet);
 	void SendTo(Player* Plr);
 	GossipMenuItem GetItem(uint32 Id);
+	ASCENT_INLINE size_t GetItemCount() const { return Menu.size(); }
 	ASCENT_INLINE void SetTextID(uint32 TID) { TextId = TID; }
 
 protected:

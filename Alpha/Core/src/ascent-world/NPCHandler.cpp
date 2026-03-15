@@ -180,6 +180,7 @@ void WorldSession::SendTrainerList(Creature* pCreature)
 void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket& recvPacket)
 {
 	if(!_player->IsInWorld()) return;
+	CHECK_PACKET_SIZE(recvPacket, 12);
 	uint64 Guid;
 	uint32 TeachingSpellID;
 
@@ -273,6 +274,11 @@ void WorldSession::HandleTrainerBuySpellOpcode(WorldPacket& recvPacket)
 		else
 			_player->removeSpell(pSpell->DeleteSpell,true,false,0);
 	}
+
+	WorldPacket data(SMSG_TRAINER_BUY_SUCCEEDED, 12);
+	data << Guid;
+	data << TeachingSpellID;
+	SendPacket(&data);
 }
 
 uint8 WorldSession::TrainerGetSpellStatus(TrainerSpell* pSpell)
@@ -425,6 +431,15 @@ void WorldSession::HandleGossipHelloOpcode( WorldPacket & recv_data )
 		if(!_player->CurrentGossipMenu)
 			return;
 
+		// Quest-only NPCs with a gossip text should use the normal questgiver flow.
+		if(_player->CurrentGossipMenu->GetItemCount() == 0)
+		{
+			delete _player->CurrentGossipMenu;
+			_player->CurrentGossipMenu = NULL;
+			sQuestMgr.OnActivateQuestGiver(qst_giver, _player);
+			return;
+		}
+
 		_player->CurrentGossipMenu->BuildPacket(data);
 		uint32 count=0;//sQuestMgr.ActiveQuestsCount(qst_giver, GetPlayer());
 		size_t pos=data.wpos();
@@ -468,8 +483,10 @@ void WorldSession::HandleGossipHelloOpcode( WorldPacket & recv_data )
 				}
 			}
 		}
+		size_t endpos = data.wpos();
 		data.wpos(pos);
 		data << count;
+		data.wpos(endpos);
 		SendPacket(&data);
 		sLog.outDebug( "WORLD: Sent SMSG_GOSSIP_MESSAGE" );
 	}
