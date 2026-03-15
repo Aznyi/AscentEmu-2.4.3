@@ -285,8 +285,8 @@ void MapMgr::PushObject(Object *obj)
 		objCell->Init(x, y, _mapId, this);
 	}
 
-	uint32 endX = (x <= _sizeX) ? x + 1 : (_sizeX-1);
-	uint32 endY = (y <= _sizeY) ? y + 1 : (_sizeY-1);
+	uint32 endX = (x + 1 < _sizeX) ? x + 1 : (_sizeX-1);
+	uint32 endY = (y + 1 < _sizeY) ? y + 1 : (_sizeY-1);
 	uint32 startX = x > 0 ? x - 1 : 0;
 	uint32 startY = y > 0 ? y - 1 : 0;
 	uint32 posX, posY;
@@ -811,8 +811,8 @@ void MapMgr::ChangeObjectLocation( Object *obj )
 	// Update in-range set for new objects
 	//////////////////////////////////////
 
-	uint32 endX = cellX <= _sizeX ? cellX + 1 : (_sizeX-1);
-	uint32 endY = cellY <= _sizeY ? cellY + 1 : (_sizeY-1);
+	uint32 endX = (cellX + 1 < _sizeX) ? cellX + 1 : (_sizeX-1);
+	uint32 endY = (cellY + 1 < _sizeY) ? cellY + 1 : (_sizeY-1);
 	uint32 startX = cellX > 0 ? cellX - 1 : 0;
 	uint32 startY = cellY > 0 ? cellY - 1 : 0;
 	uint32 posX, posY;
@@ -1233,10 +1233,11 @@ void MapMgr::LoadAllCells()
 void MapMgr::UpdateCellActivity(uint32 x, uint32 y, int radius)
 {
 	CellSpawns * sp;
-	uint32 endX = (x + radius) <= _sizeX ? x + radius : (_sizeX-1);
-	uint32 endY = (y + radius) <= _sizeY ? y + radius : (_sizeY-1);
-	uint32 startX = x - radius > 0 ? x - radius : 0;
-	uint32 startY = y - radius > 0 ? y - radius : 0;
+	uint32 safeRadius = radius > 0 ? static_cast<uint32>(radius) : 0;
+	uint32 endX = (x + safeRadius < _sizeX) ? x + safeRadius : (_sizeX-1);
+	uint32 endY = (y + safeRadius < _sizeY) ? y + safeRadius : (_sizeY-1);
+	uint32 startX = x >= safeRadius ? x - safeRadius : 0;
+	uint32 startY = y >= safeRadius ? y - safeRadius : 0;
 	uint32 posX, posY;
 
 	MapCell *objCell;
@@ -1302,8 +1303,8 @@ void MapMgr::UpdateCellActivity(uint32 x, uint32 y, int radius)
 
 bool MapMgr::_CellActive(uint32 x, uint32 y)
 {
-	uint32 endX = ((x+1) <= _sizeX) ? x + 1 : (_sizeX-1);
-	uint32 endY = ((y+1) <= _sizeY) ? y + 1 : (_sizeY-1);
+	uint32 endX = (x + 1 < _sizeX) ? x + 1 : (_sizeX-1);
+	uint32 endY = (y + 1 < _sizeY) ? y + 1 : (_sizeY-1);
 	uint32 startX = x > 0 ? x - 1 : 0;
 	uint32 startY = y > 0 ? y - 1 : 0;
 	uint32 posX, posY;
@@ -1365,8 +1366,8 @@ void MapMgr::ChangeFarsightLocation(Player *plr, DynamicObject *farsight)
 	{
 		uint32 cellX = GetPosX(farsight->GetPositionX());
 		uint32 cellY = GetPosY(farsight->GetPositionY());
-		uint32 endX = (cellX <= _sizeX) ? cellX + 1 : (_sizeX-1);
-		uint32 endY = (cellY <= _sizeY) ? cellY + 1 : (_sizeY-1);
+		uint32 endX = (cellX + 1 < _sizeX) ? cellX + 1 : (_sizeX-1);
+		uint32 endY = (cellY + 1 < _sizeY) ? cellY + 1 : (_sizeY-1);
 		uint32 startX = cellX > 0 ? cellX - 1 : 0;
 		uint32 startY = cellY > 0 ? cellY - 1 : 0;
 		uint32 posX, posY;
@@ -1906,10 +1907,10 @@ void MapMgr::SendMessageToCellPlayers(Object * obj, WorldPacket * packet, uint32
 {
 	uint32 cellX = GetPosX(obj->GetPositionX());
 	uint32 cellY = GetPosY(obj->GetPositionY());
-	uint32 endX = ((cellX+cell_radius) <= _sizeX) ? cellX + cell_radius : (_sizeX-1);
-	uint32 endY = ((cellY+cell_radius) <= _sizeY) ? cellY + cell_radius : (_sizeY-1);
-	uint32 startX = (cellX-cell_radius) > 0 ? cellX - cell_radius : 0;
-	uint32 startY = (cellY-cell_radius) > 0 ? cellY - cell_radius : 0;
+	uint32 endX = (cellX + cell_radius < _sizeX) ? cellX + cell_radius : (_sizeX-1);
+	uint32 endY = (cellY + cell_radius < _sizeY) ? cellY + cell_radius : (_sizeY-1);
+	uint32 startX = cellX >= cell_radius ? cellX - cell_radius : 0;
+	uint32 startY = cellY >= cell_radius ? cellY - cell_radius : 0;
 
 	uint32 posX, posY;
 	MapCell *cell;
@@ -1939,10 +1940,10 @@ void MapMgr::SendChatMessageToCellPlayers(Object * obj, WorldPacket * packet, ui
 {
 	uint32 cellX = GetPosX(obj->GetPositionX());
 	uint32 cellY = GetPosY(obj->GetPositionY());
-	uint32 endX = ((cellX+cell_radius) <= _sizeX) ? cellX + cell_radius : (_sizeX-1);
-	uint32 endY = ((cellY+cell_radius) <= _sizeY) ? cellY + cell_radius : (_sizeY-1);
-	uint32 startX = (cellX-cell_radius) > 0 ? cellX - cell_radius : 0;
-	uint32 startY = (cellY-cell_radius) > 0 ? cellY - cell_radius : 0;
+	uint32 endX = (cellX + cell_radius < _sizeX) ? cellX + cell_radius : (_sizeX-1);
+	uint32 endY = (cellY + cell_radius < _sizeY) ? cellY + cell_radius : (_sizeY-1);
+	uint32 startX = cellX >= cell_radius ? cellX - cell_radius : 0;
+	uint32 startY = cellY >= cell_radius ? cellY - cell_radius : 0;
 
 	uint32 posX, posY;
 	MapCell *cell;
