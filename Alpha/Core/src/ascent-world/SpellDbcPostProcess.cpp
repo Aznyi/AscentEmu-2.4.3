@@ -597,7 +597,12 @@ void PostProcessSpellDBC()
 		else if(sp->School & 64)
 			SET_SCHOOL(SCHOOL_ARCANE);
 		else
-			Log.Error("World", "Spell %u has unknown school mask %u", sp->Id, sp->School);
+		{
+			// Some client DBC sets carry a few malformed rows with school mask 0.
+			// Treat them as physical so later spell code never sees an invalid school enum.
+			sp->School = SCHOOL_NORMAL;
+			Log.Notice("World", "Spell %u has invalid school mask 0, defaulting to normal school", sp->Id);
+		}
 #undef SET_SCHOOL
 
 		// Classify buff/type groups (SpellEntry::buffType) + a few cheap derived flags.
