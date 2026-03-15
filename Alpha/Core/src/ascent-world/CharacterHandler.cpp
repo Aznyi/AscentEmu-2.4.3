@@ -887,11 +887,11 @@ void WorldSession::FullLogin(Player * plr)
 
 	// Send revision (if enabled)
 #ifdef WIN32
-	_player->BroadcastMessage("Server: %sOpenAscent %s r%u/%s-Win-%s %s(www.openascent.com)", MSG_COLOR_WHITE, BUILD_TAG,
-		BUILD_REVISION, CONFIG, ARCH, MSG_COLOR_LIGHTBLUE);		
+	_player->BroadcastMessage("Server: %sOpenAscent git %s@%s r%u/%s-Win-%s %s(www.openascent.com)", MSG_COLOR_WHITE, BUILD_BRANCH,
+		BUILD_HASH, BUILD_REVISION, CONFIG, ARCH, MSG_COLOR_LIGHTBLUE);		
 #else
-	_player->BroadcastMessage("Server: %sOpenAscent %s r%u/%s-%s %s(www.openascent.com)", MSG_COLOR_WHITE, BUILD_TAG,
-		BUILD_REVISION, PLATFORM_TEXT, ARCH, MSG_COLOR_LIGHTBLUE);
+	_player->BroadcastMessage("Server: %sOpenAscent git %s@%s r%u/%s-%s %s(www.openascent.com)", MSG_COLOR_WHITE, BUILD_BRANCH,
+		BUILD_HASH, BUILD_REVISION, PLATFORM_TEXT, ARCH, MSG_COLOR_LIGHTBLUE);
 #endif
 
 	if(sWorld.SendStatsOnJoin)

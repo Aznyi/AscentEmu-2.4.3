@@ -274,8 +274,8 @@ bool ChatHandler::HandleInfoCommand(const char* args, WorldSession *m_session)
 		}			
 	}
 	objmgr._playerslock.ReleaseReadLock();
-	GreenSystemMessage(m_session, "Server Revision: |r%sOpenAscent r%u/%s-%s-%s %s(www.openascent.com)", MSG_COLOR_WHITE,
-		BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH, MSG_COLOR_LIGHTBLUE);
+	GreenSystemMessage(m_session, "Server Revision: |r%sOpenAscent git %s@%s r%u/%s-%s-%s %s(www.openascent.com)", MSG_COLOR_WHITE,
+		BUILD_BRANCH, BUILD_HASH, BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH, MSG_COLOR_LIGHTBLUE);
 	GreenSystemMessage(m_session, "Server Uptime: |r%s", sWorld.GetUptimeString().c_str());
 	GreenSystemMessage(m_session, "Current Players: |r%d (%d GMs, %d queued)", clientsNum, gm,  0);
 	GreenSystemMessage(m_session, "Active Thread Count: |r%u", ThreadPool.GetActiveThreadCount());

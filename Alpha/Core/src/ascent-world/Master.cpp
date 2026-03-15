@@ -19,7 +19,7 @@
 
 #include "StdAfx.h"
 
-#define BANNER "OpenAscent %s r%u/%s-%s-%s :: World Server"
+#define BANNER "OpenAscent git %s@%s r%u/%s-%s-%s :: World Server"
 
 #ifndef WIN32
 #include <sched.h>
@@ -172,7 +172,7 @@ bool Master::Run(int argc, char ** argv)
 		sLog.m_screenLogLevel = 1;
 	}
 
-	printf(BANNER, BUILD_TAG, BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH);
+	printf(BANNER, BUILD_BRANCH, BUILD_HASH, BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH);
 #ifdef REPACK
 	printf("\nRepack: %s | Author: %s | %s\n", REPACK, REPACK_AUTHOR, REPACK_WEBSITE);
 #endif

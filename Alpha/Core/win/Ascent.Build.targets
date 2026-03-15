@@ -1,5 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="AscentGenerateGitRevision" BeforeTargets="PrepareForBuild">
+    <MakeDir Directories="$(AscentGeneratedIncludeDir)" />
+
+    <PropertyGroup>
+      <AscentGitHash>unknown</AscentGitHash>
+      <AscentGitCount>0</AscentGitCount>
+      <AscentGitBranch>detached</AscentGitBranch>
+    </PropertyGroup>
+
+    <Exec Command="git rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="AscentGitHashLines" />
+    </Exec>
+    <Exec Command="git rev-list --count HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="AscentGitCountLines" />
+    </Exec>
+    <Exec Command="git branch --show-current" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="AscentGitBranchLines" />
+    </Exec>
+
+    <PropertyGroup>
+      <AscentGitHash Condition="'@(AscentGitHashLines)' != ''">@(AscentGitHashLines->'%(Identity)')</AscentGitHash>
+      <AscentGitCount Condition="'@(AscentGitCountLines)' != ''">@(AscentGitCountLines->'%(Identity)')</AscentGitCount>
+      <AscentGitBranch Condition="'@(AscentGitBranchLines)' != ''">@(AscentGitBranchLines->'%(Identity)')</AscentGitBranch>
+    </PropertyGroup>
+
+    <WriteLinesToFile
+      File="$(AscentGeneratedIncludeDir)git_revision.h"
+      Overwrite="true"
+      Lines="// This file is generated during the build from the current git checkout.&#x0D;&#x0A;#ifndef GIT_REVISION_H&#x0D;&#x0A;#define GIT_REVISION_H&#x0D;&#x0A;#define BUILD_SOURCE_TEXT &quot;git&quot;&#x0D;&#x0A;#define BUILD_BRANCH_TEXT &quot;$(AscentGitBranch)&quot;&#x0D;&#x0A;#define BUILD_TAG_TEXT BUILD_BRANCH_TEXT&#x0D;&#x0A;#define BUILD_HASH_TEXT &quot;$(AscentGitHash)&quot;&#x0D;&#x0A;#define BUILD_REVISION_NUMBER $(AscentGitCount)&#x0D;&#x0A;#endif"
+      Encoding="ASCII" />
+  </Target>
+
   <Target Name="AscentEnsureDependencyLayout" BeforeTargets="PrepareForBuild">
     <MakeDir Directories="$(AscentDependencyLibraryDir)" />
     <MakeDir Directories="$(AscentDependencyIncludeDir)" />

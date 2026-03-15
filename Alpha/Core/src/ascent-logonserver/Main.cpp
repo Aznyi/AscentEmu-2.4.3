@@ -25,7 +25,7 @@
 #endif
 #include "../ascent-shared/ascent_getopt.h"
 
-#define BANNER "OpenAscent %s r%u/%s-%s (%s) :: Logon Server"
+#define BANNER "OpenAscent git %s@%s r%u/%s-%s (%s) :: Logon Server"
 
 #ifndef WIN32
 #include <sched.h>
@@ -309,7 +309,7 @@ void LogonServer::Run(int argc, char ** argv)
 		sLog.m_screenLogLevel = 3;
 	}
 	
-	sLog.outString(BANNER, BUILD_TAG, BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH);
+	sLog.outString(BANNER, BUILD_BRANCH, BUILD_HASH, BUILD_REVISION, CONFIG, PLATFORM_TEXT, ARCH);
 #ifdef REPACK
 	sLog.outString("Repack: %s | Author: %s | %s\n", REPACK, REPACK_AUTHOR, REPACK_WEBSITE);
 #endif

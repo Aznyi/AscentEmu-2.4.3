@@ -90,8 +90,8 @@ esac
 
 AC_C_BIGENDIAN([AC_DEFINE(USING_BIG_ENDIAN)],[AC_DEFINE(USING_LITTLE_ENDIAN)],[])
 
-AC_CHECK_PROG([SVN], [svn], yes)
-if test -z "$SVN"; then AC_MSG_ERROR(Subversion not found); fi
+AC_CHECK_PROG([GIT], [git], yes)
+if test -z "$GIT"; then AC_MSG_ERROR(git not found); fi
 
 # Checks for libraries.
 

@@ -314,9 +314,9 @@ void StatDumper::DumpStats()
     {
         // Dump server information.
 #ifdef WIN32
-		fprintf(f, "    <platform>OpenAscent %s r%u/%s-Win-%s (www.openascent.com)</platform>\n", BUILD_TAG, BUILD_REVISION, CONFIG, ARCH);		
+		fprintf(f, "    <platform>OpenAscent git %s@%s r%u/%s-Win-%s (www.openascent.com)</platform>\n", BUILD_BRANCH, BUILD_HASH, BUILD_REVISION, CONFIG, ARCH);		
 #else
-		fprintf(f, "    <platform>OpenAscent %s r%u/%s-%s (www.openascent.com)</platform>\n", BUILD_TAG, BUILD_REVISION, PLATFORM_TEXT, ARCH);
+		fprintf(f, "    <platform>OpenAscent git %s@%s r%u/%s-%s (www.openascent.com)</platform>\n", BUILD_BRANCH, BUILD_HASH, BUILD_REVISION, PLATFORM_TEXT, ARCH);
 #endif
 
         char uptime[80];
