@@ -215,7 +215,7 @@
     <ClCompile Include="..\src\GossipScripts\Gossip_Battlemaster.cpp" />
     <ClCompile Include="..\src\GossipScripts\Gossip_Innkeepers.cpp" />
     <ClCompile Include="..\src\GossipScripts\GuardGossip.cpp" />
-    <ClCompile Include="..\src\GossipScripts\Quest_WorldBuffs.cpp" />
+    <ClCompile Include="..\src\QuestScripts\Quest_WorldBuffs.cpp" />
     <ClCompile Include="..\src\GossipScripts\Setup.cpp" />
   </ItemGroup>
   <ItemGroup>

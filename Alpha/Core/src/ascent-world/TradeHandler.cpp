@@ -207,8 +207,6 @@ void WorldSession::HandleUnacceptTrade(WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld()) return;
 	Player * plr = _player->GetTradeTarget();
-	_player->ResetTradeVariables();
-
 	if(_player->mTradeTarget == 0 || plr == 0)
 		return;
 
@@ -221,9 +219,8 @@ void WorldSession::HandleUnacceptTrade(WorldPacket & recv_data)
 	OutPacket(SMSG_TRADE_STATUS, 4, &TradeStatus);
 	plr->m_session->OutPacket(SMSG_TRADE_STATUS, 4, &TradeStatus);
 
-	plr->mTradeTarget = 0;
-	_player->mTradeTarget = 0;
-	plr->ResetTradeVariables();
+	_player->mTradeStatus = TRADE_STATUS_UNACCEPTED;
+	plr->mTradeStatus = TRADE_STATUS_UNACCEPTED;
 }
 
 void WorldSession::HandleSetTradeItem(WorldPacket & recv_data)

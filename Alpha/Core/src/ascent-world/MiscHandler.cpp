@@ -225,6 +225,7 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 	WorldPacket pkt;	
 	Unit * pt = 0;
 	uint32 guidtype = GET_TYPE_FROM_GUID(lootguid);
+	bool shareMoney = true;
 
 	if(guidtype == HIGHGUID_TYPE_UNIT)
 	{
@@ -232,6 +233,8 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 		if(!pCreature)return;
 		pLoot=&pCreature->loot;
 		pt = pCreature;
+		if(pCreature->isAlive())
+			shareMoney = false;
 	}
 	else if(guidtype == HIGHGUID_TYPE_GAMEOBJECT)
 	{
@@ -244,6 +247,7 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 		Corpse *pCorpse = objmgr.GetCorpse((uint32)lootguid);
 		if(!pCorpse)return;
 		pLoot=&pCorpse->loot;
+		shareMoney = false;
 	}
 	else if(guidtype == HIGHGUID_TYPE_PLAYER)
 	{
@@ -252,6 +256,7 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 		pLoot = &pPlayer->loot;
 		pPlayer->bShouldHaveLootableOnCorpse = false;
 		pt = pPlayer;
+		shareMoney = false;
 	}
 	else if( guidtype == HIGHGUID_TYPE_ITEM )
 	{
@@ -259,6 +264,7 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 		if(!pItem)
 			return;
 		pLoot = pItem->loot;
+		shareMoney = false;
 	}
 
 	if (!pLoot)
@@ -280,17 +286,20 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 			plr->GetSession()->SendPacket(&data);
 	}
 
-	if(!_player->InGroup())
+	if(!_player->InGroup() || !shareMoney)
 	{
 		if(money)
 		{
 			GetPlayer()->ModUnsigned32Value( PLAYER_FIELD_COINAGE , money);
 			sHookInterface.OnLoot(_player, pt, money, 0);
+
+			pkt.SetOpcode(SMSG_LOOT_MONEY_NOTIFY);
+			pkt << money << uint8(1);
+			SendPacket(&pkt);
 		}
 	}
 	else
 	{
-		//this code is wrong mustbe party not raid!
 		Group* party = _player->GetGroup();
 		if(party)
 		{
@@ -306,8 +315,9 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 				sgrp = party->GetSubGroup(i);
 				for(itr = sgrp->GetGroupMembersBegin(); itr != sgrp->GetGroupMembersEnd(); ++itr)
 				{
-					if((*itr)->m_loggedInPlayer && (*itr)->m_loggedInPlayer->GetZoneId() == _player->GetZoneId() && _player->GetInstanceID() == (*itr)->m_loggedInPlayer->GetInstanceID())
-						targets.push_back((*itr)->m_loggedInPlayer);
+					Player* member = (*itr)->m_loggedInPlayer;
+					if(member && member->GetMapMgr() == _player->GetMapMgr() && member->isInRange(_player, 100.0f))
+						targets.push_back(member);
 				}
 			}
 			party->getLock().Release();
@@ -318,7 +328,7 @@ void WorldSession::HandleLootMoneyOpcode( WorldPacket & recv_data )
 			uint32 share = money / uint32(targets.size());
 
 			pkt.SetOpcode(SMSG_LOOT_MONEY_NOTIFY);
-			pkt << share;
+			pkt << share << uint8(targets.size() > 1 ? 0 : 1);
 
 			for(vector<Player*>::iterator itr = targets.begin(); itr != targets.end(); ++itr)
 			{

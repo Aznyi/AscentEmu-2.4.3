@@ -347,10 +347,14 @@ bool ChatHandler::HandleQuestFinishCommand(const char * args, WorldSession * m_s
 				sQuestMgr.BuildQuestComplete(plr, qst);
 
 				IsPlrOnQuest->Finish();
+				sHookInterface.OnQuestFinished(plr, qst);
 				recout += "Player was on that quest, but has now completed it.";
 			}
 			else
+			{
+				sHookInterface.OnQuestFinished(plr, qst);
 				recout += "The quest has now been completed for that player.";
+			}
 
 			plr->AddToFinishedQuests(quest_id);
 		}

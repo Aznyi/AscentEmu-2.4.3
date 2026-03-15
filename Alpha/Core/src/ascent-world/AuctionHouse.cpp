@@ -226,6 +226,7 @@ void WorldSession::HandleAuctionListBidderItems( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld())
 		return;
+	CHECK_PACKET_SIZE(recv_data, 8);
 
 	uint64 guid;
 	recv_data >> guid;
@@ -292,7 +293,7 @@ void AuctionHouse::SendBidListPacket(Player * plr, WorldPacket * packet)
 	for(; itr != auctions.end(); ++itr)
 	{
 		auct = itr->second;
-		if(auct->HighestBidder == plr->GetGUID())
+		if(auct->HighestBidder == plr->GetLowGUID())
 		{
 			if(auct->Deleted) continue;
 
@@ -322,7 +323,7 @@ void AuctionHouse::SendOwnerListPacket(Player * plr, WorldPacket * packet)
 	for(; itr != auctions.end(); ++itr)
 	{
 		auct = itr->second;
-		if(auct->Owner == plr->GetGUID())
+		if(auct->Owner == plr->GetLowGUID())
 		{
 			if(auct->Deleted) continue;
 
@@ -357,6 +358,7 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld())
 		return;
+	CHECK_PACKET_SIZE(recv_data, 16);
 
 	uint64 guid;
 	recv_data >> guid;
@@ -371,7 +373,7 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 	// Find Item
 	AuctionHouse * ah = pCreature->auctionHouse;
 	Auction * auct = ah->GetAuction(auction_id);
-	if(auct == 0 || !auct->Owner || !_player || auct->Owner == _player->GetGUID())
+	if(auct == 0 || !auct->Owner || !_player || auct->Owner == _player->GetLowGUID())
 		return;
 
 	if(auct->HighestBid > price && price != auct->BuyoutPrice)
@@ -400,7 +402,7 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 
 		// send response packet
 		WorldPacket data(SMSG_AUCTION_COMMAND_RESULT, 12);
-		data << auct->Id << uint32(AUCTION_CANCEL) << uint32(0) << uint32(0);
+		data << auct->Id << uint32(AUCTION_BUYOUT) << uint32(0) << uint32(0);
 		SendPacket(&data);
 	}
 	else
@@ -412,7 +414,7 @@ void WorldSession::HandleAuctionPlaceBid( WorldPacket & recv_data )
 
 		// send response packet
 		WorldPacket data(SMSG_AUCTION_COMMAND_RESULT, 12);
-		data << auct->Id << uint32(AUCTION_CANCEL) << uint32(0);
+		data << auct->Id << uint32(AUCTION_BID) << uint32(0);
 		SendPacket(&data);
 	}
 }
@@ -421,6 +423,7 @@ void WorldSession::HandleCancelAuction( WorldPacket & recv_data)
 {
 	if(!_player->IsInWorld())
 		return;
+	CHECK_PACKET_SIZE(recv_data, 12);
 
 	uint64 guid;
 	recv_data >> guid;
@@ -435,6 +438,8 @@ void WorldSession::HandleCancelAuction( WorldPacket & recv_data)
 	// Find Item
 	Auction * auct = pCreature->auctionHouse->GetAuction(auction_id);
 	if(auct == 0) return;
+	if(auct->Deleted || auct->Owner != _player->GetLowGUID())
+		return;
 
 	pCreature->auctionHouse->QueueDeletion(auct, AUCTION_REMOVE_CANCELLED);
 
@@ -451,6 +456,7 @@ void WorldSession::HandleAuctionSellItem( WorldPacket & recv_data )
 {
 	if (!_player->IsInWorld())
 		return;
+	CHECK_PACKET_SIZE(recv_data, 28);
 
 	uint64 guid,item;
 	uint32 bid,buyout,etime;	// etime is in minutes
@@ -535,6 +541,7 @@ void WorldSession::HandleAuctionListOwnerItems( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld())
 		return;
+	CHECK_PACKET_SIZE(recv_data, 8);
 
 	uint64 guid;
 	recv_data >> guid;
@@ -548,7 +555,7 @@ void WorldSession::HandleAuctionListOwnerItems( WorldPacket & recv_data )
 
 void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 {
-	uint32 start_index, current_index = 0;
+	uint32 start_index;
 	uint32 counted_items = 0;
 	std::string auctionString;
 	uint8 levelRange1, levelRange2, usableCheck;
@@ -628,12 +635,12 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 				continue;
 		}
 		
-        // Page system.
-        ++counted_items;
-        if(counted_items >= start_index + 50)
-            continue;
-        current_index++;
-        if(start_index && current_index < start_index) continue;
+		// Page system.
+		++counted_items;
+		if(start_index && counted_items <= start_index)
+			continue;
+		if(counted_items > start_index + 50)
+			continue;
 
 		// all checks passed -> add to packet.
 		itr->second->AddToPacket(data);
@@ -641,7 +648,7 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 	}
 	
 	// total count
-	data << uint32(1 + counted_items);
+	data << counted_items;
 #ifdef USING_BIG_ENDIAN
 	swap32((uint32*)&data.contents()[0]);
 #endif
@@ -653,6 +660,7 @@ void AuctionHouse::SendAuctionList(Player * plr, WorldPacket * packet)
 void WorldSession::HandleAuctionListItems( WorldPacket & recv_data )
 {
 	CHECK_INWORLD_RETURN
+	CHECK_PACKET_SIZE(recv_data, 9);
 	uint64 guid;
 	recv_data >> guid;
 

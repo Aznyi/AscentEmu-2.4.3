@@ -140,8 +140,10 @@ int WorldSession::Update(uint32 InstanceID)
 			if(Handler->status == STATUS_LOGGEDIN && !_player && Handler->handler != 0)
 			{
 				// The client may emit certain in-world opcodes during the world->charselect transition.
-				// Treat these as harmless no-ops rather than log spam. (This is how Mangos handles some items.)
-				if(packet->GetOpcode() != CMSG_CANCEL_TRADE)
+				// Ignore the known harmless ones until the player object is attached.
+				if(packet->GetOpcode() != CMSG_CANCEL_TRADE &&
+					packet->GetOpcode() != CMSG_SET_SELECTION &&
+					packet->GetOpcode() != CMSG_OPT_OUT_OF_LOOT)
 				{
 					sLog.outError("[Session] Received unexpected/wrong state packet with opcode %s (0x%.4X)",
 						LookupName(packet->GetOpcode(), g_worldOpcodeNames), packet->GetOpcode());
@@ -860,7 +862,7 @@ void WorldSession::InitPacketHandlerTable()
 	WorldPacketHandlers[CMSG_TOGGLE_CLOAK].handler							  = &WorldSession::HandleToggleCloakOpcode;
 	WorldPacketHandlers[CMSG_TOGGLE_HELM].handler							   = &WorldSession::HandleToggleHelmOpcode;
 	WorldPacketHandlers[CMSG_SET_TITLE].handler							= &WorldSession::HandleSetVisibleRankOpcode;
-	WorldPacketHandlers[SMSG_COMMENTATOR_GET_PLAYER_INFO].handler								= &WorldSession::HandleReportSpamOpcode;
+	WorldPacketHandlers[CMSG_COMPLAIN].handler									= &WorldSession::HandleReportSpamOpcode;
 	WorldPacketHandlers[CMSG_PET_CAST_SPELL].handler				= &WorldSession::HandleAddDynamicTargetOpcode;
 
 
@@ -887,8 +889,8 @@ void WorldSession::InitPacketHandlerTable()
 	WorldPacketHandlers[CMSG_REPORT_PVP_AFK_RESULT].handler = &WorldSession::HandleChannelVoiceQueryOpcode;
 	WorldPacketHandlers[CMSG_OPT_OUT_OF_LOOT].handler = &WorldSession::HandleSetAutoLootPassOpcode;
 
-	WorldPacketHandlers[0x038C].handler = &WorldSession::Handle38C;
-	WorldPacketHandlers[0x038C].status = STATUS_AUTHED;
+	WorldPacketHandlers[CMSG_REALM_SPLIT].handler = &WorldSession::HandleRealmSplitOpcode;
+	WorldPacketHandlers[CMSG_REALM_SPLIT].status = STATUS_AUTHED;
 
 	WorldPacketHandlers[CMSG_QUESTGIVER_STATUS_MULTIPLE_QUERY].handler = &WorldSession::HandleInrangeQuestgiverQuery;
 }
@@ -1019,14 +1021,21 @@ void WorldSession::Delete()
 	delete this;
 }
 
-void WorldSession::Handle38C(WorldPacket & recv_data)
+void WorldSession::HandleRealmSplitOpcode(WorldPacket & recv_data)
 {
-	uint32 v;
-	recv_data >> v;
+	CHECK_PACKET_SIZE(recv_data, 4);
 
-	WorldPacket data(0x038B, 17);
-	data << v << uint32(0);
-	data << "01/01/01";
+	uint32 realmId;
+	recv_data >> realmId;
+
+	// TBC clients query this during login. Ascent has no realm split scheduling,
+	// so respond explicitly with the "normal" state and the legacy no-split date.
+	static const uint32 REALM_SPLIT_STATE_NORMAL = 0;
+	static const char* REALM_SPLIT_NO_SPLIT_DATE = "01/01/01";
+
+	WorldPacket data(SMSG_REALM_SPLIT, 17);
+	data << realmId << uint32(REALM_SPLIT_STATE_NORMAL);
+	data << REALM_SPLIT_NO_SPLIT_DATE;
 	SendPacket(&data);
 }
 

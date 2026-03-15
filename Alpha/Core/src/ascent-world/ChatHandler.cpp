@@ -574,23 +574,75 @@ void WorldSession::HandleTextEmoteOpcode( WorldPacket & recv_data )
 
 void WorldSession::HandleReportSpamOpcode(WorldPacket & recvPacket)
 {
-	CHECK_PACKET_SIZE(recvPacket, 29);
+	CHECK_PACKET_SIZE(recvPacket, 9);
 
-    // the 0 in the out packet is unknown
-    GetPlayer()->GetSession()->OutPacket(SMSG_COMMENTATOR_PLAYER_INFO, 1, 0 );
-
-	/* This whole thing is guess-work */
-	uint8 unk1;
+	uint8 spamType;
 	uint64 reportedGuid;
-	uint32 unk2;
-	uint32 messagetype;
-	uint32 unk3;
-	uint32 unk4;
+	uint32 unk1 = 0;
+	uint32 unk2 = 0;
+	uint32 unk3 = 0;
+	uint32 unk4 = 0;
 	std::string message;
-	recvPacket >> unk1 >> reportedGuid >> unk2 >> messagetype >> unk3 >> unk4 >> message;
 
-	Player * rPlayer = objmgr.GetPlayer((uint32)reportedGuid);
-	if(!rPlayer)
+	recvPacket >> spamType >> reportedGuid;
+
+	if(spamType == 0)
+	{
+		CHECK_PACKET_SIZE(recvPacket, 21);
+		recvPacket >> unk1 >> unk2 >> unk3;
+	}
+	else if(spamType == 1)
+	{
+		CHECK_PACKET_SIZE(recvPacket, 25);
+		recvPacket >> unk1 >> unk2 >> unk3 >> unk4 >> message;
+	}
+	else
+	{
+		sLog.outDebug("WORLD: Received unsupported CMSG_COMPLAIN spamType %u from %s", spamType, GetPlayer()->GetName());
 		return;
+	}
 
+	uint8 result = 0;
+	OutPacket(SMSG_COMPLAIN_RESULT, 1, &result);
+
+	Player* reportedPlayer = objmgr.GetPlayer((uint32)reportedGuid);
+	PlayerInfo* reportedInfo = objmgr.GetPlayerInfo((uint32)reportedGuid);
+	const char* reportedName = reportedPlayer ? reportedPlayer->GetName() : (reportedInfo && reportedInfo->name ? reportedInfo->name : "<unknown>");
+	const char* complaintType = (spamType == 0) ? "type0" : "type1";
+
+	std::string sanitizedMessage = message;
+	for(size_t i = 0; i < sanitizedMessage.length(); ++i)
+	{
+		if(sanitizedMessage[i] == '\r' || sanitizedMessage[i] == '\n')
+			sanitizedMessage[i] = ' ';
+	}
+
+	if(sanitizedMessage.empty())
+	{
+		sPlrLog.writefromsession(this,
+			"submitted complaint %s against %s (GUID: " I64FMT "), unk=%u/%u/%u/%u",
+			complaintType, reportedName, reportedGuid, unk1, unk2, unk3, unk4);
+	}
+	else
+	{
+		sPlrLog.writefromsession(this,
+			"submitted complaint %s against %s (GUID: " I64FMT "), unk=%u/%u/%u/%u, message=\"%s\"",
+			complaintType, reportedName, reportedGuid, unk1, unk2, unk3, unk4, sanitizedMessage.c_str());
+	}
+
+	char gmNotice[512];
+	if(sanitizedMessage.empty())
+	{
+		snprintf(gmNotice, sizeof(gmNotice), "[Complaint] %s reported %s (%s).",
+			GetPlayer()->GetName(), reportedName, complaintType);
+	}
+	else
+	{
+		snprintf(gmNotice, sizeof(gmNotice), "[Complaint] %s reported %s (%s): %.320s",
+			GetPlayer()->GetName(), reportedName, complaintType, sanitizedMessage.c_str());
+	}
+	sWorld.SendGMWorldText(gmNotice);
+
+	sLog.outDebug("WORLD: Received CMSG_COMPLAIN spamType=%u reportedGuid=" I64FMT " reporter=%s target=%s",
+		spamType, reportedGuid, GetPlayer()->GetName(), reportedName);
 }

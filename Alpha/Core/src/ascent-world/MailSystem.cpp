@@ -282,6 +282,7 @@ void WorldSession::HandleSendMail(WorldPacket & recv_data )
 	uint64 itemguid;
 	vector< Item* > items;
 	vector< Item* >::iterator itr;
+	set<uint64> seenItems;
 	string recepient;
 	Item * pItem;
 	//uint32 err = MAIL_OK;
@@ -301,6 +302,12 @@ void WorldSession::HandleSendMail(WorldPacket & recv_data )
 	{
 		recv_data >> itemslot;
 		recv_data >> itemguid;
+
+		if(!seenItems.insert(itemguid).second)
+		{
+			SendMailError(MAIL_ERR_INTERNAL_ERROR);
+			return;
+		}
 
         pItem = _player->GetItemInterface()->GetItemByGUID( itemguid );
 		if( pItem == NULL || pItem->IsSoulbound() || pItem->HasFlag( ITEM_FIELD_FLAGS, ITEM_FLAG_CONJURED ) )
@@ -452,7 +459,7 @@ void WorldSession::HandleMarkAsRead(WorldPacket & recv_data )
 		message->expire_time = (uint32)UNIXTIME + (TIME_DAY * 3);
 
 	// update it in sql
-	CharacterDatabase.WaitExecute("UPDATE mailbox SET read_flag = 1, expiry_time = %u WHERE message_id = %u", message->message_id, message->expire_time);
+	CharacterDatabase.WaitExecute("UPDATE mailbox SET read_flag = 1, expiry_time = %u WHERE message_id = %u", message->expire_time, message->message_id);
 }
 
 void WorldSession::HandleMailDelete(WorldPacket & recv_data )
@@ -470,6 +477,13 @@ void WorldSession::HandleMailDelete(WorldPacket & recv_data )
 		data << uint32(MAIL_ERR_INTERNAL_ERROR);
 		SendPacket(&data);
 
+		return;
+	}
+
+	if(message->money != 0 || !message->items.empty())
+	{
+		data << uint32(MAIL_ERR_INTERNAL_ERROR);
+		SendPacket(&data);
 		return;
 	}
 
@@ -563,25 +577,26 @@ void WorldSession::HandleTakeItem(WorldPacket & recv_data )
 		return;
 	}
 
-	// all is good
-	// delete the item (so when its resaved it'll have an association)
-	item->DeleteFromDB();
-
 	// add the item to their backpack
 	item->m_isDirty = true;
-
-	// send complete packet
-	data << uint32(MAIL_OK);
-	data << item->GetUInt32Value(OBJECT_FIELD_GUID);
-	data << item->GetUInt32Value(ITEM_FIELD_STACK_COUNT);
-
-	if( !_player->GetItemInterface()->AddItemToFreeSlot(item) )
+	AddItemResult addResult = _player->GetItemInterface()->AddItemToFreeSlot(item);
+	if( addResult != ADD_ITEM_RESULT_OK )
+	{
+		data << uint32(MAIL_ERR_INTERNAL_ERROR);
+		SendPacket(&data);
 		delete item;
+		return;
+	}
 
 	message->items.erase( itr );
 
 	// re-save (update the items field)
 	sMailSystem.SaveMessageToSQL( message);
+
+	// send complete packet
+	data << uint32(MAIL_OK);
+	data << item->GetUInt32Value(OBJECT_FIELD_GUID);
+	data << item->GetUInt32Value(ITEM_FIELD_STACK_COUNT);
 	SendPacket(&data);
 	
 	if( message->cod > 0 )
@@ -616,6 +631,15 @@ void WorldSession::HandleTakeMoney(WorldPacket & recv_data )
 		return;
 	}
 
+	const uint32 currentCoinage = _player->GetUInt32Value(PLAYER_FIELD_COINAGE);
+	const uint32 maxCoinage = uint32(INT_MAX);
+	if(currentCoinage > maxCoinage || message->money > (maxCoinage - currentCoinage))
+	{
+		data << uint32(MAIL_ERR_INTERNAL_ERROR);
+		SendPacket(&data);
+		return;
+	}
+
 	// add the money to the player
 	_player->ModUnsigned32Value(PLAYER_FIELD_COINAGE, message->money);
 
@@ -645,6 +669,13 @@ void WorldSession::HandleReturnToSender(WorldPacket & recv_data )
 		data << uint32(MAIL_ERR_INTERNAL_ERROR);
 		SendPacket(&data);
 
+		return;
+	}
+
+	if(msg->copy_made)
+	{
+		data << uint32(MAIL_ERR_INTERNAL_ERROR);
+		SendPacket(&data);
 		return;
 	}
 	
@@ -722,6 +753,8 @@ void WorldSession::HandleMailCreateTextItem(WorldPacket & recv_data )
 	else
 	{
 		delete pItem;
+		data << uint32(MAIL_ERR_INTERNAL_ERROR);
+		SendPacket(&data);
 	}
 }
 

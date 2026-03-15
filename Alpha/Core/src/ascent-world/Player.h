@@ -1331,6 +1331,7 @@ public:
 	int32 m_bgEntryPointInstance;
 	bool m_bgHasFlag;
 	bool m_bgIsQueued;
+	bool m_bgQueueRated;
 	uint32 m_bgQueueType;
 	uint32 m_bgQueueInstanceId;
 	void EventRepeatSpell();

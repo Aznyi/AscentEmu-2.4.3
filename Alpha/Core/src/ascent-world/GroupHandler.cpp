@@ -111,7 +111,31 @@ void WorldSession::HandleGroupInviteOpcode( WorldPacket & recv_data )
 void WorldSession::HandleGroupCancelOpcode( WorldPacket & recv_data )
 {
 	if(!_player->IsInWorld()) return;
-	sLog.outDebug( "WORLD: got CMSG_GROUP_CANCEL." );
+
+	uint32 inviterGuid = _player->GetLowGUID();
+	Player* invitedPlayer = NULL;
+
+	objmgr._playerslock.AcquireReadLock();
+	for(PlayerStorageMap::const_iterator itr = objmgr._players.begin(); itr != objmgr._players.end(); ++itr)
+	{
+		Player* candidate = itr->second;
+		if(candidate != NULL && candidate != _player && candidate->GetInviter() == inviterGuid)
+		{
+			invitedPlayer = candidate;
+			break;
+		}
+	}
+	objmgr._playerslock.ReleaseReadLock();
+
+	if(invitedPlayer != NULL)
+	{
+		WorldPacket data(SMSG_GROUP_CANCEL, 0);
+		invitedPlayer->GetSession()->SendPacket(&data);
+		invitedPlayer->SetInviter(0);
+	}
+
+	if(_player->GetInviter() == inviterGuid)
+		_player->SetInviter(0);
 }
 
 ////////////////////////////////////////////////////////////////
@@ -228,7 +252,38 @@ void WorldSession::HandleGroupUninviteOpcode( WorldPacket & recv_data )
 //////////////////////////////////////////////////////////////////////////////////////////
 void WorldSession::HandleGroupUninviteGuildOpcode( WorldPacket & recv_data )
 {
-	sLog.outDebug( "WORLD: got CMSG_GROUP_UNINVITE_GUID." );
+	if(!_player->IsInWorld()) return;
+	CHECK_PACKET_SIZE(recv_data, 8);
+
+	uint64 memberGuid;
+	recv_data >> memberGuid;
+
+	Player* player = objmgr.GetPlayer((uint32)memberGuid);
+	PlayerInfo* info = objmgr.GetPlayerInfo((uint32)memberGuid);
+	if(player == NULL && info == NULL)
+	{
+		SendPartyCommandResult(_player, 0, "", ERR_PARTY_CANNOT_FIND);
+		return;
+	}
+
+	if(info == NULL && player != NULL)
+		info = player->m_playerInfo;
+
+	if(info == NULL || !_player->InGroup() || info->m_Group != _player->GetGroup())
+	{
+		SendPartyCommandResult(_player, 0, "", ERR_PARTY_IS_NOT_IN_YOUR_PARTY);
+		return;
+	}
+
+	if(!_player->IsGroupLeader() && _player != player)
+	{
+		SendPartyCommandResult(_player, 0, "", ERR_PARTY_YOU_ARE_NOT_LEADER);
+		return;
+	}
+
+	Group* group = _player->GetGroup();
+	if(group)
+		group->RemovePlayer(info);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////

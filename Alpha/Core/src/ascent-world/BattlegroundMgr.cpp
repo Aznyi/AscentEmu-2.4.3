@@ -98,27 +98,14 @@ CBattlegroundManager::~CBattlegroundManager()
 
 void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session, uint32 BattlegroundType, uint64 battlemasterGuid, uint32 battlemasterEntry)
 {
-	if(BattlegroundType == BATTLEGROUND_ARENA_2V2 || BattlegroundType == BATTLEGROUND_ARENA_3V3 || BattlegroundType == BATTLEGROUND_ARENA_5V5)
-	{
-		WorldPacket data(SMSG_BATTLEFIELD_LIST, 17);
-		// Preserve the existing arena list layout/behavior.
-		data << m_session->GetPlayer()->GetGUID() << uint32(6) << uint32(0xC) << uint8(0);
-		if(BattlemasterListDebugEnabled())
-			sLog.outDebug("[Battlegrounds] Arena list: type=%u bmEntry=%u bmGuid=" I64FMT, BattlegroundType, battlemasterEntry, battlemasterGuid);
-		BattlemasterListDebugHexdump(data);
-		m_session->SendPacket(&data);
-		return;
-	}
-
 	uint32 LevelGroup = GetLevelGrouping(m_session->GetPlayer()->getLevel());
 	uint32 Count = 0;
 	WorldPacket data(SMSG_BATTLEFIELD_LIST, 200);
 
-	// TBC 2.4.3 battleground list follows CMaNGOS BuildBattleGroundListPacket layout:
-	// packed battlemaster guid, battleground type, list-from-gossip flag, instance count, instance ids.
-	FastGUIDPack(data, battlemasterGuid);
+	// TBC 2.4.3 SMSG_BATTLEFIELD_LIST contains the battlemaster guid,
+	// battleground type, instance count, and listed instance ids.
+	data << battlemasterGuid;
 	data << BattlegroundType;
-	data << uint8(0);
 	const size_t countPos = data.wpos();
 	data << uint32(0);
 
@@ -126,19 +113,22 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 		sLog.outDebug("[Battlegrounds] BG list: type=%u bmGuid=" I64FMT " bmEntry=%u levelGroup=%u", BattlegroundType, battlemasterGuid,
 			battlemasterEntry, LevelGroup);
 
-	/* Append the battlegrounds */
-	m_instanceLock.Acquire();
-	for(map<uint32, CBattleground*>::iterator itr = m_instances[BattlegroundType].begin(); itr != m_instances[BattlegroundType].end(); ++itr)
+	if(BattlegroundType != BATTLEGROUND_ARENA_2V2 && BattlegroundType != BATTLEGROUND_ARENA_3V3 && BattlegroundType != BATTLEGROUND_ARENA_5V5)
 	{
-		if( itr->second->GetLevelGroup() == LevelGroup && itr->second->CanPlayerJoin(m_session->GetPlayer()) && !itr->second->HasEnded() )
+		/* Append the battlegrounds */
+		m_instanceLock.Acquire();
+		for(map<uint32, CBattleground*>::iterator itr = m_instances[BattlegroundType].begin(); itr != m_instances[BattlegroundType].end(); ++itr)
 		{
-			data << itr->first;
-			if(BattlemasterListDebugEnabled())
-				sLog.outDebug("[Battlegrounds]   appended instanceId=%u", itr->first);
-			++Count;
+			if( itr->second->GetLevelGroup() == LevelGroup && itr->second->CanPlayerJoin(m_session->GetPlayer()) && !itr->second->HasEnded() )
+			{
+				data << itr->first;
+				if(BattlemasterListDebugEnabled())
+					sLog.outDebug("[Battlegrounds]   appended instanceId=%u", itr->first);
+				++Count;
+			}
 		}
+		m_instanceLock.Release();
 	}
-	m_instanceLock.Release();
 	data.put<uint32>(countPos, Count);
 
 	if(BattlemasterListDebugEnabled())
@@ -188,6 +178,7 @@ void CBattlegroundManager::HandleBattlegroundJoin(WorldSession * m_session, Worl
 	/* send the battleground status packet */
 	SendBattlefieldStatus(m_session->GetPlayer(), 1, bgtype, instance, 0, BGMapIds[bgtype],0);
 	m_session->GetPlayer()->m_bgIsQueued = true;
+	m_session->GetPlayer()->m_bgQueueRated = false;
 	m_session->GetPlayer()->m_bgQueueInstanceId = instance;
 	m_session->GetPlayer()->m_bgQueueType = bgtype;
 
@@ -261,6 +252,7 @@ void CBattlegroundManager::EventQueueUpdate()
 						// queue no longer valid
 						plr->GetSession()->SystemMessage("Your queue on battleground instance id %u is no longer valid. Reason: Instance Deleted.", plr->m_bgQueueInstanceId);
 						plr->m_bgIsQueued = false;
+						plr->m_bgQueueRated = false;
 						plr->m_bgQueueType = 0;
 						plr->m_bgQueueInstanceId = 0;
 						m_queuedPlayers[i][j].erase(it4);
@@ -484,6 +476,7 @@ void CBattlegroundManager::RemovePlayerFromQueues(Player * plr)
 	}
 
 	plr->m_bgIsQueued = false;
+	plr->m_bgQueueRated = false;
 	plr->m_bgTeam=plr->GetTeam();
 	plr->m_pendingBattleground=0;
 	SendBattlefieldStatus(plr,0,0,0,0,0,0);
@@ -975,6 +968,7 @@ void CBattlegroundManager::DeleteBattleground(CBattleground * bg)
 			sChatHandler.SystemMessageToPlr(plr, "Your queue on battleground instance %u is no longer valid, the instance no longer exists.", bg->GetId());
 			SendBattlefieldStatus(plr, 0, 0, 0, 0, 0,0);
 			plr->m_bgIsQueued = false;
+			plr->m_bgQueueRated = false;
 			m_queuedPlayers[i][j].erase(it2);
 		}
 	}
@@ -1520,8 +1514,9 @@ void CBattlegroundManager::HandleArenaJoin(WorldSession * m_session, uint32 Batt
 			{
 				if((*itx)->m_loggedInPlayer)
 				{
-					SendBattlefieldStatus((*itx)->m_loggedInPlayer, 1, BattlegroundType, 0 , 0, 0,1);
+					SendBattlefieldStatus((*itx)->m_loggedInPlayer, 1, BattlegroundType, 0 , 0, 0, rated_match ? 1 : 0);
 					(*itx)->m_loggedInPlayer->m_bgIsQueued = true;
+					(*itx)->m_loggedInPlayer->m_bgQueueRated = (rated_match != 0);
 					(*itx)->m_loggedInPlayer->m_bgQueueInstanceId = 0;
 					(*itx)->m_loggedInPlayer->m_bgQueueType = BattlegroundType;
 					(*itx)->m_loggedInPlayer->GetSession()->SendPacket(&data);
@@ -1552,8 +1547,9 @@ void CBattlegroundManager::HandleArenaJoin(WorldSession * m_session, uint32 Batt
 	Log.Success("BattlegroundMgr", "Player %u is now in battleground queue for {Arena %u}", m_session->GetPlayer()->GetLowGUID(), BattlegroundType );
 
 	/* send the battleground status packet */
-	SendBattlefieldStatus(m_session->GetPlayer(), 1, BattlegroundType, 0 , 0, 0,0);
+	SendBattlefieldStatus(m_session->GetPlayer(), 1, BattlegroundType, 0 , 0, 0, rated_match ? 1 : 0);
 	m_session->GetPlayer()->m_bgIsQueued = true;
+	m_session->GetPlayer()->m_bgQueueRated = (rated_match != 0);
 	m_session->GetPlayer()->m_bgQueueInstanceId = 0;
 	m_session->GetPlayer()->m_bgQueueType = BattlegroundType;
 

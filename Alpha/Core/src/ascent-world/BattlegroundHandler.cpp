@@ -21,6 +21,8 @@
 
 void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 9);
+
 	uint16 mapinfo, unk;
 	uint8 action;
 	uint32 bgtype;
@@ -48,7 +50,9 @@ void WorldSession::HandleBattlefieldStatusOpcode(WorldPacket &recv_data)
 	/* This is done based on whether we are queued, inside, or not in a battleground.
 	 */
 	if(_player->m_pendingBattleground)		// Ready to port
-		BattlegroundManager.SendBattlefieldStatus(_player, 2, _player->m_pendingBattleground->GetType(), _player->m_pendingBattleground->GetId(), 120000, 0, _player->m_pendingBattleground->Rated());
+		BattlegroundManager.SendBattlefieldStatus(_player, 2, _player->m_pendingBattleground->GetType(), _player->m_pendingBattleground->GetId(), 120000, _player->m_pendingBattleground->GetMapMgr()->GetMapId(), _player->m_pendingBattleground->Rated());
+	else if(_player->m_bgIsQueued)			// Waiting in queue
+		BattlegroundManager.SendBattlefieldStatus(_player, 1, _player->m_bgQueueType, _player->m_bgQueueInstanceId, 0, 0, _player->m_bgQueueRated ? 1 : 0);
 	else if(_player->m_bg)					// Inside a bg
 		BattlegroundManager.SendBattlefieldStatus(_player, 3, _player->m_bg->GetType(), _player->m_bg->GetId(), (uint32)UNIXTIME - _player->m_bg->GetStartTime(), _player->GetMapId(), _player->m_bg->Rated());
 	else									// None
@@ -57,6 +61,8 @@ void WorldSession::HandleBattlefieldStatusOpcode(WorldPacket &recv_data)
 
 void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 8);
+
 	uint64 guid;
 	recv_data >> guid;
 
@@ -66,6 +72,8 @@ void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 	CHECK_INWORLD_RETURN;
 	Creature * pCreature = _player->GetMapMgr()->GetCreature( GET_LOWGUID_PART(guid) );
 	if( pCreature == NULL )
+		return;
+	if(!pCreature->HasFlag( UNIT_NPC_FLAGS, UNIT_NPC_FLAG_BATTLEFIELDPERSON ))
 		return;
 
 	SendBattlegroundList( pCreature, 0 );
@@ -126,6 +134,8 @@ void WorldSession::HandleLeaveBattlefieldOpcode(WorldPacket &recv_data)
 
 void WorldSession::HandleAreaSpiritHealerQueryOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 8);
+
 	if(!_player->IsInWorld() || !_player->m_bg) return;
 	uint64 guid;
 	recv_data >> guid;
@@ -147,6 +157,8 @@ void WorldSession::HandleAreaSpiritHealerQueryOpcode(WorldPacket &recv_data)
 
 void WorldSession::HandleAreaSpiritHealerQueueOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 8);
+
 	if(!_player->IsInWorld() || !_player->m_bg) return;
 	uint64 guid;
 	recv_data >> guid;
@@ -167,6 +179,8 @@ void WorldSession::HandleBattlegroundPlayerPositionsOpcode(WorldPacket &recv_dat
 
 void WorldSession::HandleBattleMasterJoinOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 16);
+
 	CHECK_INWORLD_RETURN
 	if(_player->GetGroup() && _player->GetGroup()->m_isqueued)
 	{
@@ -184,6 +198,8 @@ void WorldSession::HandleBattleMasterJoinOpcode(WorldPacket &recv_data)
 
 void WorldSession::HandleArenaJoinOpcode(WorldPacket &recv_data)
 {
+	CHECK_PACKET_SIZE(recv_data, 11);
+
 	CHECK_INWORLD_RETURN
 	if(_player->GetGroup() && _player->GetGroup()->m_isqueued)
 	{

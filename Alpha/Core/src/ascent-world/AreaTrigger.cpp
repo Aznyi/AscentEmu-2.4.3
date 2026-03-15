@@ -57,6 +57,70 @@ const char * AreaTriggerFailureMessages[] = {
 	"You must be level 70 to enter heroic mode.",
 };
 
+uint32 CheckTriggerPrerequsites(AreaTrigger * pAreaTrigger, WorldSession * pSession, Player * pPlayer, MapInfo * pMapInfo);
+
+static void SendAreaTriggerFailure(WorldSession * session, uint32 reason, AreaTrigger * area_trigger)
+{
+	const char * failure_reason = AreaTriggerFailureMessages[reason];
+	char msg[200];
+	WorldPacket data(SMSG_AREA_TRIGGER_MESSAGE, 50);
+	data << uint32(0);
+
+	switch (reason)
+	{
+	case AREA_TRIGGER_FAILURE_LEVEL:
+		snprintf(msg, 200, failure_reason, area_trigger->required_level);
+		data << msg;
+		break;
+	case AREA_TRIGGER_FAILURE_NO_ATTUNE_I:
+		{
+			MapInfo * map_info = WorldMapInfoStorage.LookupEntry(area_trigger->Mapid);
+			ItemPrototype * item_proto = map_info ? ItemPrototypeStorage.LookupEntry(map_info->required_item) : NULL;
+			if(item_proto)
+				snprintf(msg, 200, "You must have the item, `%s` to pass through here.", item_proto->Name1);
+			else
+				snprintf(msg, 200, "You must have the item, UNKNOWN to pass through here.");
+
+			data << msg;
+		}break;
+	case AREA_TRIGGER_FAILURE_NO_ATTUNE_Q:
+		{
+			MapInfo * map_info = WorldMapInfoStorage.LookupEntry(area_trigger->Mapid);
+			Quest * quest = map_info ? QuestStorage.LookupEntry(map_info->required_quest) : NULL;
+			if(quest)
+				snprintf(msg, 200, "You must have finished the quest, `%s` to pass through here.", quest->title);
+			else
+				snprintf(msg, 200, "You must have finished the quest, UNKNOWN to pass through here.");
+
+			data << msg;
+		}break;
+	default:
+		data << failure_reason;
+		break;
+	}
+
+	data << uint8(0);
+	session->SendPacket(&data);
+}
+
+static bool HandleInstanceStyleAreaTrigger(WorldSession * session, AreaTrigger * area_trigger)
+{
+	Player * player = session->GetPlayer();
+	if(player->GetPlayerStatus() == TRANSFER_PENDING)
+		return true;
+
+	uint32 reason = CheckTriggerPrerequsites(area_trigger, session, player, WorldMapInfoStorage.LookupEntry(area_trigger->Mapid));
+	if(reason != AREA_TRIGGER_FAILURE_OK)
+	{
+		SendAreaTriggerFailure(session, reason, area_trigger);
+		return true;
+	}
+
+	player->SaveEntryPoint(area_trigger->Mapid);
+	player->SafeTeleport(area_trigger->Mapid, 0, LocationVector(area_trigger->x, area_trigger->y, area_trigger->z, area_trigger->o));
+	return true;
+}
+
 uint32 CheckTriggerPrerequsites(AreaTrigger * pAreaTrigger, WorldSession * pSession, Player * pPlayer, MapInfo * pMapInfo)
 {
 	if(pAreaTrigger->required_level && pPlayer->getLevel() < pAreaTrigger->required_level)
@@ -137,57 +201,7 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 	{
 	case ATTYPE_INSTANCE:
 		{
-			if(GetPlayer()->GetPlayerStatus() != TRANSFER_PENDING) //only ports if player is out of pendings
-			{
-				uint32 reason = CheckTriggerPrerequsites(pAreaTrigger, this, _player, WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid));
-				if(reason != AREA_TRIGGER_FAILURE_OK)
-				{
-					const char * pReason = AreaTriggerFailureMessages[reason];
-					char msg[200];
-					WorldPacket data(SMSG_AREA_TRIGGER_MESSAGE, 50);
-					data << uint32(0);
-                    
-					switch (reason)
-					{
-					case AREA_TRIGGER_FAILURE_LEVEL:
-						snprintf(msg,200,pReason,pAreaTrigger->required_level);
-						data << msg;
-						break;
-					case AREA_TRIGGER_FAILURE_NO_ATTUNE_I:
-						{
-							MapInfo * pMi = WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid);
-							ItemPrototype * pItem = ItemPrototypeStorage.LookupEntry(pMi->required_item);
-							if(pItem)
-								snprintf(msg,200,"You must have the item, `%s` to pass through here.",pItem->Name1);
-							else
-								snprintf(msg,200,"You must have the item, UNKNOWN to pass through here.");
-
-							data << msg;
-						}break;
-					case AREA_TRIGGER_FAILURE_NO_ATTUNE_Q:
-						{
-							MapInfo * pMi = WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid);
-							Quest * pQuest = QuestStorage.LookupEntry(pMi->required_quest);
-							if(pQuest)
-								snprintf(msg,200,"You must have finished the quest, `%s` to pass through here.",pQuest->title);
-							else
-								snprintf(msg,200,"You must have finished the quest, UNKNOWN to pass through here.");
-
-							data << msg;
-						}break;
-					default:
-						data << pReason;
-						break;
-					}
-
-					data << uint8(0);
-					SendPacket(&data);
-					return;
-				}
-
-				GetPlayer()->SaveEntryPoint(pAreaTrigger->Mapid);
-				GetPlayer()->SafeTeleport(pAreaTrigger->Mapid, 0, LocationVector(pAreaTrigger->x, pAreaTrigger->y, pAreaTrigger->z, pAreaTrigger->o));
-			}
+			HandleInstanceStyleAreaTrigger(this, pAreaTrigger);
 		}break;
 	case ATTYPE_QUESTTRIGGER:
 		{
@@ -200,7 +214,14 @@ void WorldSession::_HandleAreaTriggerOpcode(uint32 id)
 		}break;
 	case ATTYPE_TELEPORT:
 		{
-			if(GetPlayer()->GetPlayerStatus() != TRANSFER_PENDING) //only ports if player is out of pendings
+			MapInfo * destination_info = WorldMapInfoStorage.LookupEntry(pAreaTrigger->Mapid);
+			if(destination_info && destination_info->type != INSTANCE_NULL)
+			{
+				// Some imported databases mark raid and dungeon portals as plain teleports.
+				// Treat those as instance portals so raid/group/attunement checks stay consistent.
+				HandleInstanceStyleAreaTrigger(this, pAreaTrigger);
+			}
+			else if(GetPlayer()->GetPlayerStatus() != TRANSFER_PENDING) //only ports if player is out of pendings
 			{
 				GetPlayer()->SaveEntryPoint(pAreaTrigger->Mapid);
 				GetPlayer()->SafeTeleport(pAreaTrigger->Mapid, 0, LocationVector(pAreaTrigger->x, pAreaTrigger->y, pAreaTrigger->z, pAreaTrigger->o));

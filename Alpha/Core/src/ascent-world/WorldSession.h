@@ -667,7 +667,7 @@ protected:
 	void HandleSetAutoLootPassOpcode(WorldPacket & recv_data);
 
 	void HandleSetFriendNote(WorldPacket & recv_data);
-	void Handle38C(WorldPacket & recv_data);
+	void HandleRealmSplitOpcode(WorldPacket & recv_data);
 	void HandleInrangeQuestgiverQuery(WorldPacket & recv_data);
 
 	// Unhandled Opcodes we just consume
