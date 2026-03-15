@@ -28,8 +28,12 @@ The same directory includes:
 - Supported Platform: Windows (currently)
 - Build Configuration: Release x64
 - Debug builds are not recommended for normal operation.
+- First-time Windows builds should stage repo-local dependencies before opening the solution:
+  `.\Alpha\Core\win\bootstrap-deps.ps1 -Platform x64 -Source VendorFallback -Force`
+- The Windows solution builds `pcre` and `zlib` from source in-repo and stages MySQL/OpenSSL under `Alpha/Core/.deps`.
 - Supported server topology: single-realm deployments using `ascent-world` and `ascent-logonserver`
 - Legacy `realmserver`/clustering support has been retired from the active build.
+- `LUAScripting` is retired and is not part of the active build.
 - Support for additional platforms is planned for future development.
 
 Windows build documentation:
