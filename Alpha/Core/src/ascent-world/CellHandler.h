@@ -134,7 +134,8 @@ Class* CellHandler<Class>::Create(uint32 x, uint32 y)
 		memset(_cells[x],0,sizeof(Class*)*_sizeY);
 	}
 
-	ASSERT(_cells[x][y] == NULL);
+	if(_cells[x][y] != NULL)
+		return _cells[x][y];
 
 	Class *cls = new Class;
 	_cells[x][y] = cls;

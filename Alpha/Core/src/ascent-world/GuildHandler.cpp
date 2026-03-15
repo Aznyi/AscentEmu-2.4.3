@@ -497,6 +497,8 @@ void WorldSession::HandleSaveGuildEmblem(WorldPacket & recv_data)
 	data <<	uint32(ERR_GUILDEMBLEM_SUCCESS);
 	SendPacket(&data);
 
+	_player->ModUnsigned32Value(PLAYER_FIELD_COINAGE, -cost);
+
 	// set in memory and database
 	pGuild->SetTabardInfo(emblemStyle, emblemColor, borderStyle, borderColor, backgroundColor);
 

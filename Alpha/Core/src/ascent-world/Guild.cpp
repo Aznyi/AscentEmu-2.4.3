@@ -356,6 +356,8 @@ void Guild::PromoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 
 	// release lock
 	m_lock.Release();
+
+	SendGuildRoster(NULL);
 }
 
 void Guild::DemoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
@@ -412,6 +414,8 @@ void Guild::DemoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 
 	// release lock
 	m_lock.Release();
+
+	SendGuildRoster(NULL);
 }
 
 bool Guild::LoadFromDB(Field * f)
@@ -689,6 +693,7 @@ void Guild::SetMOTD(const char * szNewMotd, WorldSession * pClient)
 	}
 
 	LogGuildEvent(GUILD_EVENT_MOTD, 1, szNewMotd);
+	SendGuildRoster(NULL);
 }
 
 void Guild::SetGuildInformation(const char * szGuildInformation, WorldSession * pClient)
@@ -715,6 +720,8 @@ void Guild::SetGuildInformation(const char * szGuildInformation, WorldSession * 
 		m_guildInfo= NULL;
 		CharacterDatabase.Execute("UPDATE guilds SET guildInfo = \"\" WHERE guildId = %u", m_guildId);
 	}
+
+	SendGuildRoster(NULL);
 }
 
 // adding a member
@@ -767,6 +774,9 @@ void Guild::AddGuildMember(PlayerInfo * pMember, WorldSession * pClient, int32 F
 	LogGuildEvent(GUILD_EVENT_JOINED, 1, pMember->name);
 	AddGuildLogEntry(GUILD_LOG_EVENT_JOIN, 1, pMember->guid);
 	m_lock.Release();
+
+	SendGuildQuery(NULL);
+	SendGuildRoster(NULL);
 }
 
 void Guild::RemoveGuildMember(PlayerInfo * pMember, WorldSession * pClient)
@@ -828,6 +838,8 @@ void Guild::RemoveGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 		pMember->m_loggedInPlayer->SetGuildRank(0);
 		pMember->m_loggedInPlayer->SetGuildId(0);
 	}
+
+	SendGuildRoster(NULL);
 }
 
 void Guild::SetPublicNote(PlayerInfo * pMember, const char * szNewNote, WorldSession * pClient)
@@ -868,6 +880,7 @@ void Guild::SetPublicNote(PlayerInfo * pMember, const char * szNewNote, WorldSes
 	m_lock.Release();
 
 	Guild::SendGuildCommandResult(pClient, GUILD_PUBLIC_NOTE_CHANGED_S, pMember->name, 0);
+	SendGuildRoster(NULL);
 }
 
 void Guild::SetOfficerNote(PlayerInfo * pMember, const char * szNewNote, WorldSession * pClient)
@@ -908,6 +921,7 @@ void Guild::SetOfficerNote(PlayerInfo * pMember, const char * szNewNote, WorldSe
 	m_lock.Release();
 
 	Guild::SendGuildCommandResult(pClient, GUILD_OFFICER_NOTE_CHANGED_S, pMember->name, 0);
+	SendGuildRoster(NULL);
 }
 
 void Guild::RemoveGuildRank(WorldSession * pClient)
@@ -998,10 +1012,19 @@ void Guild::ChangeGuildMaster(PlayerInfo * pNewMaster, WorldSession * pClient)
 	itr2->second->pRank = newRank;
 	itr2->first->guildRank = newRank;
 	CharacterDatabase.Execute("UPDATE guild_data SET guildRank = 0 WHERE playerid = %u AND guildid = %u", itr->first->guid, m_guildId);
-	CharacterDatabase.Execute("UPDATE guild_data SET guildRank = %u WHERE playerid = %u AND guildid = %u", newRank->iId, itr->first->guid, m_guildId);
+	CharacterDatabase.Execute("UPDATE guild_data SET guildRank = %u WHERE playerid = %u AND guildid = %u", newRank->iId, itr2->first->guid, m_guildId);
 	CharacterDatabase.Execute("UPDATE guilds SET leaderGuid = %u WHERE guildId = %u", itr->first->guid, m_guildId);
 	m_guildLeader = itr->first->guid;
 	m_lock.Release();
+
+	if(itr->first->m_loggedInPlayer)
+		itr->first->m_loggedInPlayer->SetGuildRank(0);
+	if(itr2->first->m_loggedInPlayer)
+		itr2->first->m_loggedInPlayer->SetGuildRank(newRank->iId);
+
+	LogGuildEvent(GUILD_EVENT_LEADER_CHANGED, 2, itr->first->name, itr2->first->name);
+	SendGuildQuery(NULL);
+	SendGuildRoster(NULL);
 }
 
 uint32 Guild::GenerateGuildLogEventId()
@@ -1108,6 +1131,22 @@ void Guild::SendGuildLog(WorldSession * pClient)
 
 void Guild::SendGuildRoster(WorldSession * pClient)
 {
+	if(pClient == NULL)
+	{
+		vector<WorldSession*> sessions;
+		m_lock.Acquire();
+		for(GuildMemberMap::iterator itr = m_members.begin(); itr != m_members.end(); ++itr)
+		{
+			if(itr->first->m_loggedInPlayer != NULL && itr->first->m_loggedInPlayer->GetSession() != NULL)
+				sessions.push_back(itr->first->m_loggedInPlayer->GetSession());
+		}
+		m_lock.Release();
+
+		for(vector<WorldSession*>::iterator itr = sessions.begin(); itr != sessions.end(); ++itr)
+			SendGuildRoster(*itr);
+		return;
+	}
+
 	WorldPacket data(SMSG_GUILD_ROSTER, (60*10) + (100 * m_members.size()) + 100);
 	GuildMemberMap::iterator itr;
 	GuildRank * r;
