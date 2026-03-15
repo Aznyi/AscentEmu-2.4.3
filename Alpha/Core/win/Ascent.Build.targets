@@ -9,13 +9,13 @@
       <AscentGitBranch>detached</AscentGitBranch>
     </PropertyGroup>
 
-    <Exec Command="git rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <Exec Command="git rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitHashLines" />
     </Exec>
-    <Exec Command="git rev-list --count HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <Exec Command="git rev-list --count HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitCountLines" />
     </Exec>
-    <Exec Command="git branch --show-current" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <Exec Command="git branch --show-current" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitBranchLines" />
     </Exec>
 
