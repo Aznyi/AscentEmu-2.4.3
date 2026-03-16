@@ -19,13 +19,20 @@
 
 #include "StdAfx.h"
 
+#define WSG_SPEED_BUFF_RADIUS 4.0f
+
 WarsongGulch::WarsongGulch(MapMgr * mgr, uint32 id, uint32 lgroup, uint32 t) : CBattleground(mgr, id, lgroup, t)
 {
+	for(int i = 0; i < 6; ++i)
+		m_buffs[i] = NULL;
+
 	m_flagHolders[0] = m_flagHolders[1] = 0;
 	
 	/* create the buffs */
 	for(int i = 0; i < 6; ++i)
 		SpawnBuff(i);
+
+	sEventMgr.AddEvent(this, &WarsongGulch::CheckSpeedBuffs, EVENT_BATTLEGROUND_WSG_CHECK_SPEED_BUFFS, 500, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 
 	/* take note: these are swapped around for performance bonus */
 	// warsong flag - horde base
@@ -76,12 +83,6 @@ void WarsongGulch::HookOnAreaTrigger(Player * plr, uint32 id)
 	int32 buffslot = -1;
 	switch(id)
 	{
-	case 3686:	  // Speed
-		buffslot = 0;
-		break;
-	case 3687:	  // Speed (Horde)
-		buffslot = 1;
-		break;
 	case 3706:	  // Restoration
 		buffslot = 2;
 		break;
@@ -96,17 +97,21 @@ void WarsongGulch::HookOnAreaTrigger(Player * plr, uint32 id)
 		break;
 	}
 
+	if(plr->isDead())
+		return;
+
 	if(buffslot >= 0)
 	{
 		if(m_buffs[buffslot] != 0 && m_buffs[buffslot]->IsInWorld())
 		{
-			/* apply the buff */
 			SpellEntry * sp = dbcSpell.LookupEntry(m_buffs[buffslot]->GetInfo()->sound3);
-			Spell * s = new Spell(plr, sp, true, 0);
-			SpellCastTargets targets(plr->GetGUID());
-			s->prepare(&targets);
+			if(sp != NULL)
+			{
+				Spell * s = new Spell(plr, sp, true, 0);
+				SpellCastTargets targets(plr->GetGUID());
+				s->prepare(&targets);
+			}
 
-			/* despawn the gameobject (not delete!) */
 			m_buffs[buffslot]->Despawn(BUFF_RESPAWN_TIME);
 		}
 		return;
@@ -328,6 +333,44 @@ void WarsongGulch::HookOnPlayerKill(Player * plr, Unit * pVictim)
 	}
 }
 
+void WarsongGulch::CheckSpeedBuffs()
+{
+	const float radiusSq = WSG_SPEED_BUFF_RADIUS * WSG_SPEED_BUFF_RADIUS;
+
+	for(int32 buffslot = 0; buffslot < 2; ++buffslot)
+	{
+		GameObject* buff = m_buffs[buffslot];
+		if(buff == NULL || !buff->IsInWorld())
+			continue;
+
+		SpellEntry * sp = dbcSpell.LookupEntry(buff->GetInfo()->sound3);
+		if(sp == NULL)
+			continue;
+
+		for(uint32 team = 0; team < 2; ++team)
+		{
+			for(set<Player*>::iterator itr = m_players[team].begin(); itr != m_players[team].end(); ++itr)
+			{
+				Player* plr = *itr;
+				if(plr == NULL || plr->isDead())
+					continue;
+
+				if(plr->GetDistanceSq(buff) > radiusSq)
+					continue;
+
+				Spell * s = new Spell(plr, sp, true, 0);
+				SpellCastTargets targets(plr->GetGUID());
+				s->prepare(&targets);
+				buff->Despawn(BUFF_RESPAWN_TIME);
+				goto next_buff;
+			}
+		}
+
+next_buff:
+		continue;
+	}
+}
+
 void WarsongGulch::HookOnHK(Player * plr)
 {
 	plr->m_bgScore.HonorableKills++;
@@ -388,10 +431,10 @@ bool WarsongGulch::HookHandleRepop(Player * plr)
 
 void WarsongGulch::SpawnBuff(uint32 x)
 {
-    switch(x)
+	switch(x)
 	{
 	case 0:
-		m_buffs[x] = SpawnGameObject(179871, 489, 1449.9296875f, 1470.70971679688f, 342.634552001953f, -1.64060950279236f, 0, 114, 1);
+		m_buffs[x] = SpawnGameObject(179871, 489, 1449.766724f, 1470.566650f, 342.625000f, -1.64060950279236f, 0, 114, 1);
 		m_buffs[x]->SetFloatValue(GAMEOBJECT_ROTATION_02,0.73135370016098f);
 		m_buffs[x]->SetFloatValue(GAMEOBJECT_ROTATION_03,-0.681998312473297f);
 		m_buffs[x]->SetUInt32Value(GAMEOBJECT_STATE, 1);
@@ -399,7 +442,7 @@ void WarsongGulch::SpawnBuff(uint32 x)
 		m_buffs[x]->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 100);
 		break;
 	case 1:
-		m_buffs[x] = SpawnGameObject(179899, 489, 1005.17071533203f, 1447.94567871094f, 335.903228759766f, 1.64060950279236f, 0, 114, 1);
+		m_buffs[x] = SpawnGameObject(179899, 489, 1005.266724f, 1447.266724f, 335.893005f, 1.64060950279236f, 0, 114, 1);
 		m_buffs[x]->SetFloatValue(GAMEOBJECT_ROTATION_02,0.73135370016098f);
 		m_buffs[x]->SetFloatValue(GAMEOBJECT_ROTATION_03,0.681998372077942f);
 		m_buffs[x]->SetUInt32Value(GAMEOBJECT_STATE, 1);

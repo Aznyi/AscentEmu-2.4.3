@@ -25,6 +25,26 @@ enum AVObjectiveType
 	AV_OBJECTIVE_MINE,
 };
 
+enum AVBannerState
+{
+	AV_BANNER_STATE_NEUTRAL = 0,
+	AV_BANNER_STATE_ALLIANCE_CONTROLLED,
+	AV_BANNER_STATE_HORDE_CONTROLLED,
+	AV_BANNER_STATE_ALLIANCE_ASSAULTING,
+	AV_BANNER_STATE_HORDE_ASSAULTING,
+	AV_BANNER_STATE_DESTROYED,
+};
+
+enum AVNodeState
+{
+	AV_NODE_STATE_NEUTRAL = 0,
+	AV_NODE_STATE_ALLIANCE_CONTROLLED,
+	AV_NODE_STATE_HORDE_CONTROLLED,
+	AV_NODE_STATE_ALLIANCE_CONTESTED,
+	AV_NODE_STATE_HORDE_CONTESTED,
+	AV_NODE_STATE_DESTROYED,
+};
+
 class AlteracValley : public CBattleground
 {
 public:
@@ -43,13 +63,21 @@ public:
 	{
 		AVObjectiveType type;
 		const char* name;
-		uint32 assaultGoEntryAlliance;
-		uint32 assaultGoEntryHorde;
+		uint32 controlledGoEntryAlliance;
+		uint32 controlledGoEntryHorde;
+		uint32 contestedGoEntryAlliance;
+		uint32 contestedGoEntryHorde;
+		uint32 neutralGoEntry;
 		uint32 worldStateAlliance;
 		uint32 worldStateHorde;
-		float x, y, z, o;
+		uint32 worldStateAllianceAssault;
+		uint32 worldStateHordeAssault;
+		uint32 worldStateDestroyed;
+		float bannerX, bannerY, bannerZ, bannerO;
+		float spiritX, spiritY, spiritZ, spiritO;
 		int32 initialOwner; // 0 alliance, 1 horde, -1 neutral
 		uint32 linkedNpcEntry;
+		bool spawnGuards;
 	};
 
 	struct AVObjectiveState
@@ -58,8 +86,14 @@ public:
 		int32 assaultingTeam;
 		uint32 timer;
 		bool destroyed;
+		AVNodeState nodeState;
 		Creature* spiritGuide;
 		Creature* linkedUnit;
+		GameObject* banner;
+		AVBannerState bannerState;
+		vector<GameObject*> visuals;
+		vector<Creature*> allianceGuards;
+		vector<Creature*> hordeGuards;
 	};
 
 	AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t);
@@ -78,12 +112,14 @@ public:
 	void HookOnHK(Player* plr);
 	LocationVector GetStartingCoords(uint32 Team);
 	void OnStart();
+	void OnClose();
 	bool HookSlowLockOpen(GameObject* pGo, Player* pPlayer, Spell* pSpell);
 
 	static CBattleground* Create(MapMgr* m, uint32 i, uint32 l, uint32 t) { return new AlteracValley(m, i, l, t); }
 	const char* GetName() { return "Alterac Valley"; }
 
 private:
+	void Reset();
 	void EventUpdateObjectives();
 	void EventMineTick();
 	void AssaultObjective(Player* pPlayer, uint32 index);
@@ -94,10 +130,31 @@ private:
 	void CheckForEnd();
 	void EndBattleground(uint32 winningTeam);
 	void UpdateBossRoomGuards();
+	void RepopPlayersOfTeam(int32 team, Creature* spiritGuide);
 	Creature* FindLinkedCreature(uint32 entry, float x, float y, float z);
+	GameObject* FindGate(uint32 team);
+	void SetGateOpen(uint32 team, bool open);
+	void InitializeAlteracValleyNodes();
+	void UpdateObjectiveNodeState(uint32 index);
+	GameObject* SpawnObjectiveBanner(uint32 index, AVBannerState state);
+	void UpdateObjectiveBanner(uint32 index);
+	void ClearObjectiveBanner(uint32 index);
+	void CleanupObjectiveBannerObjects(uint32 index);
+	void UpdateObjectiveSpiritGuide(uint32 index);
+	int32 GetObjectiveFromBanner(GameObject* pGo);
+	void RefreshObjectiveVisuals(uint32 index);
+	void SetObjectiveVisualsActive(uint32 index, bool active);
+	void RefreshObjectiveGuards(uint32 index);
+	void CleanupObjectiveDbGuards(uint32 index);
+	void UpdateObjectiveGuards(uint32 index);
+	Creature* SpawnObjectiveGuard(uint32 entry, float x, float y, float z, float o);
+	void CleanupObjectiveDbFireVisuals(uint32 index);
+	void UpdateObjectivePrisoners(uint32 index);
 
-	AVObjectiveState m_objectiveStates[13];
+	AVObjectiveState m_objectiveStates[15];
 	int32 m_reinforcements[2];
 	int32 m_mineOwner[2];
 	bool m_captainDead[2];
+	GameObject* m_gates[2];
+	map<uint32, uint32> m_lastDeathTime;
 };

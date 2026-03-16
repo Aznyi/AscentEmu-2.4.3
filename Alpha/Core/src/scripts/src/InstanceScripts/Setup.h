@@ -7,6 +7,7 @@ void SetupDeadmines(ScriptMgr * mgr);
 void SetupMoltenCore(ScriptMgr * mgr);
 void SetupOnyxiasLair(ScriptMgr * mgr);
 void SetupZulGurub(ScriptMgr * mgr);
+void SetupAlteracValley(ScriptMgr * mgr);
 void SetupBotanica(ScriptMgr * mgr);
 void SetupBlackwingLair(ScriptMgr * mgr);
 void SetupNaxxramas(ScriptMgr * mgr);

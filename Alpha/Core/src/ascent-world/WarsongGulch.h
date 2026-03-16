@@ -43,6 +43,7 @@ public:
 	void HookOnPlayerKill(Player * plr, Unit * pVictim);
 	void HookOnHK(Player * plr);
 	void SpawnBuff(uint32 x);
+	void CheckSpeedBuffs();
 	LocationVector GetStartingCoords(uint32 Team);
 	void DropFlag(Player * plr);
 	void ReturnFlag(uint32 team);

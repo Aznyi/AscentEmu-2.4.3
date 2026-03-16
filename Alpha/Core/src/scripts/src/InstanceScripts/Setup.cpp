@@ -10,6 +10,7 @@ extern "C" SCRIPT_DECL uint32 _exp_get_script_type()
 
 extern "C" SCRIPT_DECL void _exp_script_register(ScriptMgr* mgr)	// Comment any script to disable it
 {
+	SetupAlteracValley(mgr);
     SetupDeadmines(mgr);
     SetupMoltenCore(mgr);
 	SetupZulGurub(mgr);

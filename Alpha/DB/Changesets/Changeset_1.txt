@@ -63,3 +63,74 @@ FROM `gameobject_spawns`
 WHERE `map` = 489
   AND `Entry` IN (179830, 179831, 179871, 179899, 179904, 179906, 179905, 179907, 179916, 179917, 179918, 179919, 179921);
 
+-- Cleanup for Alterac Valley graveyard guard world spawns.
+--
+-- AV now owns graveyard guards in code. The stock AV world data contains
+-- overlapping guard ranks at the
+-- same graveyard positions:
+--   12050 / 12053 -> base guards
+--   13326 / 13328 -> seasoned
+--   13331 / 13332 -> veteran
+--   13422 / 13421 -> champion
+--
+-- Leaving any of these DB rows in place causes pop-in/pop-out visuals when
+-- cells load, because the battleground now spawns its own guard set.
+
+SELECT `id`, `entry`, `map`, `position_x`, `position_y`, `position_z`
+FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (12050, 12053, 13326, 13328, 13331, 13332, 13421, 13422)
+ORDER BY `entry`, `id`;
+
+DELETE FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (12050, 12053, 13326, 13328, 13331, 13332, 13421, 13422);
+
+SELECT COUNT(*) AS `remaining_av_graveyard_guard_spawns`
+FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (12050, 12053, 13326, 13328, 13331, 13332, 13421, 13422);
+
+-- Remove Alterac Valley spirit guides that are already spawned by the
+-- battleground script in AlteracValley.cpp via CBattleground::SpawnSpiritGuide.
+--
+-- Run this against the selected Ascent world database.
+-- Keep other AV creatures; bosses, captains, guards, and linked tower/bunker
+-- NPCs are still expected to come from DB spawns.
+
+SELECT `id`, `entry`, `map`, `position_x`, `position_y`, `position_z`
+FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (13116, 13117)
+ORDER BY `entry`, `id`;
+
+DELETE FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (13116, 13117);
+
+SELECT COUNT(*) AS `remaining_av_script_owned_spirit_guides`
+FROM `creature_spawns`
+WHERE `map` = 30
+  AND `entry` IN (13116, 13117);
+
+
+-- Alterac Valley start gates should spawn closed and be opened by the battleground start event.
+-- gameobject_spawns columns:
+-- id, Entry, map, position_x, position_y, position_z, Facing,
+-- orientation1, orientation2, orientation3, orientation4,
+-- State, Flags, Faction, Scale, stateNpcLink
+
+SELECT `id`, `Entry`, `map`, `position_x`, `position_y`, `position_z`, `State`, `Flags`, `Faction`, `Scale`
+FROM `gameobject_spawns`
+WHERE `id` IN (3000191, 3000192);
+
+UPDATE `gameobject_spawns`
+SET `State` = 1,
+    `Flags` = 32
+WHERE `id` IN (3000191, 3000192)
+  AND `Entry` = 180424
+  AND `map` = 30;
+
+SELECT `id`, `Entry`, `map`, `position_x`, `position_y`, `position_z`, `State`, `Flags`, `Faction`, `Scale`
+FROM `gameobject_spawns`
+WHERE `id` IN (3000191, 3000192);

@@ -208,6 +208,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\InstanceScripts\AlteracValley.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Instance_Deadmines.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_BlackwingLair.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_MoltenCore.cpp" />
