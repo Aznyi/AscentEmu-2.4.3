@@ -24,6 +24,7 @@ LogonCommHandler::LogonCommHandler()
 	idhigh = 1;
 	next_request = 1;
 	pings = !Config.MainConfig.GetBoolDefault("LogonServer", "DisablePings", false);
+	m_stop = false;
 	string logon_pass = Config.MainConfig.GetStringDefault("LogonServer", "RemotePassword", "r3m0t3");
 	
 	// sha1 hash it
@@ -93,6 +94,7 @@ public:
 	void OnShutdown()
 	{
 		running = false;
+		sLogonCommHandler.BeginShutdown();
 #ifdef WIN32
 		SetEvent( hEvent );
 #endif
@@ -112,6 +114,11 @@ public:
 		}
 
 		return true;
+	}
+
+	const char* GetThreadName() const
+	{
+		return "LogonCommWatcherThread";
 	}
 };
 
@@ -136,14 +143,21 @@ void LogonCommHandler::Startup()
 		delete result;
 	}
 
-	ThreadPool.ExecuteTask( new LogonCommWatcherThread() );
+	LogonCommWatcherThread* watcher = new LogonCommWatcherThread();
+	Log.Notice("ThreadPool", "Scheduling LogonCommWatcherThread target=%p", watcher);
+	ThreadPool.ExecuteTask( watcher );
 }
 
 void LogonCommHandler::ConnectAll()
 {
 	Log.Notice("LogonCommClient", "Attempting to connect to logon server...");
 	for(set<LogonServer*>::iterator itr = servers.begin(); itr != servers.end(); ++itr)
+	{
+		if(!IsRunning())
+			return;
+
 		Connect(*itr);
+	}
 }
 
 const string* LogonCommHandler::GetForcedPermissions(string& username)
@@ -157,11 +171,16 @@ const string* LogonCommHandler::GetForcedPermissions(string& username)
 
 void LogonCommHandler::Connect(LogonServer * server)
 {
+	if(!IsRunning())
+		return;
+
 	Log.Notice("LogonCommClient", "Connecting to logonserver on `%s:%u`...", server->Address.c_str(), server->Port );
 	server->RetryTime = (uint32)UNIXTIME + 10;
 	server->Registered = false;
 	LogonCommClientSocket * conn = ConnectToLogon(server->Address, server->Port);
+	mapLock.Acquire();
 	logons[server] = conn;
+	mapLock.Release();
 	if(conn == 0)
 	{
 		Log.Notice("LogonCommClient", "Connection failed. Will try again in 10 seconds.");
@@ -172,11 +191,22 @@ void LogonCommHandler::Connect(LogonServer * server)
 	conn->SendChallenge();
 	while(!conn->authenticated)
 	{
+		if(!IsRunning())
+		{
+			conn->Disconnect();
+			mapLock.Acquire();
+			logons[server] = 0;
+			mapLock.Release();
+			return;
+		}
+
 		if((uint32)UNIXTIME >= tt)
 		{
 			Log.Notice("LogonCommClient", "Authentication timed out.");
 			conn->Disconnect();
+			mapLock.Acquire();
 			logons[server]=NULL;
+			mapLock.Release();
 			return;
 		}
 
@@ -186,7 +216,9 @@ void LogonCommHandler::Connect(LogonServer * server)
 	if(conn->authenticated != 1)
 	{
 		Log.Notice("LogonCommClient","Authentication failed.");
+		mapLock.Acquire();
 		logons[server] = 0;
+		mapLock.Release();
 		conn->Disconnect();
 		return;
 	}
@@ -206,11 +238,22 @@ void LogonCommHandler::Connect(LogonServer * server)
 	// Wait for register ACK
 	while(server->Registered == false)
 	{
+		if(!IsRunning())
+		{
+			conn->Disconnect();
+			mapLock.Acquire();
+			logons[server] = 0;
+			mapLock.Release();
+			return;
+		}
+
 		// Don't wait more than.. like 10 seconds for a registration
 		if((uint32)UNIXTIME >= st)
 		{
 			Log.Notice("LogonCommClient", "Realm registration timed out.");
+			mapLock.Acquire();
 			logons[server] = 0;
+			mapLock.Release();
 			conn->Disconnect();
 			break;
 		}
@@ -221,7 +264,8 @@ void LogonCommHandler::Connect(LogonServer * server)
 		return;
 
 	// Wait for all realms to register
-	Sleep(200);
+	for(uint32 i = 0; i < 4 && IsRunning(); ++i)
+		Sleep(50);
 
 	Log.Notice("LogonCommClient", "Logonserver latency is %ums.", conn->latency);
 }
@@ -242,6 +286,7 @@ void LogonCommHandler::AdditionAck(uint32 ID, uint32 ServID)
 
 void LogonCommHandler::UpdateSockets()
 {
+	vector<LogonServer*> reconnect;
 	mapLock.Acquire();
 
 	map<LogonServer*, LogonCommClientSocket*>::iterator itr = logons.begin();
@@ -281,12 +326,18 @@ void LogonCommHandler::UpdateSockets()
 		{
 			// check retry time
 			if(t >= itr->first->RetryTime)
-			{
-				Connect(itr->first);
-			}
+				reconnect.push_back(itr->first);
 		}
 	}
 	mapLock.Release();
+
+	for(vector<LogonServer*>::iterator it = reconnect.begin(); it != reconnect.end(); ++it)
+	{
+		if(!IsRunning())
+			return;
+
+		Connect(*it);
+	}
 }
 
 void LogonCommHandler::ConnectionDropped(uint32 ID)
@@ -304,6 +355,31 @@ void LogonCommHandler::ConnectionDropped(uint32 ID)
 		}
 	}
 	mapLock.Release();
+}
+
+void LogonCommHandler::BeginShutdown()
+{
+	vector<LogonCommClientSocket*> sockets;
+	mapLock.Acquire();
+	m_stop = true;
+	for(map<LogonServer*, LogonCommClientSocket*>::iterator itr = logons.begin(); itr != logons.end(); ++itr)
+	{
+		if(itr->second != 0)
+			sockets.push_back(itr->second);
+	}
+	mapLock.Release();
+
+	for(vector<LogonCommClientSocket*>::iterator itr = sockets.begin(); itr != sockets.end(); ++itr)
+		(*itr)->Disconnect();
+}
+
+bool LogonCommHandler::IsRunning()
+{
+	bool running;
+	mapLock.Acquire();
+	running = !m_stop;
+	mapLock.Release();
+	return running;
 }
 
 uint32 LogonCommHandler::ClientConnected(string AccountName, WorldSocket * Socket)

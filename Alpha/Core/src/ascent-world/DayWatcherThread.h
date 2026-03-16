@@ -52,6 +52,7 @@ public:
 
 	bool run();
 	void terminate();
+	const char* GetThreadName() const { return "DayWatcherThread"; }
 	void maintenence();
 	void dupe_tm_pointer(tm * returnvalue, tm * mypointer);
 	void load_settings();

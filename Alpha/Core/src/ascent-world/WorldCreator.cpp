@@ -31,6 +31,7 @@ InstanceMgr::InstanceMgr()
 	memset(m_maps, 0, sizeof(Map*)* NUM_MAPS);
 	memset(m_instances, 0, sizeof(InstanceMap*) * NUM_MAPS);
 	memset(m_singleMaps,0, sizeof(MapMgr*) * NUM_MAPS);
+	m_shutdown = false;
 }
 
 void InstanceMgr::Load(TaskList * l)
@@ -102,6 +103,11 @@ InstanceMgr::~InstanceMgr()
 
 void InstanceMgr::Shutdown()
 {
+	if(m_shutdown)
+		return;
+
+	m_shutdown = true;
+
 	uint32 i;
 	InstanceMap::iterator itr;
 	for(i = 0; i < NUM_MAPS; ++i)

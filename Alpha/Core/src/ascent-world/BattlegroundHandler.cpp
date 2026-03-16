@@ -41,7 +41,12 @@ static uint32 GetBattlegroundTypeForBattlemaster(Creature* pCreature)
 
 void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 {
-	CHECK_PACKET_SIZE(recv_data, 9);
+	if(recv_data.size() < 9)
+	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "HandleBattlefieldPortOpcode: short packet size=%u player=%u", (uint32)recv_data.size(), _player ? _player->GetLowGUID() : 0);
+		return;
+	}
 
 	uint16 mapinfo, unk;
 	uint8 action;
@@ -52,6 +57,8 @@ void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 
 	if(action == 0)
 	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "HandleBattlefieldPortOpcode: decline queue/port player=%u bgtype=%u mapinfo=%u", _player->GetLowGUID(), bgtype, mapinfo);
 		BattlegroundManager.RemovePlayerFromQueues(_player);
 	}
 	else
@@ -61,7 +68,16 @@ void WorldSession::HandleBattlefieldPortOpcode(WorldPacket &recv_data)
 		 */
 
 		if(_player->m_pendingBattleground)
+		{
+			if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+				Log.Notice("Battlegrounds", "HandleBattlefieldPortOpcode: accept port player=%u pendingType=%u pendingInstance=%u", _player->GetLowGUID(), _player->m_pendingBattleground->GetType(), _player->m_pendingBattleground->GetId());
 			_player->m_pendingBattleground->PortPlayer(_player);
+		}
+		else
+		{
+			if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+				Log.Notice("Battlegrounds", "HandleBattlefieldPortOpcode: accept port with no pending battleground player=%u bgtype=%u mapinfo=%u queued=%u inBg=%u", _player->GetLowGUID(), bgtype, mapinfo, _player->m_bgIsQueued ? 1 : 0, _player->m_bg ? 1 : 0);
+		}
 	}
 }
 
@@ -87,7 +103,7 @@ void WorldSession::HandleBattlefieldListOpcode(WorldPacket &recv_data)
 	recv_data >> guid;
 
 	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
-		sLog.outDebug("[Battlegrounds] HandleBattlefieldListOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
+		Log.Notice("Battlegrounds", "HandleBattlefieldListOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
 
 	CHECK_INWORLD_RETURN;
 	Creature * pCreature = _player->GetMapMgr()->GetCreature( GET_LOWGUID_PART(guid) );
@@ -115,7 +131,7 @@ void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
 	uint64 guid;
 	recv_data >> guid;
 	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
-		sLog.outDebug("[Battlegrounds] HandleBattleMasterHelloOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
+		Log.Notice("Battlegrounds", "HandleBattleMasterHelloOpcode: player=%u guid=" I64FMT, _player->GetLowGUID(), guid);
 
 	Creature * bm = _player->GetMapMgr()->GetCreature(GET_LOWGUID_PART(guid));
 
@@ -130,6 +146,9 @@ void WorldSession::HandleBattleMasterHelloOpcode(WorldPacket &recv_data)
 
 void WorldSession::HandleLeaveBattlefieldOpcode(WorldPacket &recv_data)
 {
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "HandleLeaveBattlefieldOpcode: player=%u inBg=%u pending=%u queued=%u", _player ? _player->GetLowGUID() : 0, _player && _player->m_bg ? 1 : 0, _player && _player->m_pendingBattleground ? 1 : 0, _player && _player->m_bgIsQueued ? 1 : 0);
+
 	if(_player->m_bg && _player->IsInWorld())
 		_player->m_bg->RemovePlayer(_player, false);
 }
@@ -181,7 +200,15 @@ void WorldSession::HandleBattlegroundPlayerPositionsOpcode(WorldPacket &recv_dat
 
 void WorldSession::HandleBattleMasterJoinOpcode(WorldPacket &recv_data)
 {
-	CHECK_PACKET_SIZE(recv_data, 16);
+	if(recv_data.size() < 12)
+	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "HandleBattleMasterJoinOpcode: short packet size=%u player=%u", (uint32)recv_data.size(), _player ? _player->GetLowGUID() : 0);
+		return;
+	}
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "HandleBattleMasterJoinOpcode: player=%u size=%u", _player->GetLowGUID(), (uint32)recv_data.size());
 
 	CHECK_INWORLD_RETURN
 	if(_player->GetGroup() && _player->GetGroup()->m_isqueued)

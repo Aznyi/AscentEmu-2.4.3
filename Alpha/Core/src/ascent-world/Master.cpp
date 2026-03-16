@@ -335,11 +335,13 @@ bool Master::Run(int argc, char ** argv)
 	sWorld.SetStartTime((uint32)UNIXTIME);
 	
 	WorldRunnable * wr = new WorldRunnable();
+	Log.Notice("ThreadPool", "Scheduling WorldRunnable target=%p", wr);
 	ThreadPool.ExecuteTask(wr);
 
 	_HookSignals();
 
 	ConsoleThread * console = new ConsoleThread();
+	Log.Notice("ThreadPool", "Scheduling ConsoleThread target=%p", console);
 	ThreadPool.ExecuteTask(console);
 
 	uint32 realCurrTime, realPrevTime;
@@ -367,6 +369,7 @@ bool Master::Run(int argc, char ** argv)
 	if( StartConsoleListener() )
 	{
 #ifdef WIN32
+		Log.Notice("ThreadPool", "Scheduling RemoteConsoleListener target=%p", GetConsoleListener());
 		ThreadPool.ExecuteTask( GetConsoleListener() );
 #endif
 		Log.Notice("RemoteConsole", "Now open.");
@@ -412,7 +415,10 @@ bool Master::Run(int argc, char ** argv)
     bool listnersockcreate = ls->IsOpen();
 #ifdef WIN32
 	if( listnersockcreate )
+	{
+		Log.Notice("ThreadPool", "Scheduling WorldListenSocket target=%p", ls);
 		ThreadPool.ExecuteTask(ls);
+	}
 #endif
 	while( !m_stopEvent && listnersockcreate )
 	{
@@ -537,6 +543,8 @@ bool Master::Run(int argc, char ** argv)
 	sSocketMgr.CloseAll();
 
 	bServerShutdown = true;
+	Log.Notice( "InstanceMgr", "Stopping map manager threads..." );
+	sInstanceMgr.Shutdown();
 	ThreadPool.Shutdown();
 
 	sWorld.LogoutPlayers();

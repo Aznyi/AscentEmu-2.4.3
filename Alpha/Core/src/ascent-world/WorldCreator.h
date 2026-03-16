@@ -146,10 +146,13 @@ public:
 
 	// has an instance expired?
 	// can a player join?
-    ASCENT_INLINE bool PlayerOwnsInstance(Instance * pInstance, Player * pPlayer, int32 requestedDifficulty = -1)
+	ASCENT_INLINE bool PlayerOwnsInstance(Instance * pInstance, Player * pPlayer, int32 requestedDifficulty = -1)
 	{
 		if(requestedDifficulty < 0)
 			requestedDifficulty = pPlayer->iInstanceType;
+
+		if(pInstance->m_isBattleground)
+			return true;
 
 		if(pInstance->m_mapInfo->type == INSTANCE_MULTIMODE && pInstance->m_difficulty != (uint32)requestedDifficulty)
 			return false;
@@ -204,6 +207,7 @@ private:
 	bool _DeleteInstance(Instance * in, bool ForcePlayersOut);
 
 	uint32 m_InstanceHigh;
+	bool m_shutdown;
 
 	Mutex m_mapLock;
 	Map * m_maps[NUM_MAPS];

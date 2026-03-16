@@ -29,6 +29,7 @@ class WorldRunnable : public CThread
 public:
 	WorldRunnable();
 	bool run();
+	const char* GetThreadName() const { return "WorldRunnable"; }
 };
 
 #endif

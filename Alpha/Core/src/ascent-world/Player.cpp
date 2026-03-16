@@ -3214,6 +3214,9 @@ void Player::AddToWorld()
 
 	if(m_session)
 		m_session->SetInstance(m_mapMgr->GetInstanceID());
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "Player::AddToWorld complete: player=%u map=%u instance=%u bg=%u pending=%u mapMgrBg=%u", GetLowGUID(), GetMapId(), GetInstanceID(), m_bg ? 1 : 0, m_pendingBattleground ? 1 : 0, (m_mapMgr && m_mapMgr->m_battleground) ? 1 : 0);
 }
 
 void Player::AddToWorld(MapMgr * pMapMgr)
@@ -3365,7 +3368,9 @@ void Player::RemoveFromWorld()
 	load_health = m_uint32Values[UNIT_FIELD_HEALTH];
 	load_mana = m_uint32Values[UNIT_FIELD_POWER1];
 
-	if(m_bg)
+	// Preserve battleground membership during world/map transfers. The
+	// battleground code will explicitly remove the player on real exits.
+	if(m_bg && !m_changingMaps)
 	{
 		m_bg->RemovePlayer(this, true);
 		m_bg = NULL;
@@ -7667,6 +7672,23 @@ void Player::SafeTeleport(MapMgr * mgr, const LocationVector & vec)
 	if( mgr ==  NULL )
 	   return;
 
+	// Cross-map teleports must detach any stale transporter state first.
+	// Otherwise HandleMoveWorldportAck can "recover" back onto the old
+	// transporter map and undo the worldport we just sent.
+	if(m_CurrentTransporter || m_TransporterGUID)
+	{
+		if(m_CurrentTransporter)
+			m_CurrentTransporter->RemovePlayer(this);
+
+		m_CurrentTransporter = NULL;
+		m_TransporterGUID = 0;
+		m_TransporterX = 0.0f;
+		m_TransporterY = 0.0f;
+		m_TransporterZ = 0.0f;
+		m_TransporterO = 0.0f;
+		m_TransporterUnk = 0.0f;
+	}
+
 	if(flying_aura && mgr->GetMapId()!=530) {
 		RemoveAura(flying_aura);
 		flying_aura=0;
@@ -7674,6 +7696,9 @@ void Player::SafeTeleport(MapMgr * mgr, const LocationVector & vec)
 
 	if(IsInWorld())
 		RemoveFromWorld();
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "Player::SafeTeleport(MapMgr): player=%u fromMap=%u fromInstance=%u toMap=%u toInstance=%u x=%.3f y=%.3f z=%.3f o=%.3f bg=%u pending=%u", GetLowGUID(), GetMapId(), GetInstanceID(), mgr->GetMapId(), mgr->GetInstanceID(), vec.x, vec.y, vec.z, vec.o, m_bg ? 1 : 0, m_pendingBattleground ? 1 : 0);
 
 	m_mapId = mgr->GetMapId();
 	m_instanceId = mgr->GetInstanceID();
@@ -8162,6 +8187,23 @@ void Player::OnWorldPortAck()
 {
 	//only rezz if player is porting to a instance portal
 	MapInfo *pMapinfo = WorldMapInfoStorage.LookupEntry(GetMapId());
+
+	if(m_TransporterGUID)
+	{
+		Transporter * pTrans = objmgr.GetTransporter(GUID_LOPART(m_TransporterGUID));
+		if(pTrans && !m_lockTransportVariables)
+		{
+			pTrans->RemovePlayer(this);
+			m_CurrentTransporter = NULL;
+			m_TransporterGUID = 0;
+			m_TransporterX = 0.0f;
+			m_TransporterY = 0.0f;
+			m_TransporterZ = 0.0f;
+			m_TransporterO = 0.0f;
+			m_TransporterUnk = 0.0f;
+		}
+	}
+
 	if(isDead())
 	{
 		if(pMapinfo)

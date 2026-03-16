@@ -27,6 +27,7 @@ public:
 	virtual ~ThreadBase() {}
 	virtual bool run() = 0;
 	virtual void OnShutdown() {}
+	virtual const char* GetThreadName() const { return "ThreadBase"; }
 #ifdef WIN32
 	HANDLE THREAD_HANDLE;
 #else

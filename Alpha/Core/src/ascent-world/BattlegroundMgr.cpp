@@ -52,7 +52,8 @@ static void BattlemasterListDebugHexdump(WorldPacket& data)
 			hex << ' ';
 	}
 
-	sLog.outDebug("[Battlegrounds] SMSG_BATTLEFIELD_LIST len=%u first=%u bytes: %s", (uint32)totalLen, (uint32)dumpLen, hex.str().c_str());
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "SMSG_BATTLEFIELD_LIST len=%u first=%u bytes: %s", (uint32)totalLen, (uint32)dumpLen, hex.str().c_str());
 }
 
 static const char* GetBattlegroundTypeName(uint32 type)
@@ -125,17 +126,14 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 	uint32 Count = 0;
 	WorldPacket data(SMSG_BATTLEFIELD_LIST, 200);
 
-	// TBC 2.4.3 SMSG_BATTLEFIELD_LIST includes a battlemaster-context byte
-	// before the battleground type and a trailing holiday-weekend flag.
-	data << battlemasterGuid;
-	data << uint8(0);
+	data << m_session->GetPlayer()->GetGUID();
 	data << uint32(BattlegroundType);
-	data << uint8(0);
+	data << uint8(2);
 	const size_t countPos = data.wpos();
 	data << uint32(0);
 
 	if(BattlemasterListDebugEnabled())
-		sLog.outDebug("[Battlegrounds] BG list: type=%u bmGuid=" I64FMT " bmEntry=%u levelGroup=%u", BattlegroundType, battlemasterGuid,
+		Log.Notice("Battlegrounds", "BG list: type=%u bmGuid=" I64FMT " bmEntry=%u levelGroup=%u", BattlegroundType, battlemasterGuid,
 			battlemasterEntry, LevelGroup);
 
 	if(BattlegroundType != BATTLEGROUND_ARENA_2V2 && BattlegroundType != BATTLEGROUND_ARENA_3V3 && BattlegroundType != BATTLEGROUND_ARENA_5V5)
@@ -148,10 +146,9 @@ void CBattlegroundManager::HandleBattlegroundListPacket(WorldSession * m_session
 		 */
 	}
 	data.put<uint32>(countPos, Count);
-	data << uint8(0);
 
 	if(BattlemasterListDebugEnabled())
-		sLog.outDebug("[Battlegrounds] BG list count=%u", Count);
+		Log.Notice("Battlegrounds", "BG list count=%u", Count);
 	BattlemasterListDebugHexdump(data);
 	m_session->SendPacket(&data);
 }
@@ -163,14 +160,19 @@ void CBattlegroundManager::HandleBattlegroundJoin(WorldSession * m_session, Worl
 	uint32 lgroup = GetLevelGrouping(m_session->GetPlayer()->getLevel());
 	uint32 bgtype;
 	uint32 instance;
+	const bool debugAllowSinglePlayerStart = Config.MainConfig.GetBoolDefault("Battlegrounds", "DebugAllowSinglePlayerStart", false);
 
 	pck >> guid >> bgtype >> instance;
 
 	if ( ! guid )
 		return; //crash fix. /script JoinBattlefield(0,1); ;s
 
-	if(bgtype >= BATTLEGROUND_NUM_TYPES)
-		return;      // cheater!
+	if(bgtype >= BATTLEGROUND_NUM_TYPES || !bgtype)
+	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "HandleBattlegroundJoin: invalid bgtype=%u size=%u player=%u", bgtype, (uint32)pck.size(), m_session->GetPlayer() ? m_session->GetPlayer()->GetLowGUID() : 0);
+		return;
+	}
 
 	/* Check the instance id */
 	if(instance)
@@ -211,6 +213,14 @@ void CBattlegroundManager::HandleBattlegroundJoin(WorldSession * m_session, Worl
 
 	m_queueLock.Release();
 
+	if(debugAllowSinglePlayerStart &&
+		bgtype < BATTLEGROUND_ARENA_2V2)
+	{
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "Triggering immediate queue update for debug solo-start: player=%u bgtype=%u", m_session->GetPlayer()->GetLowGUID(), bgtype);
+		EventQueueUpdate();
+	}
+
 	/* We will get updated next few seconds =) */
 }
 
@@ -239,6 +249,7 @@ void CBattlegroundManager::EventQueueUpdate()
 	map<uint32, CBattleground*>::iterator iitr;
 	Arena * arena;
 	int32 team;
+	const bool debugAllowSinglePlayerStart = Config.MainConfig.GetBoolDefault("Battlegrounds", "DebugAllowSinglePlayerStart", false);
 	m_queueLock.Acquire();
 	m_instanceLock.Acquire();
 
@@ -360,18 +371,22 @@ void CBattlegroundManager::EventQueueUpdate()
 			}
 			else
 			{
-#ifdef ONLY_ONE_PERSON_REQUIRED_TO_JOIN_DEBUG
-				if(tempPlayerVec[0].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG ||
-					tempPlayerVec[1].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG)
-#else
-				if(tempPlayerVec[0].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG &&
-					tempPlayerVec[1].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG)
-#endif
+				if(debugAllowSinglePlayerStart && BattlemasterListDebugEnabled())
+					Log.Notice("Battlegrounds", "Solo-start check: bgType=%u levelGroup=%u queueA=%u queueH=%u", i, j, (uint32)tempPlayerVec[0].size(), (uint32)tempPlayerVec[1].size());
+
+				if((debugAllowSinglePlayerStart &&
+					(tempPlayerVec[0].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG ||
+					tempPlayerVec[1].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG)) ||
+					(tempPlayerVec[0].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG &&
+					tempPlayerVec[1].size() >= MINIMUM_PLAYERS_ON_EACH_SIDE_FOR_BG))
 				{
 					if(CanCreateInstance(i,j))
 					{
 						bg = CreateInstance(i,j);
 						ASSERT(bg);
+
+						if(BattlemasterListDebugEnabled())
+							Log.Notice("Battlegrounds", "Solo-start instance created: bgType=%u levelGroup=%u instance=%u", i, j, bg ? bg->GetId() : 0);
 
 						// push as many as possible in
 						for(k = 0; k < 2; ++k)
@@ -381,10 +396,17 @@ void CBattlegroundManager::EventQueueUpdate()
 								plr = *tempPlayerVec[k].begin();
 								tempPlayerVec[k].pop_front();
 								plr->m_bgTeam=k;
+
+								if(BattlemasterListDebugEnabled())
+									Log.Notice("Battlegrounds", "Solo-start add pending player=%u assignedTeam=%u bgType=%u instance=%u", plr->GetLowGUID(), k, i, bg->GetId());
 								bg->AddPlayer(plr, k);
 								ErasePlayerFromList(plr->GetLowGUID(), &m_queuedPlayers[i][j]);
 							}
 						}
+					}
+					else if(BattlemasterListDebugEnabled())
+					{
+						Log.Notice("Battlegrounds", "Solo-start blocked by CanCreateInstance: bgType=%u levelGroup=%u", i, j);
 					}
 				}
 			}
@@ -763,6 +785,8 @@ void CBattleground::AddPlayer(Player * plr, uint32 team)
 
 	/* This is called when the player is added, not when they port. So, they're essentially still queued, but not inside the bg yet */
 	m_pendPlayers[team].insert(plr->GetLowGUID());
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "AddPlayer pending invite: player=%u team=%u bgType=%u instance=%u map=%u", plr->GetLowGUID(), team, m_type, m_id, m_mapMgr->GetMapId());
 
 	/* Send a packet telling them that they can enter */
 	BattlegroundManager.SendBattlefieldStatus(plr, 2, m_type, m_id, 120000, m_mapMgr->GetMapId(),Rated());      // You will be removed from the queue in 2 minutes.
@@ -804,6 +828,9 @@ void CBattleground::OnPlayerPushed(Player * plr)
 void CBattleground::PortPlayer(Player * plr, bool skip_teleport /* = false*/)
 {
 	m_mainLock.Acquire();
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "PortPlayer begin: player=%u bgType=%u instance=%u team=%u ended=%u skipTeleport=%u", plr->GetLowGUID(), m_type, m_id, plr->m_bgTeam, m_ended ? 1 : 0, skip_teleport ? 1 : 0);
+
 	if(m_ended)
 	{
 		sChatHandler.SystemMessage(plr->GetSession(), "You cannot join this battleground as it has already ended.");
@@ -877,6 +904,9 @@ void CBattleground::PortPlayer(Player * plr, bool skip_teleport /* = false*/)
 		plr->SafeTeleport(m_mapMgr,GetStartingCoords(plr->m_bgTeam));
 		BattlegroundManager.SendBattlefieldStatus(plr, 3, m_type, m_id, (uint32)UNIXTIME - m_startTime, m_mapMgr->GetMapId(),Rated());   // Elapsed time is the last argument
 	}
+
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "PortPlayer complete: player=%u bgType=%u instance=%u team=%u map=%u playersA=%u playersH=%u", plr->GetLowGUID(), m_type, m_id, plr->m_bgTeam, m_mapMgr->GetMapId(), (uint32)m_players[0].size(), (uint32)m_players[1].size());
 
 	m_mainLock.Release();
 }
@@ -1101,7 +1131,7 @@ void CBattlegroundManager::SendBattlefieldStatus(Player * plr, uint32 Status, ui
 			data << Type;
 			data << uint16(0x1F90);
 			data << InstanceID;
-			data << uint8(plr->m_bgTeam);
+			data << uint8(0);
 		}
 
 		data << Status;
@@ -1128,6 +1158,9 @@ void CBattlegroundManager::SendBattlefieldStatus(Player * plr, uint32 Status, ui
 
 void CBattleground::RemovePlayer(Player * plr, bool logout)
 {
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "RemovePlayer: player=%u bgType=%u instance=%u team=%u logout=%u map=%u playersA=%u playersH=%u", plr->GetLowGUID(), m_type, m_id, plr->m_bgTeam, logout ? 1 : 0, m_mapMgr ? m_mapMgr->GetMapId() : 0, (uint32)m_players[0].size(), (uint32)m_players[1].size());
+
 	WorldPacket data(SMSG_BATTLEGROUND_PLAYER_LEFT, 30);
 	data << plr->GetGUID();
 	if ( plr->m_isGmInvisible == false )

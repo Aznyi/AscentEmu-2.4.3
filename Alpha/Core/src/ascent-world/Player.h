@@ -2004,6 +2004,7 @@ public:
 
 	void OnShutdown() { running = false; }
 	bool run();
+	const char* GetThreadName() const { return "MovementCompressor"; }
 };
 
 extern CMovementCompressorThread * MovementCompressor;

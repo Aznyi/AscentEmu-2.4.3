@@ -70,6 +70,7 @@ class LogonCommHandler : public Singleton<LogonCommHandler>
 	Mutex mapLock;
 	Mutex pendingLock;
 	bool pings;
+	bool m_stop;
 	uint32 _realmType;
 
 public:
@@ -88,6 +89,8 @@ public:
 	void UpdateSockets();
 	void Connect(LogonServer * server);
 	void ConnectAll();
+	void BeginShutdown();
+	bool IsRunning();
 	//void LogonDatabaseSQLExecute(const char* str, ...);
 	//void LogonDatabaseReloadAccounts();
 

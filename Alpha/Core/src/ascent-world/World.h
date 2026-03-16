@@ -267,6 +267,7 @@ public:
 	~CharacterLoaderThread();
 	void OnShutdown();
 	bool run();
+	const char* GetThreadName() const { return "CharacterLoaderThread"; }
 };
 
 class TaskList

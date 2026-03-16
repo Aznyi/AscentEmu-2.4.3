@@ -65,10 +65,28 @@ public:
 	{
 		while(m_opened)
 		{
-			//aSocket = accept(m_socket, (sockaddr*)&m_tempAddress, (socklen_t*)&len);
+			fd_set read_set;
+			TIMEVAL timeout;
+			FD_ZERO(&read_set);
+			FD_SET(m_socket, &read_set);
+			timeout.tv_sec = 1;
+			timeout.tv_usec = 0;
+
+			int sel = select(0, &read_set, NULL, NULL, &timeout);
+			if(!m_opened)
+				break;
+
+			if(sel <= 0)
+				continue;
+
 			aSocket = WSAAccept(m_socket, (sockaddr*)&m_tempAddress, (socklen_t*)&len, NULL, NULL);
 			if(aSocket == INVALID_SOCKET)
-				continue;		// shouldn't happen, we are blocking.
+			{
+				if(!m_opened)
+					break;
+
+				continue;
+			}
 
 			socket = new T(aSocket);
 			socket->SetCompletionPort(m_cp);
@@ -91,10 +109,14 @@ public:
 		m_opened = false;
 
 		if(mo)
+		{
+			shutdown(m_socket, SD_BOTH);
 			SocketOps::CloseSocket(m_socket);
+		}
 	}
 
 	ASCENT_INLINE bool IsOpen() { return m_opened; }
+	const char* GetThreadName() const { return "ListenSocket"; }
 
 private:
 	SOCKET m_socket;

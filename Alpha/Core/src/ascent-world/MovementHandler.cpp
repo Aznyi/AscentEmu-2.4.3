@@ -85,6 +85,9 @@ ASCENT_INLINE uint32 mTimeStamp()
 
 void WorldSession::HandleMoveWorldportAckOpcode( WorldPacket & recv_data )
 {
+	if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+		Log.Notice("Battlegrounds", "HandleMoveWorldportAckOpcode: player=%u map=%u instance=%u inWorld=%u bg=%u pending=%u status=%u", _player ? _player->GetLowGUID() : 0, _player ? _player->GetMapId() : 0, _player ? _player->GetInstanceID() : 0, (_player && _player->IsInWorld()) ? 1 : 0, (_player && _player->m_bg) ? 1 : 0, (_player && _player->m_pendingBattleground) ? 1 : 0, _player ? _player->GetPlayerStatus() : 0);
+
 	GetPlayer()->SetPlayerStatus(NONE);
 	if(_player->IsInWorld())
 	{
@@ -92,7 +95,30 @@ void WorldSession::HandleMoveWorldportAckOpcode( WorldPacket & recv_data )
 		return;
 	}
 	sLog.outDebug( "WORLD: got MSG_MOVE_WORLDPORT_ACK." );
-	
+
+	// Battleground worldports are authoritative. Once the client acks a
+	// battleground transfer, bind the player into world immediately instead
+	// of letting generic transporter recovery send a second SMSG_NEW_WORLD
+	// back to the old city map.
+	if(_player->m_bg)
+	{
+		if(_player->m_CurrentTransporter)
+			_player->m_CurrentTransporter->RemovePlayer(_player);
+
+		_player->m_CurrentTransporter = NULL;
+		_player->m_TransporterGUID = 0;
+		_player->m_TransporterX = 0.0f;
+		_player->m_TransporterY = 0.0f;
+		_player->m_TransporterZ = 0.0f;
+		_player->m_TransporterO = 0.0f;
+		_player->m_TransporterUnk = 0.0f;
+		_player->m_TeleportState = 2;
+		if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			Log.Notice("Battlegrounds", "HandleMoveWorldportAckOpcode: forcing battleground AddToWorld player=%u map=%u instance=%u bgType=%u bgInstance=%u", _player->GetLowGUID(), _player->GetMapId(), _player->GetInstanceID(), _player->m_bg->GetType(), _player->m_bg->GetId());
+		_player->AddToWorld();
+		return;
+	}
+
 	if(_player->m_CurrentTransporter && _player->GetMapId() != _player->m_CurrentTransporter->GetMapId())
 	{
 		/* wow, our pc must really suck. */

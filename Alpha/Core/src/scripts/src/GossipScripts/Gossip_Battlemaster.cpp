@@ -37,7 +37,8 @@ public:
 		if(pObject->GetTypeId()!=TYPEID_UNIT)
 			return;
 
-        plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 2);  // WSG = 2
+		Log.Notice("Battlegrounds", "GossipSelectOption WSG battlemaster entry=%u player=%s", ((Creature*)pObject)->GetEntry(), plr->GetName());
+        plr->GetSession()->SendBattlegroundList(((Creature*)pObject), BATTLEGROUND_WARSUNG_GULCH);
     }
 
     void Destroy()
@@ -79,10 +80,11 @@ public:
     void GossipSelectOption(Object* pObject, Player * plr, uint32 Id, uint32 IntId, const char * Code)
     {
 		// Send battleground list.
-		if(pObject->GetTypeId()!=TYPEID_UNIT)
-			return;
+	if(pObject->GetTypeId()!=TYPEID_UNIT)
+		return;
 
-		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 3);  // WSG = 2
+		Log.Notice("Battlegrounds", "GossipSelectOption AB battlemaster entry=%u player=%s", ((Creature*)pObject)->GetEntry(), plr->GetName());
+		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), BATTLEGROUND_ARATHI_BASIN);
     }
 
     void Destroy()
@@ -124,10 +126,11 @@ public:
     void GossipSelectOption(Object* pObject, Player * plr, uint32 Id, uint32 IntId, const char * Code)
     {
 		// Send battleground list.
-		if(pObject->GetTypeId()!=TYPEID_UNIT)
-			return;
+	if(pObject->GetTypeId()!=TYPEID_UNIT)
+		return;
 
-		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), 0);  // WSG = 2
+		Log.Notice("Battlegrounds", "GossipSelectOption AV battlemaster entry=%u player=%s", ((Creature*)pObject)->GetEntry(), plr->GetName());
+		plr->GetSession()->SendBattlegroundList(((Creature*)pObject), BATTLEGROUND_ALTERAC_VALLEY);
     }
 
     void Destroy()

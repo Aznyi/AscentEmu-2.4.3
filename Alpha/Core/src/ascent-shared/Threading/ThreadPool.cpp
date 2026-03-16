@@ -237,7 +237,25 @@ void CThreadPool::Shutdown()
 		_mutex.Acquire();
 		if(m_activeThreads.size() || m_freeThreads.size())
 		{
-			Log.Debug("ThreadPool", "%u threads remaining...",m_activeThreads.size() + m_freeThreads.size() );
+			Log.Debug("ThreadPool", "%u threads remaining... (%u active, %u free)", m_activeThreads.size() + m_freeThreads.size(), m_activeThreads.size(), m_freeThreads.size());
+			for(ThreadSet::iterator itr = m_activeThreads.begin(); itr != m_activeThreads.end(); ++itr)
+			{
+				Thread* t = *itr;
+#ifdef WIN32
+				Log.Debug("ThreadPool", "Active thread %u target=0x%p name=%s deleteAfterExit=%u", t->ControlInterface.GetId(), t->ExecutionTarget, t->ExecutionTarget ? t->ExecutionTarget->GetThreadName() : "<null>", t->DeleteAfterExit ? 1 : 0);
+#else
+				Log.Debug("ThreadPool", "Active thread %u target=%p name=%s deleteAfterExit=%u", t->ControlInterface.GetId(), t->ExecutionTarget, t->ExecutionTarget ? t->ExecutionTarget->GetThreadName() : "<null>", t->DeleteAfterExit ? 1 : 0);
+#endif
+			}
+			for(ThreadSet::iterator itr = m_freeThreads.begin(); itr != m_freeThreads.end(); ++itr)
+			{
+				Thread* t = *itr;
+#ifdef WIN32
+				Log.Debug("ThreadPool", "Free thread %u target=0x%p name=%s deleteAfterExit=%u", t->ControlInterface.GetId(), t->ExecutionTarget, t->ExecutionTarget ? t->ExecutionTarget->GetThreadName() : "<null>", t->DeleteAfterExit ? 1 : 0);
+#else
+				Log.Debug("ThreadPool", "Free thread %u target=%p name=%s deleteAfterExit=%u", t->ControlInterface.GetId(), t->ExecutionTarget, t->ExecutionTarget ? t->ExecutionTarget->GetThreadName() : "<null>", t->DeleteAfterExit ? 1 : 0);
+#endif
+			}
 			_mutex.Release();
 			Sleep(1000);
 			continue;

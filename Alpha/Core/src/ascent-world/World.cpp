@@ -770,12 +770,16 @@ bool World::SetInitialWorldSettings()
 	new CBattlegroundManager;
 
 	dw = new DayWatcherThread();
+	Log.Notice("ThreadPool", "Scheduling DayWatcherThread target=%p", dw);
 	ThreadPool.ExecuteTask( dw );
 
-	ThreadPool.ExecuteTask( new CharacterLoaderThread() );
+	CharacterLoaderThread* clt = new CharacterLoaderThread();
+	Log.Notice("ThreadPool", "Scheduling CharacterLoaderThread target=%p", clt);
+	ThreadPool.ExecuteTask( clt );
 
 #ifdef ENABLE_COMPRESSED_MOVEMENT
 	MovementCompressor = new CMovementCompressorThread();
+	Log.Notice("ThreadPool", "Scheduling MovementCompressor target=%p", MovementCompressor);
 	ThreadPool.ExecuteTask( MovementCompressor );
 #endif
 

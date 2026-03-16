@@ -53,6 +53,7 @@ class SocketWorkerThread : public ThreadBase
 {
 public:
 	bool run();
+	const char* GetThreadName() const { return "SocketWorkerThread"; }
 };
 
 void SERVER_DECL HandleReadComplete(Socket * s, uint32 len);

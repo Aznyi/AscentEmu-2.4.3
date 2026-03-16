@@ -137,13 +137,32 @@ int WorldSession::Update(uint32 InstanceID)
 		else
 		{
 			Handler = &WorldPacketHandlers[packet->GetOpcode()];
+			if(Config.MainConfig.GetBoolDefault("Battlegrounds", "BattlemasterListDebug", false))
+			{
+				const uint16 opcode = packet->GetOpcode();
+				if(opcode != MSG_MOVE_HEARTBEAT &&
+					opcode != MSG_MOVE_SET_FACING &&
+					opcode != MSG_MOVE_START_FORWARD &&
+					opcode != MSG_MOVE_STOP &&
+					opcode != MSG_MOVE_START_TURN_LEFT &&
+					opcode != MSG_MOVE_START_TURN_RIGHT &&
+					opcode != MSG_MOVE_STOP_TURN &&
+					opcode != CMSG_SET_SELECTION)
+				{
+					Log.Notice("Battlegrounds", "Dispatch opcode=%s (0x%.4X) size=%u player=%s",
+						LookupName(opcode, g_worldOpcodeNames), opcode, (uint32)packet->size(),
+						_player ? _player->GetName() : "<nologin>");
+				}
+			}
 			if(Handler->status == STATUS_LOGGEDIN && !_player && Handler->handler != 0)
 			{
 				// The client may emit certain in-world opcodes during the world->charselect transition.
 				// Ignore the known harmless ones until the player object is attached.
 				if(packet->GetOpcode() != CMSG_CANCEL_TRADE &&
 					packet->GetOpcode() != CMSG_SET_SELECTION &&
-					packet->GetOpcode() != CMSG_OPT_OUT_OF_LOOT)
+					packet->GetOpcode() != CMSG_OPT_OUT_OF_LOOT &&
+					packet->GetOpcode() != CMSG_GET_CHANNEL_MEMBER_COUNT &&
+					packet->GetOpcode() != CMSG_QUESTGIVER_STATUS_MULTIPLE_QUERY)
 				{
 					sLog.outError("[Session] Received unexpected/wrong state packet with opcode %s (0x%.4X)",
 						LookupName(packet->GetOpcode(), g_worldOpcodeNames), packet->GetOpcode());

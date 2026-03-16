@@ -30,6 +30,7 @@ protected:
 public:
 	bool run();
 	void terminate();
+	const char* GetThreadName() const { return "ConsoleThread"; }
 };
 
 #endif
