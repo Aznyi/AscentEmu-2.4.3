@@ -140,3 +140,36 @@ DELETE FROM creature_spawns WHERE id = 3002000 AND entry = 22515 AND map = 30;
 
 -- Stray spawn of Wing Commander Mulverick
 DELETE FROM creature_spawns WHERE id = 3000632;
+
+-- Purge Mine spawns in AlteracValley allow the core to handle it
+-- Review counts before delete
+SELECT COUNT(*) AS irondeep_rows
+FROM creature_spawns
+WHERE map = 30
+  AND entry IN (10987,11600,11602,11657,13078,13079,13080,13081,13098,13099,13396,13397)
+  AND ((position_x - 880.0) * (position_x - 880.0)
+     + (position_y - (-400.0)) * (position_y - (-400.0))
+     + (position_z - 58.0) * (position_z - 58.0)) <= (150.0 * 150.0);
+
+SELECT COUNT(*) AS coldtooth_rows
+FROM creature_spawns
+WHERE map = 30
+  AND entry IN (11603,11604,11605,11677,13086,13088,13096,13097,13316,13317)
+  AND ((position_x - (-862.0)) * (position_x - (-862.0))
+     + (position_y - (-82.0)) * (position_y - (-82.0))
+     + (position_z - 68.0) * (position_z - 68.0)) <= (150.0 * 150.0);
+
+-- Delete only mine-state creatures inside each mine radius
+DELETE FROM creature_spawns
+WHERE map = 30
+  AND entry IN (10987,11600,11602,11657,13078,13079,13080,13081,13098,13099,13396,13397)
+  AND ((position_x - 880.0) * (position_x - 880.0)
+     + (position_y - (-400.0)) * (position_y - (-400.0))
+     + (position_z - 58.0) * (position_z - 58.0)) <= (150.0 * 150.0);
+
+DELETE FROM creature_spawns
+WHERE map = 30
+  AND entry IN (11603,11604,11605,11677,13086,13088,13096,13097,13316,13317)
+  AND ((position_x - (-862.0)) * (position_x - (-862.0))
+     + (position_y - (-82.0)) * (position_y - (-82.0))
+     + (position_z - 68.0) * (position_z - 68.0)) <= (150.0 * 150.0);

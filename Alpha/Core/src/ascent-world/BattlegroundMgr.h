@@ -27,6 +27,7 @@ class MapMgr;
 class Player;
 class Map;
 class Group;
+class Corpse;
 
 enum BattleGroundTypes
 {
@@ -282,6 +283,10 @@ public:
 	/* Used when a player kills a unit/player */
 	virtual void HookOnPlayerKill(Player * plr, Unit * pVictim) = 0;
 	virtual void HookOnHK(Player * plr) = 0;
+
+	/* Player-corpse loot support for battleground quest items */
+	virtual bool SupportsPlayerLoot() { return false; }
+	virtual void HookGenerateLoot(Player* plr, Corpse* pCorpse) { }
 
 	/* On Area Trigger */
 	virtual void HookOnAreaTrigger(Player * plr, uint32 id) = 0;

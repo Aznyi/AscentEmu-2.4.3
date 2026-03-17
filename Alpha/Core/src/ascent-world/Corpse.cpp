@@ -106,7 +106,19 @@ void Corpse::Despawn()
 
 void Corpse::generateLoot()
 {
-	loot.gold = rand() % 150 + 50; // between 50c and 1.5s, need to fix this!
+	loot.items.clear();
+	loot.gold = 0;
+
+	Player* owner = objmgr.GetPlayer(GetUInt32Value(CORPSE_FIELD_OWNER));
+	if(owner != NULL && owner->m_bg != NULL && owner->m_bg->SupportsPlayerLoot())
+	{
+		owner->m_bg->HookGenerateLoot(owner, this);
+		return;
+	}
+
+	// Default non-battleground corpse loot behavior.
+	// Keep the old fallback for normal cases.
+	loot.gold = rand() % 150 + 50; // between 50c and 1.5s
 }
 
 void Corpse::SpawnBones()

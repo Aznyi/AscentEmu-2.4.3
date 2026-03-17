@@ -22,6 +22,7 @@
 #define AV_OBJECTIVE_COUNT 15
 #define EVENT_AV_OBJECTIVES_UPDATE 9900
 #define EVENT_AV_MINE_TICK 9901
+#define EVENT_AV_MINE_RESPAWN 9902
 
 #define AV_WS_ALLIANCE_SCORE 3127
 #define AV_WS_HORDE_SCORE 3128
@@ -53,6 +54,17 @@
 #define AV_NPC_BALINDA 11949
 #define AV_NPC_GALVANGAR 11947
 
+ // Faction here is based on the corpse owner's team:
+ // 0 = Alliance corpse drops Stormpike items, 1 = Horde corpse drops Frostwolf items, -1 = both.
+struct AVLoot
+{
+	uint32 ItemId;
+	int8 Faction;
+	float Chance;
+	uint32 MinCount;
+	uint32 MaxCount;
+};
+
 struct AVMineTemplate
 {
 	const char* name;
@@ -67,8 +79,29 @@ struct AVMineTemplate
 	uint32 allianceEntryCount;
 	const uint32* hordeEntries;
 	uint32 hordeEntryCount;
-	uint32 worldStateOwner;
+	uint32 worldStateAlliance;
+	uint32 worldStateHorde;
+	uint32 worldStateNeutral;
 };
+
+static const AVLoot g_avLoot[] =
+{
+	{ 17306,  0, 100.0f, 1, 1 }, // Stormpike Soldier's Blood
+	{ 17326,  0,  80.0f, 1, 1 }, // Stormpike Soldier's Flesh
+	{ 17423,  1,  50.0f, 1, 1 }, // Crystal Cluster
+	{ 17422, -1, 100.0f, 1, 5 }, // Armor Scraps
+	{ 0, 0, 0, 0, 0 }
+};
+
+// AV mine AreaPOI worldstates
+// Coldtooth: 1355 Alliance, 1356 Horde, 1357 Kobold
+// Irondeep:  1358 Alliance, 1359 Horde, 1360 Trogg
+#define AV_WS_COLDTOOTH_ALLIANCE 1355
+#define AV_WS_COLDTOOTH_HORDE    1356
+#define AV_WS_COLDTOOTH_NEUTRAL  1357
+#define AV_WS_IRONDEEP_ALLIANCE  1358
+#define AV_WS_IRONDEEP_HORDE     1359
+#define AV_WS_IRONDEEP_NEUTRAL   1360
 
 static const uint32 AV_MINE_ENTRIES_IRONDEEP_NEUTRAL[] = { 10987, 11600, 11602, 11657 };
 static const uint32 AV_MINE_ENTRIES_IRONDEEP_ALLIANCE[] = { 13078, 13080, 13081, 13098, 13396 };
@@ -88,13 +121,166 @@ static const AVMineTemplate AV_MINES[AlteracValley::AV_MINE_COUNT] =
 		AV_MINE_ENTRIES_IRONDEEP_NEUTRAL, sizeof(AV_MINE_ENTRIES_IRONDEEP_NEUTRAL) / sizeof(uint32),
 		AV_MINE_ENTRIES_IRONDEEP_ALLIANCE, sizeof(AV_MINE_ENTRIES_IRONDEEP_ALLIANCE) / sizeof(uint32),
 		AV_MINE_ENTRIES_IRONDEEP_HORDE, sizeof(AV_MINE_ENTRIES_IRONDEEP_HORDE) / sizeof(uint32),
-		AV_CONTROLED_IRONDEEP_MINE_TROGG },
+		AV_WS_IRONDEEP_ALLIANCE, AV_WS_IRONDEEP_HORDE, AV_WS_IRONDEEP_NEUTRAL },
 	{ "Coldtooth Mine", -862.0f, -82.0f, 68.0f, 150.0f, 11677, 13086, 13088,
 		AV_MINE_ENTRIES_COLDTOOTH_NEUTRAL, sizeof(AV_MINE_ENTRIES_COLDTOOTH_NEUTRAL) / sizeof(uint32),
 		AV_MINE_ENTRIES_COLDTOOTH_ALLIANCE, sizeof(AV_MINE_ENTRIES_COLDTOOTH_ALLIANCE) / sizeof(uint32),
 		AV_MINE_ENTRIES_COLDTOOTH_HORDE, sizeof(AV_MINE_ENTRIES_COLDTOOTH_HORDE) / sizeof(uint32),
-		AV_CONTROLED_COLDTHOOT_MINE_KOBOLT },
+		AV_WS_COLDTOOTH_ALLIANCE, AV_WS_COLDTOOTH_HORDE, AV_WS_COLDTOOTH_NEUTRAL },
 };
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_NEUTRAL[] =
+{
+	/* entrance pocket */
+	{ 10987, 783.1050f, -343.7300f, 61.4101f, 5.486630f, 1, 59, 0, 0, 1, 0, 0, 0, 0, 0 },
+	{ 11600, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 10987, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 11600, 876.0470f, -341.8570f, 65.8743f, 4.450590f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 10987, 888.2080f, -332.5640f, 68.1480f, 1.937320f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 913.0640f, -395.7730f, 60.1364f, 4.415680f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11602, 922.7150f, -405.0110f, 58.1280f, 4.896920f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+
+	/* rear boss chamber */
+	{ 10987, 852.6320f, -372.4160f, 48.1657f, 3.665190f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11600, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 858.5930f, -439.6140f, 50.2184f, 0.872665f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11657, 865.5540f, -438.7350f, 50.7333f, 0.323309f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+};
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_ALLIANCE[] =
+ {
+	/* entrance pocket */
+	{ 13080, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 1, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13396, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 13080, 851.4710f, -362.5200f, 47.3140f, 4.066620f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13396, 857.5130f, -351.8170f, 65.1867f, 4.398230f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13080, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 871.9140f, -404.2090f, 62.1269f, 6.061630f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13396, 921.1000f, -395.8120f, 60.4615f, 2.716950f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* rear boss chamber */
+	{ 13078, 880.2360f, -444.5870f, 54.6063f, 2.460910f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 926.4750f, -419.3450f, 56.1833f, 2.094400f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 955.8120f, -440.3020f, 55.3411f, 3.193950f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13396, 897.9290f, -471.7420f, 59.7729f, 2.548180f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+ };
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_HORDE[] =
+ {
+	/* entrance pocket */
+	{ 13099, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 1, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13397, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 13099, 851.4710f, -362.5200f, 47.3140f, 4.066620f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13397, 859.0300f, -367.2310f, 47.4655f, 0.017453f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13099, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 871.9140f, -404.2090f, 62.1269f, 6.061630f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13397, 921.4490f, -341.9810f, 67.1264f, 3.438300f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* rear boss chamber */
+	{ 13079, 879.2210f, -443.2570f, 54.6478f, 1.832600f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 926.4750f, -419.3450f, 56.1833f, 2.094400f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 955.8120f, -440.3020f, 55.3411f, 3.193950f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13397, 897.9290f, -471.7420f, 59.7729f, 2.548180f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+ };
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_NEUTRAL[] =
+{
+	/* entrance pocket */
+	{ 11603, -865.6480f, -63.2401f, 71.4081f, 3.174600f, 1, 26, 0, 0, 1, 0, 0, 0, 0, 0 },
+	{ 11604, -873.1900f, -50.4899f, 70.0568f, -2.412880f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 11603, -877.7600f, -118.0700f, 65.2150f, 2.949610f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11604, -844.7640f, -92.6998f, 68.6054f, 3.467160f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11605, -857.7100f, -91.4395f, 68.5389f, 6.089830f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11677, -848.9020f, -92.9310f, 68.6325f, 3.333580f, 0, 26, 0, 0, 1, 0, 0, 0, 0, 0 },
+
+	/* rear chamber */
+	{ 11603, -920.6770f, -156.8590f, 62.8033f, 3.153060f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11604, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11603, -950.1690f, -188.0990f, 66.6184f, 5.550150f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11604, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+};
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_ALLIANCE[] =
+ {
+	/* entrance pocket */
+	{ 13096, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 1, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -873.1900f, -50.4899f, 70.0568f, -2.412880f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13317, -946.0720f, -54.0555f, 79.8627f, 0.792630f, 1, 1216, 0, 0, 1, 0, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 13086, -849.4900f, -93.5311f, 68.5934f, 3.700100f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13317, -876.7920f, -128.6460f, 64.1045f, 3.403390f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -915.3190f, -132.7180f, 62.5620f, 1.169840f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* rear chamber */
+	{ 13096, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -956.2170f, -190.8570f, 66.2534f, 1.210150f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13317, -946.7380f, -139.5670f, 80.0904f, 2.391100f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+ };
+
+static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_HORDE[] =
+ {
+	/* entrance pocket */
+	{ 13097, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 1, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13316, -874.9010f, -36.6579f, 69.4246f, 2.007130f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -917.6480f, -46.8922f, 77.0872f, 5.270890f, 1, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* central chamber */
+	{ 13088, -849.4160f, -93.4279f, 68.5198f, 3.228860f, 0, 1214, 0, 0, 1, 0, 0, 0, 0, 0 },
+	{ 13097, -868.5110f, -148.3860f, 62.3547f, 3.578750f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13316, -907.5720f, -148.9370f, 76.6898f, 4.764750f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+
+	/* rear chamber */
+	{ 13097, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -954.6220f, -110.9580f, 80.7911f, 6.248280f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13316, -957.6230f, -186.5820f, 66.6021f, 1.954770f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+ };
+static const AlteracValley::AVMineCreatureSpawn* AVGetMineSpawnSet(uint32 mine, AVMineState owner, uint32& count)
+{
+	switch(mine)
+	{
+	case 0:
+		switch(owner)
+		{
+		case AV_MINE_STATE_ALLIANCE:
+			count = sizeof(AV_MINE_SPAWNS_IRONDEEP_ALLIANCE) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_IRONDEEP_ALLIANCE;
+		case AV_MINE_STATE_HORDE:
+			count = sizeof(AV_MINE_SPAWNS_IRONDEEP_HORDE) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_IRONDEEP_HORDE;
+		default:
+			count = sizeof(AV_MINE_SPAWNS_IRONDEEP_NEUTRAL) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_IRONDEEP_NEUTRAL;
+		}
+	case 1:
+		switch(owner)
+		{
+		case AV_MINE_STATE_ALLIANCE:
+			count = sizeof(AV_MINE_SPAWNS_COLDTOOTH_ALLIANCE) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_COLDTOOTH_ALLIANCE;
+		case AV_MINE_STATE_HORDE:
+			count = sizeof(AV_MINE_SPAWNS_COLDTOOTH_HORDE) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_COLDTOOTH_HORDE;
+		default:
+			count = sizeof(AV_MINE_SPAWNS_COLDTOOTH_NEUTRAL) / sizeof(AlteracValley::AVMineCreatureSpawn);
+			return AV_MINE_SPAWNS_COLDTOOTH_NEUTRAL;
+		}
+	default:
+		count = 0;
+		return NULL;
+	}
+}
 
 static const AlteracValley::AVObjectiveTemplate AV_OBJECTIVES[AV_OBJECTIVE_COUNT] =
 {
@@ -301,6 +487,7 @@ static bool AVIsMineEntry(const AVMineTemplate& mine, uint32 entry)
 AlteracValley::AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t) : CBattleground(mgr, id, lgroup, t)
 {
 	m_playerCountPerTeam = 40;
+	m_mineDbSpawnsHidden = false;
 	Reset();
 }
 
@@ -313,7 +500,11 @@ void AlteracValley::Reset()
 	m_reinforcements[0] = AV_MAX_REINFORCEMENTS;
 	m_reinforcements[1] = AV_MAX_REINFORCEMENTS;
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
-		m_mineOwner[i] = -1;
+	{
+		ClearMineRuntimeSpawns(i);
+		m_mineOwner[i] = AV_MINE_STATE_NEUTRAL;
+	}
+	m_mineDbSpawnsHidden = false;
 	m_captainDead[0] = false;
 	m_captainDead[1] = false;
 	m_gates[0] = NULL;
@@ -395,6 +586,9 @@ void AlteracValley::OnStart()
 
 void AlteracValley::OnClose()
 {
+	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
+		ClearMineRuntimeSpawns(i);
+
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
 	{
 		if(m_objectiveStates[i].spiritGuide != NULL)
@@ -760,7 +954,7 @@ void AlteracValley::EventMineTick()
 
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
-		if(m_mineOwner[i] >= 0)
+		if(m_mineOwner[i] == AV_MINE_STATE_ALLIANCE || m_mineOwner[i] == AV_MINE_STATE_HORDE)
 			ModifyReinforcements((uint32)m_mineOwner[i], 1);
 	}
 }
@@ -770,8 +964,140 @@ void AlteracValley::UpdateMineWorldStates(uint32 mine)
 	if(mine >= AV_MINE_COUNT)
 		return;
 
-	const uint32 worldStateValue = (m_mineOwner[mine] < 0) ? 1 : 0;
-	SetWorldState(AV_MINES[mine].worldStateOwner, worldStateValue);
+	const AVMineTemplate& mineInfo = AV_MINES[mine];
+	const bool allianceControlled = (m_mineOwner[mine] == AV_MINE_STATE_ALLIANCE);
+	const bool hordeControlled = (m_mineOwner[mine] == AV_MINE_STATE_HORDE);
+	const bool neutralControlled = (m_mineOwner[mine] == AV_MINE_STATE_NEUTRAL);
+
+	if(mineInfo.worldStateAlliance)
+		SetWorldState(mineInfo.worldStateAlliance, allianceControlled ? 1 : 0);
+
+	if(mineInfo.worldStateHorde)
+		SetWorldState(mineInfo.worldStateHorde, hordeControlled ? 1 : 0);
+
+	if(mineInfo.worldStateNeutral)
+		SetWorldState(mineInfo.worldStateNeutral, neutralControlled ? 1 : 0);
+}
+
+void AlteracValley::HideMineDbSpawns()
+{
+	if (m_mineDbSpawnsHidden || m_mapMgr == NULL)
+		return;
+
+	vector<Creature*> mineCreatures;
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL)
+			continue;
+
+		for(uint32 mine = 0; mine < AV_MINE_COUNT; ++mine)
+		{
+			const AVMineTemplate& mineInfo = AV_MINES[mine];
+			if (!AVIsMineEntry(mineInfo, creature->GetEntry()))
+				continue;
+
+			const float dx = creature->GetPositionX() - mineInfo.x;
+			const float dy = creature->GetPositionY() - mineInfo.y;
+			const float dz = creature->GetPositionZ() - mineInfo.z;
+			if(((dx * dx) + (dy * dy) + (dz * dz)) > (mineInfo.radius * mineInfo.radius))
+				continue;
+
+			mineCreatures.push_back(creature);
+			break;
+		}
+	}
+
+	for(vector<Creature*>::iterator itr = mineCreatures.begin(); itr != mineCreatures.end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature != NULL && creature->IsInWorld())
+			creature->RemoveFromWorld(false, false);
+	}
+
+	m_mineDbSpawnsHidden = true;
+}
+
+void AlteracValley::ClearMineRuntimeSpawns(uint32 mine)
+{
+	if(mine >= AV_MINE_COUNT)
+		return;
+
+	for(vector<Creature*>::iterator itr = m_mineRuntimeSpawns[mine].begin(); itr != m_mineRuntimeSpawns[mine].end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature == NULL)
+			continue;
+
+		if(creature->IsInWorld())
+			creature->RemoveFromWorld(false, false);
+
+		delete creature;
+	}
+
+	m_mineRuntimeSpawns[mine].clear();
+}
+
+Creature* AlteracValley::SpawnMineCreature(const AVMineCreatureSpawn& spawn)
+{
+	CreatureProto* proto = CreatureProtoStorage.LookupEntry(spawn.entry);
+	CreatureInfo* info = CreatureNameStorage.LookupEntry(spawn.entry);
+	if(proto == NULL || info == NULL)
+		return NULL;
+
+	CreatureSpawn* sp = new CreatureSpawn;
+	sp->entry = spawn.entry;
+	sp->form = 0;
+	sp->id = 0;
+	sp->movetype = spawn.movetype;
+	sp->x = spawn.x;
+	sp->y = spawn.y;
+	sp->z = spawn.z;
+	sp->o = spawn.o;
+	sp->emote_state = spawn.emote_state;
+	sp->flags = spawn.flags;
+	sp->factionid = spawn.factionid ? spawn.factionid : proto->Faction;
+	sp->bytes = spawn.bytes;
+	sp->bytes2 = spawn.bytes2;
+	sp->stand_state = spawn.stand_state;
+	sp->channel_spell = spawn.channel_spell;
+	sp->channel_target_go = spawn.channel_target_go;
+	sp->channel_target_creature = spawn.channel_target_creature;
+
+	Creature* creature = m_mapMgr->CreateCreature(spawn.entry);
+	if(creature == NULL)
+	{
+		delete sp;
+		return NULL;
+	}
+
+	creature->Load(sp, (uint32)NULL, NULL);
+	creature->spawnid = 0;
+	creature->m_spawn = 0;
+	delete sp;
+	creature->PushToWorld(m_mapMgr);
+	return creature;
+}
+
+void AlteracValley::SpawnMineState(uint32 mine)
+{
+	if(mine >= AV_MINE_COUNT || m_mapMgr == NULL)
+		return;
+
+	uint32 count = 0;
+	const AVMineCreatureSpawn* spawns = AVGetMineSpawnSet(mine, m_mineOwner[mine], count);
+	if(spawns == NULL || count == 0)
+		return;
+
+	for (uint32 i = 0; i < count; ++i)
+	{
+		Creature* creature = SpawnMineCreature(spawns[i]);
+		if(creature == NULL)
+			continue;
+
+		m_mineRuntimeSpawns[mine].push_back(creature);
+	}
 }
 
 void AlteracValley::UpdateMineNPCs(uint32 mine)
@@ -779,73 +1105,71 @@ void AlteracValley::UpdateMineNPCs(uint32 mine)
 	if(mine >= AV_MINE_COUNT || m_mapMgr == NULL)
 		return;
 
-	const AVMineTemplate& mineInfo = AV_MINES[mine];
-	const float maxDistanceSq = mineInfo.radius * mineInfo.radius;
-	vector<Creature*> creaturesToShow;
-	vector<Creature*> creaturesToHide;
+	HideMineDbSpawns();
+	ClearMineRuntimeSpawns(mine);
+	SpawnMineState(mine);
+}
 
-	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
-	{
-		Creature* creature = itr->second;
-		if(creature == NULL || !AVIsMineEntry(mineInfo, creature->GetEntry()))
-			continue;
+void AlteracValley::EventRespawnMineNPCs(uint32 mine)
+{
+	if(m_ended || !m_started)
+		return;
 
-		const float dx = creature->GetPositionX() - mineInfo.x;
-		const float dy = creature->GetPositionY() - mineInfo.y;
-		const float dz = creature->GetPositionZ() - mineInfo.z;
-		if(((dx * dx) + (dy * dy) + (dz * dz)) > maxDistanceSq)
-			continue;
-
-		bool shouldShow = false;
-		if(m_mineOwner[mine] < 0)
-			shouldShow = AVEntryInList(mineInfo.neutralEntries, mineInfo.neutralEntryCount, creature->GetEntry());
-		else if(m_mineOwner[mine] == 0)
-			shouldShow = AVEntryInList(mineInfo.allianceEntries, mineInfo.allianceEntryCount, creature->GetEntry());
-		else
-			shouldShow = AVEntryInList(mineInfo.hordeEntries, mineInfo.hordeEntryCount, creature->GetEntry());
-
-		if(shouldShow)
-		{
-			if(!creature->IsInWorld())
-				creaturesToShow.push_back(creature);
-		}
-		else if(creature->IsInWorld())
-			creaturesToHide.push_back(creature);
-	}
-
-	for(vector<Creature*>::iterator itr = creaturesToShow.begin(); itr != creaturesToShow.end(); ++itr)
-	{
-		Creature* creature = *itr;
-		if(creature != NULL && !creature->IsInWorld())
-			creature->PushToWorld(m_mapMgr);
-	}
-
-	for(vector<Creature*>::iterator itr = creaturesToHide.begin(); itr != creaturesToHide.end(); ++itr)
-	{
-		Creature* creature = *itr;
-		if(creature != NULL && creature->IsInWorld())
-			creature->RemoveFromWorld(false, false);
-	}
+	UpdateMineNPCs(mine);
 }
 
 void AlteracValley::InitializeMines()
 {
+	HideMineDbSpawns();
+
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
+		m_mineOwner[i] = AV_MINE_STATE_NEUTRAL;
 		UpdateMineWorldStates(i);
 		UpdateMineNPCs(i);
 	}
 }
 
-void AlteracValley::CaptureMine(uint32 mine, uint32 team, uint64 playerGuid)
+void AlteracValley::SetMineOwner(uint32 mine, AVMineState owner, uint64 playerGuid, bool announce)
 {
-	if(mine >= AV_MINE_COUNT || team > 1 || m_mineOwner[mine] == (int32)team)
+	if(mine >= AV_MINE_COUNT || m_mineOwner[mine] == owner)
 		return;
 
-	m_mineOwner[mine] = (int32)team;
+	(void)playerGuid;
+
+	m_mineOwner[mine] = owner;
 	UpdateMineWorldStates(mine);
-	UpdateMineNPCs(mine);
-	SendChatMessage(team ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, playerGuid, "$N has taken %s!", AV_MINES[mine].name);
+
+	// Do not immediately delete/respawn mine creatures during the boss kill hook.
+	// The just-killed boss is part of the current runtime spawn set and may still
+	// be in active death-processing code paths.
+	sEventMgr.AddEvent(this, &AlteracValley::EventRespawnMineNPCs, mine, EVENT_AV_MINE_TICK + 100, 750, 1, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+
+	if(!announce)
+		return;
+
+	uint32 chatType = CHAT_MSG_BG_EVENT_NEUTRAL;
+	const char* factionName = "The neutral forces";
+	if(owner == AV_MINE_STATE_ALLIANCE)
+	{
+		chatType = CHAT_MSG_BG_EVENT_ALLIANCE;
+		factionName = "The Alliance";
+	}
+	else if(owner == AV_MINE_STATE_HORDE)
+	{
+		chatType = CHAT_MSG_BG_EVENT_HORDE;
+		factionName = "The Horde";
+	}
+
+	SendChatMessage(chatType, 0, "%s has taken control of %s!", factionName, AV_MINES[mine].name);
+}
+
+void AlteracValley::CaptureMine(uint32 mine, uint32 team, uint64 playerGuid)
+{
+	if(mine >= AV_MINE_COUNT || team > 1)
+		return;
+
+	SetMineOwner(mine, team == 0 ? AV_MINE_STATE_ALLIANCE : AV_MINE_STATE_HORDE, playerGuid, true);
 }
 
 bool AlteracValley::HandleMineBossKill(Player* pPlayer, Creature* pVictim)
@@ -1660,4 +1984,45 @@ void AlteracValley::EndBattleground(uint32 winningTeam)
 
 	PlaySoundToAll(winningTeam ? SOUND_HORDEWINS : SOUND_ALLIANCEWINS);
 	UpdatePvPData();
+}
+
+void AlteracValley::HookGenerateLoot(Player* plr, Corpse* pCorpse)
+{
+	if(plr == NULL || pCorpse == NULL)
+		return;
+
+	const AVLoot* loot_ptr = &g_avLoot[0];
+	while(loot_ptr->ItemId != 0)
+	{
+		// In this code path plr is the corpse owner, not the looter.
+		// Match loot to the dead player's faction, as Summit did.
+		if(loot_ptr->Faction == -1 || loot_ptr->Faction == static_cast<int8>(plr->GetTeam()))
+		{
+			if(Rand(loot_ptr->Chance * sWorld.getRate(RATE_DROP0)))
+			{
+				ItemPrototype* pProto = ItemPrototypeStorage.LookupEntry(loot_ptr->ItemId);
+				if(pProto != NULL)
+				{
+					__LootItem li;
+					li.ffa_loot = 1;
+					li.item.displayid = pProto->DisplayInfoID;
+					li.item.itemproto = pProto;
+					li.iItemsCount = (loot_ptr->MinCount != loot_ptr->MaxCount) ?
+						(RandomUInt(loot_ptr->MaxCount - loot_ptr->MinCount) + loot_ptr->MinCount) :
+						loot_ptr->MinCount;
+					li.iRandomProperty = NULL;
+					li.iRandomSuffix = NULL;
+					li.roll = NULL;
+					li.passed = false;
+					pCorpse->loot.items.push_back(li);
+				}
+			}
+		}
+
+		++loot_ptr;
+	}
+
+	// Keep AV corpses from being a money faucet.
+	// Summit added gold here, but quest items are the real requirement.
+	pCorpse->loot.gold = 0;
 }

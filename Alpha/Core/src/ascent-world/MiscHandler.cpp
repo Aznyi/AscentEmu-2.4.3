@@ -45,6 +45,7 @@ void WorldSession::HandleAutostoreLootItemOpcode( WorldPacket & recv_data )
 		_player->InterruptSpell();
 	GameObject * pGO = NULL;
 	Creature * pCreature = NULL;
+	Corpse * pCorpse = NULL;
 
 	uint32 guidtype = GET_TYPE_FROM_GUID(_player->GetLootGUID());
 	if(guidtype == HIGHGUID_TYPE_UNIT)
@@ -69,6 +70,12 @@ void WorldSession::HandleAutostoreLootItemOpcode( WorldPacket & recv_data )
 		Player * pl = _player->GetMapMgr()->GetPlayer((uint32)GetPlayer()->GetLootGUID());
 		if(!pl) return;
 		pLoot = &pl->loot;
+	}
+	else if( guidtype == HIGHGUID_TYPE_CORPSE )
+	{
+		pCorpse = objmgr.GetCorpse((uint32)GetPlayer()->GetLootGUID());
+		if(!pCorpse) return;
+		pLoot = &pCorpse->loot;
 	}
 
 	if(!pLoot) return;

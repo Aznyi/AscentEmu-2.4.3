@@ -4162,8 +4162,18 @@ void Player::CreateCorpse()
 		RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
 		
 		loot.gold = 0;
+		bShouldHaveLootableOnCorpse = false;
 
 		pCorpse->generateLoot();
+
+		// If the battleground generated any corpse loot or gold, make the corpse lootable.
+		if(pCorpse->loot.gold > 0 || !pCorpse->loot.items.empty())
+			bShouldHaveLootableOnCorpse = true;
+
+		if(m_bg != NULL && m_bg->SupportsPlayerLoot() &&
+			(pCorpse->loot.gold > 0 || !pCorpse->loot.items.empty()))
+			bShouldHaveLootableOnCorpse = true;
+
 		if(bShouldHaveLootableOnCorpse)
 		{
 			pCorpse->SetUInt32Value(CORPSE_FIELD_DYNAMIC_FLAGS, 1); // sets it so you can loot the plyr

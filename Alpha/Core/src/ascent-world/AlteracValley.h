@@ -45,6 +45,13 @@ enum AVNodeState
 	AV_NODE_STATE_DESTROYED,
 };
 
+enum AVMineState
+{
+	AV_MINE_STATE_NEUTRAL = -1,
+	AV_MINE_STATE_ALLIANCE = 0,
+	AV_MINE_STATE_HORDE = 1,
+};
+
 class AlteracValley : public CBattleground
 {
 public:
@@ -97,6 +104,22 @@ public:
 		vector<Creature*> hordeGuards;
 	};
 
+	struct AVMineCreatureSpawn
+	{
+		uint32 entry;
+		float x, y, z, o;
+		uint32 movetype;
+		uint32 factionid;
+		uint32 flags;
+		uint32 bytes;
+		uint32 bytes2;
+		uint32 emote_state;
+		uint32 stand_state;
+		uint32 channel_spell;
+		uint32 channel_target_go;
+		uint32 channel_target_creature;
+	};
+
 	AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t);
 	~AlteracValley();
 
@@ -116,6 +139,9 @@ public:
 	void OnClose();
 	bool HookSlowLockOpen(GameObject* pGo, Player* pPlayer, Spell* pSpell);
 
+	bool SupportsPlayerLoot() { return true; }
+	void HookGenerateLoot(Player* plr, Corpse* pCorpse);
+
 	static CBattleground* Create(MapMgr* m, uint32 i, uint32 l, uint32 t) { return new AlteracValley(m, i, l, t); }
 	const char* GetName() { return "Alterac Valley"; }
 
@@ -132,8 +158,14 @@ private:
 	void EndBattleground(uint32 winningTeam);
 	void UpdateBossRoomGuards();
 	void UpdateMineWorldStates(uint32 mine);
+	void HideMineDbSpawns();
+	void ClearMineRuntimeSpawns(uint32 mine);
+	Creature* SpawnMineCreature(const AVMineCreatureSpawn& spawn);
+	void SpawnMineState(uint32 mine);
 	void UpdateMineNPCs(uint32 mine);
 	void InitializeMines();
+	void SetMineOwner(uint32 mine, AVMineState owner, uint64 playerGuid, bool announce);
+	void EventRespawnMineNPCs(uint32 mine);
 	void CaptureMine(uint32 mine, uint32 team, uint64 playerGuid);
 	bool HandleMineBossKill(Player* pPlayer, Creature* pVictim);
 	void RepopPlayersOfTeam(int32 team, Creature* spiritGuide);
@@ -162,7 +194,9 @@ private:
 
 	AVObjectiveState m_objectiveStates[15];
 	int32 m_reinforcements[2];
-	int32 m_mineOwner[AV_MINE_COUNT];
+	AVMineState m_mineOwner[AV_MINE_COUNT];
+	vector<Creature*> m_mineRuntimeSpawns[AV_MINE_COUNT];
+	bool m_mineDbSpawnsHidden;
 	bool m_captainDead[2];
 	GameObject* m_gates[2];
 	map<uint32, uint32> m_lastDeathTime;
