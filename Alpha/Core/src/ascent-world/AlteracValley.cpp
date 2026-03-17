@@ -1996,7 +1996,8 @@ void AlteracValley::HookGenerateLoot(Player* plr, Corpse* pCorpse)
 	{
 		// In this code path plr is the corpse owner, not the looter.
 		// Match loot to the dead player's faction, as Summit did.
-		if(loot_ptr->Faction == -1 || loot_ptr->Faction == static_cast<int8>(plr->GetTeam()))
+		const int8 dropFaction = (plr->GetTeam() == 0) ? 1 : 0;
+		if (loot_ptr->Faction == -1 || loot_ptr->Faction == dropFaction)
 		{
 			if(Rand(loot_ptr->Chance * sWorld.getRate(RATE_DROP0)))
 			{
