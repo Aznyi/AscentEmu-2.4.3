@@ -1,6 +1,8 @@
 #include "StdAfx.h"
 #include "Setup.h"
 #include "BattlegroundMgr.h"
+#include "MapMgr.h"
+#include "Spell.h"
 
 #define CN_VANNDAR_STORMPIKE 11948
 #define CN_DREKTHAR 11946
@@ -15,6 +17,9 @@
 #define CN_ICEBLOOD_WARMASTER 14773
 #define CN_TOWER_POINT_WARMASTER 14776
 #define CN_WEST_FROSTWOLF_WARMASTER 14777
+#define CN_STORMPIKE_BOWMAN 13358
+#define CN_FROSTWOLF_BOWMAN 13359
+#define AV_SPELL_BOW_SHOOT 22121
 
 #define AV_SPELL_CLEAVE 15284
 #define AV_SPELL_WHIRLWIND 15589
@@ -30,6 +35,26 @@
 #define AV_SPELL_FIREBALL 20823
 #define AV_SPELL_CONE_OF_COLD 20828
 #define AV_SPELL_SUMMON_WATER_ELEMENTAL 45067
+
+static uint32 GetAVDefenderAura(uint32 entry)
+{
+	switch(entry)
+	{
+		// Alliance Marshals
+		case CN_DUN_BALDAR_NORTH_MARSHAL: return 45828;
+		case CN_DUN_BALDAR_SOUTH_MARSHAL: return 45829;
+		case CN_ICEWING_MARSHAL:          return 45830;
+		case CN_STONEHEARTH_MARSHAL:      return 45831;
+
+		// Horde Warmasters
+		case CN_EAST_FROSTWOLF_WARMASTER: return 45824;
+		case CN_ICEBLOOD_WARMASTER:       return 45722;
+		case CN_TOWER_POINT_WARMASTER:    return 45823;
+		case CN_WEST_FROSTWOLF_WARMASTER: return 45826;
+	}
+
+	return 0;
+}
 
 class AlteracValleyCreatureAI : public CreatureAIScript
 {
@@ -102,6 +127,9 @@ protected:
 	{
 		_unit->GetAIInterface()->HandleEvent(EVENT_LEAVECOMBAT, _unit, 0);
 		_unit->GetAIInterface()->SetAllowedToEnterCombat(true);
+		_unit->SetUInt32Value(UNIT_FIELD_HEALTH, _unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+		if(_unit->GetPowerType() == POWER_TYPE_MANA)
+			_unit->SetUInt32Value(UNIT_FIELD_POWER1, _unit->GetUInt32Value(UNIT_FIELD_MAXPOWER1));
 		_unit->GetAIInterface()->MoveTo(m_homeX, m_homeY, m_homeZ, m_homeO);
 	}
 
@@ -335,6 +363,10 @@ class AlteracValleyDefenderAI : public AlteracValleyCreatureAI
 public:
 	AlteracValleyDefenderAI(Creature* pCreature) : AlteracValleyCreatureAI(pCreature, 35.0f)
 	{
+		uint32 aura = GetAVDefenderAura(pCreature->GetEntry());
+		if(aura != 0)
+			pCreature->CastSpell(pCreature, aura, true);
+
 		m_cleaveTimer = 8000;
 		m_whirlwindTimer = 15000;
 	}
@@ -342,6 +374,7 @@ public:
 	void OnCombatStart(Unit* mTarget)
 	{
 		AlteracValleyCreatureAI::OnCombatStart(mTarget);
+
 		m_cleaveTimer = 8000;
 		m_whirlwindTimer = 15000;
 	}
@@ -376,6 +409,51 @@ protected:
 
 	uint32 m_cleaveTimer;
 	uint32 m_whirlwindTimer;
+};
+
+class AVBowmanAI : public CreatureAIScript
+{
+public:
+	ADD_CREATURE_FACTORY_FUNCTION(AVBowmanAI);
+
+	AVBowmanAI(Creature* pCreature) : CreatureAIScript(pCreature)
+	{
+		_unit->GetAIInterface()->SetAllowedToEnterCombat(true);
+		_unit->GetAIInterface()->m_canMove = false;
+	}
+
+	void OnLoad()
+	{
+		uint32 freq = _unit->GetUInt32Value(UNIT_FIELD_BASEATTACKTIME);
+		if(freq == 0)
+			freq = 2000;
+		RegisterAIUpdateEvent(freq);
+	}
+
+	void OnCombatStart(Unit* mTarget)
+	{
+	}
+
+	void OnCombatStop(Unit* mTarget)
+	{
+		RemoveAIUpdateEvent();
+	}
+
+	void OnDied(Unit* mKiller)
+	{
+		RemoveAIUpdateEvent();
+	}
+
+	void AIUpdate()
+	{
+		Unit* target = _unit->GetAIInterface()->GetNextTarget();
+		if(target == NULL || _unit->GetCurrentSpell() != NULL)
+			return;
+
+		SpellEntry* sp = dbcSpell.LookupEntry(AV_SPELL_BOW_SHOOT);
+		if(sp != NULL)
+			_unit->CastSpell(target, sp, false);
+	}
 };
 
 class VanndarStormpikeAI : public AlteracValleyBossAI
@@ -525,4 +603,9 @@ void SetupAlteracValley(ScriptMgr* mgr)
 	mgr->register_creature_script(CN_ICEBLOOD_WARMASTER, &IcebloodWarmasterAI::Create);
 	mgr->register_creature_script(CN_TOWER_POINT_WARMASTER, &TowerPointWarmasterAI::Create);
 	mgr->register_creature_script(CN_WEST_FROSTWOLF_WARMASTER, &WestFrostwolfWarmasterAI::Create);
+
+	mgr->register_creature_script(CN_STORMPIKE_BOWMAN, &AVBowmanAI::Create);
+	mgr->register_creature_script(CN_FROSTWOLF_BOWMAN, &AVBowmanAI::Create);
+
+	// TODO: Wing Commander rescue scripting / Ivus / Lokholar / air support events.
 }
