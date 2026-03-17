@@ -29,6 +29,7 @@
 #define AV_SPELL_FROSTBOLT 20822
 #define AV_SPELL_FIREBALL 20823
 #define AV_SPELL_CONE_OF_COLD 20828
+#define AV_SPELL_SUMMON_WATER_ELEMENTAL 45067
 
 class AlteracValleyCreatureAI : public CreatureAIScript
 {
@@ -137,6 +138,16 @@ protected:
 		return true;
 	}
 
+	void SendRandomCombatBark(const char* const* lines, uint32 count)
+	{
+		if(lines == NULL || count == 0)
+			return;
+
+		const char* text = lines[RandomUInt(count - 1)];
+		if(text != NULL && text[0] != 0)
+			_unit->SendChatMessage(CHAT_MSG_MONSTER_YELL, LANG_UNIVERSAL, text);
+	}
+
 	uint32 GetUpdateFrequency()
 	{
 		uint32 freq = _unit->GetUInt32Value(UNIT_FIELD_BASEATTACKTIME);
@@ -243,14 +254,16 @@ protected:
 class AlteracValleyCaptainAI : public AlteracValleyCreatureAI
 {
 public:
-	AlteracValleyCaptainAI(Creature* pCreature, float leashRange, uint32 primarySpell, uint32 secondarySpell, uint32 selfSpell) : AlteracValleyCreatureAI(pCreature, leashRange)
+	AlteracValleyCaptainAI(Creature* pCreature, float leashRange, uint32 primarySpell, uint32 secondarySpell, uint32 selfSpell, uint32 extraSpell = 0) : AlteracValleyCreatureAI(pCreature, leashRange)
 	{
 		m_primarySpell = primarySpell;
 		m_secondarySpell = secondarySpell;
 		m_selfSpell = selfSpell;
+		m_extraSpell = extraSpell;
 		m_primaryTimer = 8000;
 		m_secondaryTimer = 14000;
 		m_selfTimer = 20000;
+		m_extraTimer = 26000;
 	}
 
 	void OnCombatStart(Unit* mTarget)
@@ -259,6 +272,7 @@ public:
 		m_primaryTimer = 8000;
 		m_secondaryTimer = 14000;
 		m_selfTimer = 20000;
+		m_extraTimer = 26000;
 	}
 
 protected:
@@ -273,6 +287,15 @@ protected:
 			if(SpellReady(m_selfTimer, diff) && CastSpellOnSelf(m_selfSpell))
 			{
 				m_selfTimer = 30000;
+				return;
+			}
+
+			if(m_extraSpell != 0 && SpellReady(m_extraTimer, diff) &&
+				((m_extraSpell == AV_SPELL_WHIRLWIND || m_extraSpell == AV_SPELL_CONE_OF_COLD || m_extraSpell == AV_SPELL_SUMMON_WATER_ELEMENTAL)
+					? CastSpellOnSelf(m_extraSpell)
+					: CastSpellOnTarget(m_extraSpell)))
+			{
+				m_extraTimer = 32000;
 				return;
 			}
 
@@ -291,6 +314,7 @@ protected:
 		else
 		{
 			SpellReady(m_selfTimer, diff);
+			SpellReady(m_extraTimer, diff);
 			SpellReady(m_primaryTimer, diff);
 			SpellReady(m_secondaryTimer, diff);
 		}
@@ -299,9 +323,11 @@ protected:
 	uint32 m_primarySpell;
 	uint32 m_secondarySpell;
 	uint32 m_selfSpell;
+	uint32 m_extraSpell;
 	uint32 m_primaryTimer;
 	uint32 m_secondaryTimer;
 	uint32 m_selfTimer;
+	uint32 m_extraTimer;
 };
 
 class AlteracValleyDefenderAI : public AlteracValleyCreatureAI
@@ -372,7 +398,10 @@ class DrekTharAI : public AlteracValleyBossAI
 {
 public:
 	ADD_CREATURE_FACTORY_FUNCTION(DrekTharAI);
-	DrekTharAI(Creature* pCreature) : AlteracValleyBossAI(pCreature, 65.0f) {}
+	DrekTharAI(Creature* pCreature) : AlteracValleyBossAI(pCreature, 65.0f)
+	{
+		m_barkTimer = 18000;
+	}
 
 protected:
 	uint32 GetPrimarySpell() { return AV_SPELL_KNOCKDOWN; }
@@ -382,20 +411,47 @@ protected:
 	{
 		return entry == CN_EAST_FROSTWOLF_WARMASTER || entry == CN_ICEBLOOD_WARMASTER || entry == CN_TOWER_POINT_WARMASTER || entry == CN_WEST_FROSTWOLF_WARMASTER;
 	}
+
+	void DoBattlefieldAI()
+	{
+		AlteracValleyBossAI::DoBattlefieldAI();
+
+		uint32 diff = GetUpdateFrequency();
+		if(_unit->GetAIInterface()->GetNextTarget() == NULL)
+			return;
+
+		if(SpellReady(m_barkTimer, diff))
+		{
+			static const char* kDrekBarks[] =
+			{
+				"Your attacks are slowed by the cold, I think!",
+				"Today, you will meet your ancestors!",
+				"If you will not leave Alterac Valley on your own, then the Frostwolves will force you out!",
+				"You cannot defeat the Frostwolf clan!",
+				"You are no match for the strength of the Horde!"
+			};
+			SendRandomCombatBark(kDrekBarks, 5);
+			m_barkTimer = 20000 + RandomUInt(10000);
+		}
+	}
+
+	uint32 m_barkTimer;
 };
 
 class BalindaStonehearthAI : public AlteracValleyCaptainAI
 {
 public:
 	ADD_CREATURE_FACTORY_FUNCTION(BalindaStonehearthAI);
-	BalindaStonehearthAI(Creature* pCreature) : AlteracValleyCaptainAI(pCreature, 45.0f, AV_SPELL_FROSTBOLT, AV_SPELL_FIREBALL, AV_SPELL_CONE_OF_COLD) {}
+	BalindaStonehearthAI(Creature* pCreature) : AlteracValleyCaptainAI(
+		pCreature, 45.0f, AV_SPELL_FROSTBOLT, AV_SPELL_FIREBALL, AV_SPELL_CONE_OF_COLD, AV_SPELL_SUMMON_WATER_ELEMENTAL) {}
 };
 
 class GalvangarAI : public AlteracValleyCaptainAI
 {
 public:
 	ADD_CREATURE_FACTORY_FUNCTION(GalvangarAI);
-	GalvangarAI(Creature* pCreature) : AlteracValleyCaptainAI(pCreature, 45.0f, AV_SPELL_CLEAVE, AV_SPELL_MORTAL_STRIKE, AV_SPELL_FEAR) {}
+	GalvangarAI(Creature* pCreature) : AlteracValleyCaptainAI(
+		pCreature, 45.0f, AV_SPELL_CLEAVE, AV_SPELL_MORTAL_STRIKE, AV_SPELL_FEAR, AV_SPELL_WHIRLWIND) {}
 };
 
 class DunBaldarNorthMarshalAI : public AlteracValleyDefenderAI
