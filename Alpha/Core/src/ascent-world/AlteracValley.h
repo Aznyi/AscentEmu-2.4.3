@@ -53,6 +53,7 @@ public:
 		AV_MAX_REINFORCEMENTS = 600,
 		AV_REINFORCEMENT_TOWER_LOSS = 75,
 		AV_REINFORCEMENT_CAPTAIN_LOSS = 100,
+		AV_MINE_COUNT = 2,
 		AV_MINE_TICK_MS = 45000,
 		AV_BURN_TIMER_MS = 240000,
 		AV_AREATRIGGER_IRONDEEP = 5892,
@@ -130,6 +131,11 @@ private:
 	void CheckForEnd();
 	void EndBattleground(uint32 winningTeam);
 	void UpdateBossRoomGuards();
+	void UpdateMineWorldStates(uint32 mine);
+	void UpdateMineNPCs(uint32 mine);
+	void InitializeMines();
+	void CaptureMine(uint32 mine, uint32 team, uint64 playerGuid);
+	bool HandleMineBossKill(Player* pPlayer, Creature* pVictim);
 	void RepopPlayersOfTeam(int32 team, Creature* spiritGuide);
 	Creature* FindLinkedCreature(uint32 entry, float x, float y, float z);
 	GameObject* FindGate(uint32 team);
@@ -150,10 +156,13 @@ private:
 	Creature* SpawnObjectiveGuard(uint32 entry, float x, float y, float z, float o);
 	void CleanupObjectiveDbFireVisuals(uint32 index);
 	void UpdateObjectivePrisoners(uint32 index);
+	Creature* FindObjectiveLinkedUnit(uint32 index);
+	void RefreshObjectiveLinkedUnit(uint32 index);
+	void RemoveObjectiveLinkedUnit(uint32 index);
 
 	AVObjectiveState m_objectiveStates[15];
 	int32 m_reinforcements[2];
-	int32 m_mineOwner[2];
+	int32 m_mineOwner[AV_MINE_COUNT];
 	bool m_captainDead[2];
 	GameObject* m_gates[2];
 	map<uint32, uint32> m_lastDeathTime;

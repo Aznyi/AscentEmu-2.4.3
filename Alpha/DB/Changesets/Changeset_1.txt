@@ -134,3 +134,9 @@ WHERE `id` IN (3000191, 3000192)
 SELECT `id`, `Entry`, `map`, `position_x`, `position_y`, `position_z`, `State`, `Flags`, `Faction`, `Scale`
 FROM `gameobject_spawns`
 WHERE `id` IN (3000191, 3000192);
+
+-- Stray Area Trigger NPC removal from AlteracValley that was present in CMangos TBC DB
+DELETE FROM creature_spawns WHERE id = 3002000 AND entry = 22515 AND map = 30;
+
+-- Stray spawn of Wing Commander Mulverick
+DELETE FROM creature_spawns WHERE id = 3000632;

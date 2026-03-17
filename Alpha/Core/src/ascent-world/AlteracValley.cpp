@@ -53,6 +53,49 @@
 #define AV_NPC_BALINDA 11949
 #define AV_NPC_GALVANGAR 11947
 
+struct AVMineTemplate
+{
+	const char* name;
+	float x, y, z;
+	float radius;
+	uint32 neutralBossEntry;
+	uint32 allianceBossEntry;
+	uint32 hordeBossEntry;
+	const uint32* neutralEntries;
+	uint32 neutralEntryCount;
+	const uint32* allianceEntries;
+	uint32 allianceEntryCount;
+	const uint32* hordeEntries;
+	uint32 hordeEntryCount;
+	uint32 worldStateOwner;
+};
+
+static const uint32 AV_MINE_ENTRIES_IRONDEEP_NEUTRAL[] = { 10987, 11600, 11602, 11657 };
+static const uint32 AV_MINE_ENTRIES_IRONDEEP_ALLIANCE[] = { 13078, 13080, 13081, 13098, 13396 };
+static const uint32 AV_MINE_ENTRIES_IRONDEEP_HORDE[] = { 13079, 13099, 13397 };
+static const uint32 AV_MINE_ENTRIES_COLDTOOTH_NEUTRAL[] = { 11603, 11604, 11605, 11677 };
+static const uint32 AV_MINE_ENTRIES_COLDTOOTH_ALLIANCE[] = { 13086, 13096, 13317 };
+static const uint32 AV_MINE_ENTRIES_COLDTOOTH_HORDE[] = { 13088, 13097, 13316 };
+static const float AV_BOSS_ROOM_CENTERS[2][4] =
+{
+	{ 726.0f, -10.0f, 50.0f, 35.0f },
+	{ -1377.0f, -229.0f, 98.0f, 35.0f },
+};
+
+static const AVMineTemplate AV_MINES[AlteracValley::AV_MINE_COUNT] =
+{
+	{ "Irondeep Mine", 880.0f, -400.0f, 58.0f, 150.0f, 11657, 13078, 13079,
+		AV_MINE_ENTRIES_IRONDEEP_NEUTRAL, sizeof(AV_MINE_ENTRIES_IRONDEEP_NEUTRAL) / sizeof(uint32),
+		AV_MINE_ENTRIES_IRONDEEP_ALLIANCE, sizeof(AV_MINE_ENTRIES_IRONDEEP_ALLIANCE) / sizeof(uint32),
+		AV_MINE_ENTRIES_IRONDEEP_HORDE, sizeof(AV_MINE_ENTRIES_IRONDEEP_HORDE) / sizeof(uint32),
+		AV_CONTROLED_IRONDEEP_MINE_TROGG },
+	{ "Coldtooth Mine", -862.0f, -82.0f, 68.0f, 150.0f, 11677, 13086, 13088,
+		AV_MINE_ENTRIES_COLDTOOTH_NEUTRAL, sizeof(AV_MINE_ENTRIES_COLDTOOTH_NEUTRAL) / sizeof(uint32),
+		AV_MINE_ENTRIES_COLDTOOTH_ALLIANCE, sizeof(AV_MINE_ENTRIES_COLDTOOTH_ALLIANCE) / sizeof(uint32),
+		AV_MINE_ENTRIES_COLDTOOTH_HORDE, sizeof(AV_MINE_ENTRIES_COLDTOOTH_HORDE) / sizeof(uint32),
+		AV_CONTROLED_COLDTHOOT_MINE_KOBOLT },
+};
+
 static const AlteracValley::AVObjectiveTemplate AV_OBJECTIVES[AV_OBJECTIVE_COUNT] =
 {
 	{ AV_OBJECTIVE_GRAVEYARD, "Stormpike Aid Station", AV_GO_GRAVE_BANNER_ALLIANCE, AV_GO_GRAVE_BANNER_HORDE, AV_GO_GRAVE_BANNER_ALLIANCE_ASSAULT, AV_GO_GRAVE_BANNER_HORDE_ASSAULT, 0, AV_CONTROLED_STORMPIKE_AID_STATION_ALLIANCE, 0, AV_ASSAULTED_STORMPIKE_AID_STATION_ALLIANCE, AV_ASSAULTED_STORMPIKE_AID_STATION_HORDE, 0, 638.592f, -32.422f, 46.0608f, -1.62316f, 643.309f, 37.692f, 69.0624f, 1.5708f, 0, 0, true },
@@ -237,6 +280,24 @@ static inline float AVRotationCos(float o)
 	return (float)cos(o * 0.5f);
 }
 
+static bool AVEntryInList(const uint32* entries, uint32 count, uint32 entry)
+{
+	for(uint32 i = 0; i < count; ++i)
+	{
+		if(entries[i] == entry)
+			return true;
+	}
+
+	return false;
+}
+
+static bool AVIsMineEntry(const AVMineTemplate& mine, uint32 entry)
+{
+	return AVEntryInList(mine.neutralEntries, mine.neutralEntryCount, entry) ||
+		AVEntryInList(mine.allianceEntries, mine.allianceEntryCount, entry) ||
+		AVEntryInList(mine.hordeEntries, mine.hordeEntryCount, entry);
+}
+
 AlteracValley::AlteracValley(MapMgr* mgr, uint32 id, uint32 lgroup, uint32 t) : CBattleground(mgr, id, lgroup, t)
 {
 	m_playerCountPerTeam = 40;
@@ -251,8 +312,8 @@ void AlteracValley::Reset()
 {
 	m_reinforcements[0] = AV_MAX_REINFORCEMENTS;
 	m_reinforcements[1] = AV_MAX_REINFORCEMENTS;
-	m_mineOwner[0] = -1;
-	m_mineOwner[1] = -1;
+	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
+		m_mineOwner[i] = -1;
 	m_captainDead[0] = false;
 	m_captainDead[1] = false;
 	m_gates[0] = NULL;
@@ -286,16 +347,12 @@ void AlteracValley::OnCreate()
 	SetWorldState(AV_WS_SCOREBOARD_SHOW, 1);
 	UpdateReinforcementWorldStates();
 
-	SetWorldState(AV_CONTROLED_IRONDEEP_MINE_TROGG, 0);
-	SetWorldState(AV_CONTROLED_COLDTHOOT_MINE_KOBOLT, 0);
-
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
 	{
 		if((AV_OBJECTIVES[i].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[i].type == AV_OBJECTIVE_BUNKER) && AV_OBJECTIVES[i].linkedNpcEntry != 0)
 		{
-			m_objectiveStates[i].linkedUnit = FindLinkedCreature(AV_OBJECTIVES[i].linkedNpcEntry, AV_OBJECTIVES[i].bannerX, AV_OBJECTIVES[i].bannerY, AV_OBJECTIVES[i].bannerZ);
-			if(m_objectiveStates[i].linkedUnit != NULL)
-				m_objectiveStates[i].linkedUnit->GetAIInterface()->setOutOfCombatRange(90);
+			m_objectiveStates[i].linkedUnit = FindObjectiveLinkedUnit(i);
+			RefreshObjectiveLinkedUnit(i);
 		}
 	}
 
@@ -309,6 +366,7 @@ void AlteracValley::OnCreate()
 	}
 
 	InitializeAlteracValleyNodes();
+	InitializeMines();
 	UpdateBossRoomGuards();
 
 	sEventMgr.AddEvent(this, &AlteracValley::EventUpdateObjectives, EVENT_AV_OBJECTIVES_UPDATE, 1000, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
@@ -317,6 +375,8 @@ void AlteracValley::OnCreate()
 void AlteracValley::OnStart()
 {
 	InitializeAlteracValleyNodes();
+	InitializeMines();
+	UpdateBossRoomGuards();
 
 	for(uint32 i = 0; i < 2; ++i)
 	{
@@ -446,17 +506,19 @@ void AlteracValley::HookOnPlayerKill(Player* plr, Unit* pVictim)
 		EndBattleground(1);
 	else if(entry == AV_NPC_DREKTHAR)
 		EndBattleground(0);
+	else if(HandleMineBossKill(plr, static_cast<Creature*>(pVictim)))
+		return;
 	else if(entry == AV_NPC_BALINDA && !m_captainDead[0])
 	{
 		m_captainDead[0] = true;
 		ModifyReinforcements(0, -AV_REINFORCEMENT_CAPTAIN_LOSS);
-		SendChatMessage(CHAT_MSG_BG_EVENT_HORDE, plr->GetGUID(), "$N has slain Captain Balinda Stonehearth!");
+		SendChatMessage(CHAT_MSG_BG_EVENT_HORDE, 0, "The Horde has slain Captain Balinda Stonehearth!");
 	}
 	else if(entry == AV_NPC_GALVANGAR && !m_captainDead[1])
 	{
 		m_captainDead[1] = true;
 		ModifyReinforcements(1, -AV_REINFORCEMENT_CAPTAIN_LOSS);
-		SendChatMessage(CHAT_MSG_BG_EVENT_ALLIANCE, plr->GetGUID(), "$N has slain Captain Galvangar!");
+		SendChatMessage(CHAT_MSG_BG_EVENT_ALLIANCE, 0, "The Alliance has slain Captain Galvangar!");
 	}
 }
 
@@ -488,7 +550,10 @@ bool AlteracValley::HookHandleRepop(Player* plr)
 		if(AV_OBJECTIVES[i].type != AV_OBJECTIVE_GRAVEYARD)
 			continue;
 
-		if(m_objectiveStates[i].destroyed || m_objectiveStates[i].owner != (int32)plr->m_bgTeam)
+		if(m_objectiveStates[i].owner != (int32)plr->m_bgTeam)
+			continue;
+
+		if(m_objectiveStates[i].nodeState != AV_NODE_STATE_ALLIANCE_CONTROLLED && m_objectiveStates[i].nodeState != AV_NODE_STATE_HORDE_CONTROLLED)
 			continue;
 
 		float dist = plr->GetPositionV()->Distance2DSq(AV_OBJECTIVES[i].spiritX, AV_OBJECTIVES[i].spiritY);
@@ -508,21 +573,7 @@ void AlteracValley::HookOnAreaTrigger(Player* plr, uint32 id)
 	switch(id)
 	{
 	case AV_AREATRIGGER_IRONDEEP:
-		if(m_mineOwner[0] != (int32)plr->m_bgTeam)
-		{
-			m_mineOwner[0] = plr->m_bgTeam;
-			SetWorldState(AV_CONTROLED_IRONDEEP_MINE_TROGG, (plr->m_bgTeam == 0) ? 0 : 1);
-			SendChatMessage(plr->m_bgTeam ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, plr->GetGUID(), "$N has taken Irondeep Mine!");
-		}
-		break;
-
 	case AV_AREATRIGGER_COLDTOOTH:
-		if(m_mineOwner[1] != (int32)plr->m_bgTeam)
-		{
-			m_mineOwner[1] = plr->m_bgTeam;
-			SetWorldState(AV_CONTROLED_COLDTHOOT_MINE_KOBOLT, (plr->m_bgTeam == 0) ? 0 : 1);
-			SendChatMessage(plr->m_bgTeam ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, plr->GetGUID(), "$N has taken Coldtooth Mine!");
-		}
 		break;
 
 	default:
@@ -636,8 +687,7 @@ void AlteracValley::FinalizeObjective(uint32 index)
 		if(AV_OBJECTIVES[index].initialOwner >= 0)
 			ModifyReinforcements((uint32)AV_OBJECTIVES[index].initialOwner, -AV_REINFORCEMENT_TOWER_LOSS);
 
-		if(state.linkedUnit != NULL)
-			state.linkedUnit->Despawn(0, 0);
+		RemoveObjectiveLinkedUnit(index);
 
 		UpdateBossRoomGuards();
 		SetObjectiveVisualsActive(index, true);
@@ -708,11 +758,113 @@ void AlteracValley::EventMineTick()
 	if(!m_started || m_ended)
 		return;
 
-	for(uint32 i = 0; i < 2; ++i)
+	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
 		if(m_mineOwner[i] >= 0)
 			ModifyReinforcements((uint32)m_mineOwner[i], 1);
 	}
+}
+
+void AlteracValley::UpdateMineWorldStates(uint32 mine)
+{
+	if(mine >= AV_MINE_COUNT)
+		return;
+
+	const uint32 worldStateValue = (m_mineOwner[mine] < 0) ? 1 : 0;
+	SetWorldState(AV_MINES[mine].worldStateOwner, worldStateValue);
+}
+
+void AlteracValley::UpdateMineNPCs(uint32 mine)
+{
+	if(mine >= AV_MINE_COUNT || m_mapMgr == NULL)
+		return;
+
+	const AVMineTemplate& mineInfo = AV_MINES[mine];
+	const float maxDistanceSq = mineInfo.radius * mineInfo.radius;
+	vector<Creature*> creaturesToShow;
+	vector<Creature*> creaturesToHide;
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL || !AVIsMineEntry(mineInfo, creature->GetEntry()))
+			continue;
+
+		const float dx = creature->GetPositionX() - mineInfo.x;
+		const float dy = creature->GetPositionY() - mineInfo.y;
+		const float dz = creature->GetPositionZ() - mineInfo.z;
+		if(((dx * dx) + (dy * dy) + (dz * dz)) > maxDistanceSq)
+			continue;
+
+		bool shouldShow = false;
+		if(m_mineOwner[mine] < 0)
+			shouldShow = AVEntryInList(mineInfo.neutralEntries, mineInfo.neutralEntryCount, creature->GetEntry());
+		else if(m_mineOwner[mine] == 0)
+			shouldShow = AVEntryInList(mineInfo.allianceEntries, mineInfo.allianceEntryCount, creature->GetEntry());
+		else
+			shouldShow = AVEntryInList(mineInfo.hordeEntries, mineInfo.hordeEntryCount, creature->GetEntry());
+
+		if(shouldShow)
+		{
+			if(!creature->IsInWorld())
+				creaturesToShow.push_back(creature);
+		}
+		else if(creature->IsInWorld())
+			creaturesToHide.push_back(creature);
+	}
+
+	for(vector<Creature*>::iterator itr = creaturesToShow.begin(); itr != creaturesToShow.end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature != NULL && !creature->IsInWorld())
+			creature->PushToWorld(m_mapMgr);
+	}
+
+	for(vector<Creature*>::iterator itr = creaturesToHide.begin(); itr != creaturesToHide.end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature != NULL && creature->IsInWorld())
+			creature->RemoveFromWorld(false, false);
+	}
+}
+
+void AlteracValley::InitializeMines()
+{
+	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
+	{
+		UpdateMineWorldStates(i);
+		UpdateMineNPCs(i);
+	}
+}
+
+void AlteracValley::CaptureMine(uint32 mine, uint32 team, uint64 playerGuid)
+{
+	if(mine >= AV_MINE_COUNT || team > 1 || m_mineOwner[mine] == (int32)team)
+		return;
+
+	m_mineOwner[mine] = (int32)team;
+	UpdateMineWorldStates(mine);
+	UpdateMineNPCs(mine);
+	SendChatMessage(team ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, playerGuid, "$N has taken %s!", AV_MINES[mine].name);
+}
+
+bool AlteracValley::HandleMineBossKill(Player* pPlayer, Creature* pVictim)
+{
+	if(pPlayer == NULL || pVictim == NULL || !m_started || m_ended)
+		return false;
+
+	const uint32 entry = pVictim->GetEntry();
+	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
+	{
+		const AVMineTemplate& mineInfo = AV_MINES[i];
+		if(entry != mineInfo.neutralBossEntry && entry != mineInfo.allianceBossEntry && entry != mineInfo.hordeBossEntry)
+			continue;
+
+		CaptureMine(i, pPlayer->m_bgTeam, pPlayer->GetGUID());
+		return true;
+	}
+
+	return false;
 }
 
 void AlteracValley::UpdateObjectiveWorldStates(uint32 index)
@@ -777,29 +929,18 @@ void AlteracValley::CheckForEnd()
 
 void AlteracValley::UpdateBossRoomGuards()
 {
-	uint32 destroyedAlliance = 0;
-	uint32 destroyedHorde = 0;
-
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
 	{
 		if(!(AV_OBJECTIVES[i].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[i].type == AV_OBJECTIVE_BUNKER))
 			continue;
 
-		if(!m_objectiveStates[i].destroyed)
-			continue;
+		if(m_objectiveStates[i].destroyed)
+			RemoveObjectiveLinkedUnit(i);
+		else if(m_objectiveStates[i].linkedUnit == NULL)
+			m_objectiveStates[i].linkedUnit = FindObjectiveLinkedUnit(i);
 
-		if(AV_OBJECTIVES[i].initialOwner == 0)
-			++destroyedAlliance;
-		else if(AV_OBJECTIVES[i].initialOwner == 1)
-			++destroyedHorde;
+		RefreshObjectiveLinkedUnit(i);
 	}
-
-	Creature* vanndar = FindLinkedCreature(AV_NPC_VANNDAR, 726.0f, -10.0f, 50.0f);
-	Creature* drekthar = FindLinkedCreature(AV_NPC_DREKTHAR, -1377.0f, -229.0f, 98.0f);
-	if(vanndar != NULL)
-		vanndar->GetAIInterface()->setOutOfCombatRange(30 + (destroyedAlliance * 5));
-	if(drekthar != NULL)
-		drekthar->GetAIInterface()->setOutOfCombatRange(30 + (destroyedHorde * 5));
 }
 
 void AlteracValley::RepopPlayersOfTeam(int32 team, Creature* spiritGuide)
@@ -822,6 +963,90 @@ void AlteracValley::RepopPlayersOfTeam(int32 team, Creature* spiritGuide)
 Creature* AlteracValley::FindLinkedCreature(uint32 entry, float x, float y, float z)
 {
 	return m_mapMgr->GetInterface()->GetCreatureNearestCoords(x, y, z, entry);
+}
+
+Creature* AlteracValley::FindObjectiveLinkedUnit(uint32 index)
+{
+	if(index >= AV_OBJECTIVE_COUNT || AV_OBJECTIVES[index].linkedNpcEntry == 0)
+		return NULL;
+
+	const float searchX = AV_BOSS_ROOM_CENTERS[AV_OBJECTIVES[index].initialOwner == 1 ? 1 : 0][0];
+	const float searchY = AV_BOSS_ROOM_CENTERS[AV_OBJECTIVES[index].initialOwner == 1 ? 1 : 0][1];
+	const float searchZ = AV_BOSS_ROOM_CENTERS[AV_OBJECTIVES[index].initialOwner == 1 ? 1 : 0][2];
+	return FindLinkedCreature(AV_OBJECTIVES[index].linkedNpcEntry, searchX, searchY, searchZ);
+}
+
+void AlteracValley::RefreshObjectiveLinkedUnit(uint32 index)
+{
+	if(index >= AV_OBJECTIVE_COUNT)
+		return;
+
+	AVObjectiveState& state = m_objectiveStates[index];
+	if(state.destroyed || m_mapMgr == NULL)
+		return;
+
+	const uint32 teamIndex = (AV_OBJECTIVES[index].initialOwner == 1) ? 1 : 0;
+	const float centerX = AV_BOSS_ROOM_CENTERS[teamIndex][0];
+	const float centerY = AV_BOSS_ROOM_CENTERS[teamIndex][1];
+	const float centerZ = AV_BOSS_ROOM_CENTERS[teamIndex][2];
+	const float radiusSq = AV_BOSS_ROOM_CENTERS[teamIndex][3] * AV_BOSS_ROOM_CENTERS[teamIndex][3];
+	Creature* matched = NULL;
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL || creature->GetEntry() != AV_OBJECTIVES[index].linkedNpcEntry)
+			continue;
+
+		const float dx = creature->GetPositionX() - centerX;
+		const float dy = creature->GetPositionY() - centerY;
+		const float dz = creature->GetPositionZ() - centerZ;
+		if(((dx * dx) + (dy * dy) + (dz * dz)) > radiusSq)
+			continue;
+
+		creature->GetAIInterface()->setOutOfCombatRange(90);
+		creature->SetUInt32Value(UNIT_FIELD_HEALTH, creature->GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+		matched = creature;
+		break;
+	}
+
+	state.linkedUnit = matched;
+}
+
+void AlteracValley::RemoveObjectiveLinkedUnit(uint32 index)
+{
+	if(index >= AV_OBJECTIVE_COUNT)
+		return;
+
+	AVObjectiveState& state = m_objectiveStates[index];
+	if(m_mapMgr == NULL)
+	{
+		state.linkedUnit = NULL;
+		return;
+	}
+
+	const uint32 teamIndex = (AV_OBJECTIVES[index].initialOwner == 1) ? 1 : 0;
+	const float centerX = AV_BOSS_ROOM_CENTERS[teamIndex][0];
+	const float centerY = AV_BOSS_ROOM_CENTERS[teamIndex][1];
+	const float centerZ = AV_BOSS_ROOM_CENTERS[teamIndex][2];
+	const float radiusSq = AV_BOSS_ROOM_CENTERS[teamIndex][3] * AV_BOSS_ROOM_CENTERS[teamIndex][3];
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL || creature->GetEntry() != AV_OBJECTIVES[index].linkedNpcEntry)
+			continue;
+
+		const float dx = creature->GetPositionX() - centerX;
+		const float dy = creature->GetPositionY() - centerY;
+		const float dz = creature->GetPositionZ() - centerZ;
+		if(((dx * dx) + (dy * dy) + (dz * dz)) > radiusSq)
+			continue;
+
+		creature->Despawn(0, 0);
+	}
+
+	state.linkedUnit = NULL;
 }
 
 GameObject* AlteracValley::FindGate(uint32 team)
