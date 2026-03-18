@@ -138,8 +138,9 @@ WHERE `id` IN (3000191, 3000192);
 -- Stray Area Trigger NPC removal from AlteracValley that was present in CMangos TBC DB
 DELETE FROM creature_spawns WHERE id = 3002000 AND entry = 22515 AND map = 30;
 
--- Stray spawn of Wing Commander Mulverick
+-- Stray spawn of Wing Commanders
 DELETE FROM creature_spawns WHERE id = 3000632;
+DELETE FROM creature_spawns WHERE id = 3001076;
 
 -- Purge Mine spawns in AlteracValley allow the core to handle it
 -- Review counts before delete
@@ -173,3 +174,21 @@ WHERE map = 30
   AND ((position_x - (-862.0)) * (position_x - (-862.0))
      + (position_y - (-82.0)) * (position_y - (-82.0))
      + (position_z - 68.0) * (position_z - 68.0)) <= (150.0 * 150.0);
+
+-- Remove Spirit Healers they are dynamically spawned in AV based on current control
+DELETE FROM creature_spawns
+WHERE map = 30
+  AND entry IN (13116, 13117);
+
+-- Correct requirements for Lokholar the Ice Lord
+UPDATE `quests`
+SET
+    `ReqItemId1` = 17306,      -- Stormpike Soldier's Blood
+    `ReqItemCount1` = 5,
+    `ReqItemId2` = 17309,      -- Storm Crystal
+    `ReqItemCount2` = 1,
+    `ReqItemId3` = 0,
+    `ReqItemCount3` = 0,
+    `ReqItemId4` = 0,
+    `ReqItemCount4` = 0
+WHERE `entry` = 6801;
