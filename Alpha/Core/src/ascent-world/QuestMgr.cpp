@@ -911,7 +911,11 @@ void QuestMgr::OnQuestFinished(Player* plr, Quest* qst, Object *qst_giver, uint3
 	}
 	qle->ClearAffectedUnits();
 	qle->Finish();
-	
+
+	// Battleground quest turn-in hook.
+	// Fire only after the quest is truly completed in the quest log.
+	if(plr != NULL && plr->m_bg != NULL)
+		plr->m_bg->HookOnQuestTurnIn(plr, qst->id);
 	
 	if(qst_giver->GetTypeId() == TYPEID_UNIT)
 	{

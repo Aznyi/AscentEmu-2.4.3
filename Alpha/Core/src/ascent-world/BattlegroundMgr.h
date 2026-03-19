@@ -284,6 +284,13 @@ public:
 	virtual void HookOnPlayerKill(Player * plr, Unit * pVictim) = 0;
 	virtual void HookOnHK(Player * plr) = 0;
 
+	/* Used when a player turns in a quest while inside the battleground */
+	virtual void HookOnQuestTurnIn(Player* plr, uint32 questId) { }
+
+	/* Optional battleground-side interaction hooks */
+	virtual bool HandleAirSupportRescue(Player* plr, Creature* commander) { return false; }
+	virtual bool HandleAirSupportDeploy(Player* plr, Creature* commander) { return false; }
+
 	/* Player-corpse loot support for battleground quest items */
 	virtual bool SupportsPlayerLoot() { return false; }
 	virtual void HookGenerateLoot(Player* plr, Corpse* pCorpse) { }

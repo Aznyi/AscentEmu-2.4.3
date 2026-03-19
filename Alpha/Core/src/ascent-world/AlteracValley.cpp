@@ -23,6 +23,10 @@
 #define EVENT_AV_OBJECTIVES_UPDATE 9900
 #define EVENT_AV_MINE_TICK 9901
 #define EVENT_AV_MINE_RESPAWN 9902
+#define AV_AIR_SUPPORT_STRIKE_DURATION_MS 60000
+#define AV_AIR_SUPPORT_STRIKE_PULSE_MS 10000
+#define AV_AIR_SUPPORT_STRIKE_REINFORCEMENT_DAMAGE 2
+#define AV_AIR_SUPPORT_RIDER_ALTITUDE 28.0f
 
 #define AV_WS_ALLIANCE_SCORE 3127
 #define AV_WS_HORDE_SCORE 3128
@@ -54,6 +58,191 @@
 #define AV_NPC_BALINDA 11949
 #define AV_NPC_GALVANGAR 11947
 
+#define AV_QUEST_MORE_BOOTY               6741
+#define AV_QUEST_MORE_ARMOR_SCRAPS        6781
+#define AV_QUEST_LOKHOLAR_THE_ICE_LORD    6801
+#define AV_QUEST_CALL_OF_AIR_GUSES_FLEET       6825
+#define AV_QUEST_CALL_OF_AIR_JEZTORS_FLEET     6826
+#define AV_QUEST_CALL_OF_AIR_MULVERICKS_FLEET  6827
+#define AV_QUEST_CALL_OF_AIR_VIPORES_FLEET     6941
+#define AV_QUEST_CALL_OF_AIR_SLIDORES_FLEET    6942
+#define AV_QUEST_CALL_OF_AIR_ICHMANS_FLEET     6943
+#define AV_QUEST_IVUS_THE_FOREST_LORD     6881
+#define AV_QUEST_ARMOR_SCRAPS             7223
+#define AV_QUEST_ENEMY_BOOTY              7224
+#define AV_QUEST_A_GALLON_OF_BLOOD        7385
+#define AV_QUEST_CRYSTAL_CLUSTER          7386
+
+#define AV_SCRAPS_PER_TURNIN             20
+#define AV_BLOOD_PER_TURNIN               5
+#define AV_STORM_CRYSTALS_PER_TURNIN      5
+
+#define AV_ARMOR_TIER1_THRESHOLD        500
+#define AV_ARMOR_TIER2_THRESHOLD       1000
+#define AV_ARMOR_TIER3_THRESHOLD       1500
+#define AV_ELEMENTAL_SUMMON_THRESHOLD   200
+
+// Air support fleet slots:
+// Alliance: 0=Slidore, 1=Vipore, 2=Ichman
+// Horde:    0=Guse,    1=Jeztor, 2=Mulverick
+static const uint32 AV_AIR_SUPPORT_COMMANDER_ENTRY[2][3] =
+{
+	{ 13438, 13439, 13437 },
+	{ 13179, 13180, 13181 }
+};
+
+static const uint32 AV_AIR_SUPPORT_READY_THRESHOLD_PER_FLEET[3] = { 90, 60, 30 };
+
+static const uint32 AV_AIR_SUPPORT_RIDER_ENTRY[2][3] =
+{
+	// Alliance
+	{ 14946, 14948, 14947 },
+	// Horde
+	{ 14943, 14944, 14945 }
+};
+
+static inline uint32 AVGetAirSupportReadyThreshold(uint32 fleet)
+{
+	if(fleet > 2)
+		return 90;
+
+	return AV_AIR_SUPPORT_READY_THRESHOLD_PER_FLEET[fleet];
+}
+
+struct AVAirSupportStrikeProfile
+{
+	float x, y, z, radius;
+	const char* targetDescription;
+	uint32 reinforcementDamagePerPulse;
+};
+
+static const AVAirSupportStrikeProfile AV_AIR_SUPPORT_STRIKE_PROFILE[2][3] =
+{
+	// Alliance strikes against Horde territory
+	{
+		{ -1082.53f, -346.567f, 54.9771f, 45.0f, "Frostwolf Graveyard", 4 },
+		{ -1402.21f, -307.431f, 89.4424f, 65.0f, "Frostwolf Village", 3 },
+		{ -1377.0f, -229.0f, 98.0f, 70.0f, "Drek'Thar's fortress", 2 }
+	},
+	// Horde strikes against Alliance territory
+	{
+		{ 669.007f, -294.078f, 30.2909f, 45.0f, "Stormpike Graveyard", 4 },
+		{ 620.0f, -110.0f, 58.0f, 80.0f, "the Dun Baldar bunker line", 3 },
+		{ 638.592f, -32.422f, 46.0608f, 50.0f, "Stormpike Aid Station", 2 }
+	}
+};
+
+struct AVAirSupportVisualOffset
+{
+	float x, y, z, o;
+};
+
+static const AVAirSupportVisualOffset AV_AIR_SUPPORT_STRIKE_VISUAL_OFFSETS[4] =
+{
+	{  0.0f,   0.0f, 0.0f, 0.0f },
+	{ 12.0f,   8.0f, 0.0f, 0.7f },
+	{ -10.0f, 11.0f, 0.0f, 1.9f },
+	{  6.0f, -13.0f, 0.0f, 3.2f }
+};
+
+static const float AV_AIR_SUPPORT_RIDER_LATERAL_OFFSETS[3] = { -10.0f, 0.0f, 10.0f };
+
+static inline const AVAirSupportStrikeProfile& AVGetAirSupportStrikeProfile(uint32 team, uint32 fleet)
+{
+	static const AVAirSupportStrikeProfile kFallback = { 0.0f, 0.0f, 0.0f, 20.0f, "enemy territory", AV_AIR_SUPPORT_STRIKE_REINFORCEMENT_DAMAGE };
+	if(team > 1 || fleet > 2)
+		return kFallback;
+
+	return AV_AIR_SUPPORT_STRIKE_PROFILE[team][fleet];
+}
+
+struct AVAirSupportWaypoint
+{
+	float x, y, z, o, radius;
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_ALLIANCE_SLIDORE[] =
+{
+	{ -650.0f, -300.0f, 78.0f, 0.40f, 18.0f },
+	{ -450.0f, -225.0f, 72.0f, 0.25f, 20.0f },
+	{ -125.0f, -155.0f, 58.0f, 0.15f, 22.0f },
+	{  250.0f, -105.0f, 50.0f, 0.05f, 24.0f },
+	{  648.0f,  -36.0f, 46.2f, 0.00f, 20.0f }
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_ALLIANCE_VIPORE[] =
+{
+	{ -1185.0f, -318.0f, 62.0f, 0.30f, 18.0f },
+	{  -950.0f, -235.0f, 69.0f, 0.20f, 20.0f },
+	{  -575.0f, -170.0f, 73.0f, 0.15f, 22.0f },
+	{  -120.0f,  -90.0f, 56.0f, 0.10f, 24.0f },
+	{   657.0f,  -24.0f, 46.2f, 0.00f, 20.0f }
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_ALLIANCE_ICHMAN[] =
+{
+	{ -1180.0f, -250.0f, 98.0f, 0.15f, 18.0f },
+	{  -925.0f, -185.0f, 83.0f, 0.12f, 20.0f },
+	{  -500.0f, -135.0f, 73.0f, 0.10f, 22.0f },
+	{   -60.0f,  -72.0f, 55.0f, 0.05f, 24.0f },
+	{   666.0f,  -12.0f, 46.2f, 0.00f, 20.0f }
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_HORDE_GUSE[] =
+{
+	{   75.0f, -345.0f, 52.0f, 3.10f, 18.0f },
+	{ -180.0f, -330.0f, 58.0f, 3.12f, 20.0f },
+	{ -475.0f, -315.0f, 64.0f, 3.13f, 22.0f },
+	{ -925.0f, -300.0f, 74.0f, 3.13f, 24.0f },
+	{ -1390.0f, -308.0f, 89.5f, 3.14f, 20.0f }
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_HORDE_JEZTOR[] =
+{
+	{  150.0f, -520.0f, 66.0f, 3.00f, 18.0f },
+	{ -125.0f, -475.0f, 60.0f, 3.05f, 20.0f },
+	{ -450.0f, -410.0f, 62.0f, 3.10f, 22.0f },
+	{ -925.0f, -335.0f, 74.0f, 3.12f, 24.0f },
+	{ -1402.0f, -296.0f, 89.5f, 3.14f, 20.0f }
+};
+
+static const AVAirSupportWaypoint AV_AIR_SUPPORT_ROUTE_HORDE_MULVERICK[] =
+{
+	{  425.0f, -165.0f, 57.0f, 3.05f, 18.0f },
+	{  100.0f, -205.0f, 56.0f, 3.10f, 20.0f },
+	{ -300.0f, -250.0f, 61.0f, 3.12f, 22.0f },
+	{ -825.0f, -285.0f, 72.0f, 3.13f, 24.0f },
+	{ -1414.0f, -284.0f, 89.5f, 3.14f, 20.0f }
+};
+
+static const AVAirSupportWaypoint* AVGetAirSupportRoute(uint32 team, uint32 fleet, uint32& count)
+{
+	count = 0;
+	if(team > 1 || fleet > 2)
+		return NULL;
+
+	if(team == 0)
+	{
+		switch(fleet)
+		{
+		case 0: count = sizeof(AV_AIR_SUPPORT_ROUTE_ALLIANCE_SLIDORE) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_ALLIANCE_SLIDORE;
+		case 1: count = sizeof(AV_AIR_SUPPORT_ROUTE_ALLIANCE_VIPORE) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_ALLIANCE_VIPORE;
+		case 2: count = sizeof(AV_AIR_SUPPORT_ROUTE_ALLIANCE_ICHMAN) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_ALLIANCE_ICHMAN;
+		}
+	}
+	else
+	{
+		switch(fleet)
+		{
+		case 0: count = sizeof(AV_AIR_SUPPORT_ROUTE_HORDE_GUSE) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_HORDE_GUSE;
+		case 1: count = sizeof(AV_AIR_SUPPORT_ROUTE_HORDE_JEZTOR) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_HORDE_JEZTOR;
+		case 2: count = sizeof(AV_AIR_SUPPORT_ROUTE_HORDE_MULVERICK) / sizeof(AVAirSupportWaypoint); return AV_AIR_SUPPORT_ROUTE_HORDE_MULVERICK;
+		}
+	}
+
+	return NULL;
+}
+
  // Faction here is based on the corpse owner's team:
  // 0 = Alliance corpse drops Stormpike items, 1 = Horde corpse drops Frostwolf items, -1 = both.
 struct AVLoot
@@ -64,6 +253,137 @@ struct AVLoot
 	uint32 MinCount;
 	uint32 MaxCount;
 };
+
+static const char* AVGetElementalName(uint32 team)
+{
+	switch(team)
+	{
+	case 0:
+		return "Ivus the Forest Lord";
+	case 1:
+		return "Lokholar the Ice Lord";
+	default:
+		return "the ancient elemental";
+	}
+}
+
+static const char* AVGetElementalResourceName(uint32 team)
+{
+	return (team == 0) ? "storm crystals" : "enemy blood";
+}
+
+static const char* AVGetAirSupportFleetName(uint32 team, uint32 fleet)
+{
+	static const char* kAlliance[3] = { "Slidore", "Vipore", "Ichman" };
+	static const char* kHorde[3] = { "Guse", "Jeztor", "Mulverick" };
+
+	if(team > 1 || fleet > 2)
+		return "Unknown";
+
+	return (team == 0) ? kAlliance[fleet] : kHorde[fleet];
+}
+
+static const char* AVGetAirSupportStrikeName(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2)
+		return "air support";
+
+	if(team == 0)
+	{
+		switch(fleet)
+		{
+		case 0: return "Slidore's Gryphon Riders";
+		case 1: return "Vipore's Gryphon Riders";
+		case 2: return "Ichman's Gryphon Riders";
+		}
+	}
+	else
+	{
+		switch(fleet)
+		{
+		case 0: return "Guse's War Riders";
+		case 1: return "Jeztor's War Riders";
+		case 2: return "Mulverick's War Riders";
+		}
+	}
+
+	return "air support";
+}
+
+static const char* AVGetAirSupportCommanderFullName(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2)
+		return "Wing Commander";
+
+	if(team == 0)
+	{
+		switch(fleet)
+		{
+		case 0: return "Wing Commander Slidore";
+		case 1: return "Wing Commander Vipore";
+		case 2: return "Wing Commander Ichman";
+		}
+	}
+	else
+	{
+		switch(fleet)
+		{
+		case 0: return "Wing Commander Guse";
+		case 1: return "Wing Commander Jeztor";
+		case 2: return "Wing Commander Mulverick";
+		}
+	}
+
+	return "Wing Commander";
+}
+
+static bool AVGetAirSupportQuestInfo(uint32 questId, uint32& team, uint32& fleet)
+{
+	switch(questId)
+	{
+		case AV_QUEST_CALL_OF_AIR_SLIDORES_FLEET:
+			team = 0; fleet = 0; return true;
+		case AV_QUEST_CALL_OF_AIR_VIPORES_FLEET:
+			team = 0; fleet = 1; return true;
+		case AV_QUEST_CALL_OF_AIR_ICHMANS_FLEET:
+			team = 0; fleet = 2; return true;
+		case AV_QUEST_CALL_OF_AIR_GUSES_FLEET:
+			team = 1; fleet = 0; return true;
+		case AV_QUEST_CALL_OF_AIR_JEZTORS_FLEET:
+			team = 1; fleet = 1; return true;
+		case AV_QUEST_CALL_OF_AIR_MULVERICKS_FLEET:
+			team = 1; fleet = 2; return true;
+		default:
+			break;
+	}
+
+	team = 0;
+	fleet = 0;
+	return false;
+}
+
+static bool AVGetAirSupportCommanderByEntry(uint32 entry, uint32& team, uint32& fleet)
+{
+	for(uint32 t = 0; t < 2; ++t)
+	{
+		for(uint32 f = 0; f < 3; ++f)
+		{
+			if(AV_AIR_SUPPORT_COMMANDER_ENTRY[t][f] == entry)
+			{
+				team = t;
+				fleet = f;
+				return true;
+			}
+		}
+	}
+
+	team = 0;
+	fleet = 0;
+	return false;
+}
+
+static inline uint32 AVGetAirSupportCaptiveFaction(uint32 team) { return (team == 0) ? AV_VISUAL_FACTION_ALLIANCE : AV_VISUAL_FACTION_HORDE; }
+static inline uint32 AVGetAirSupportHomeFaction(uint32 team)    { return (team == 0) ? AV_FACTION_ALLIANCE : AV_FACTION_HORDE; }
 
 struct AVMineTemplate
 {
@@ -131,121 +451,148 @@ static const AVMineTemplate AV_MINES[AlteracValley::AV_MINE_COUNT] =
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_NEUTRAL[] =
 {
-	/* entrance pocket */
-	{ 10987, 783.1050f, -343.7300f, 61.4101f, 5.486630f, 1, 59, 0, 0, 1, 0, 0, 0, 0, 0 },
-	{ 11600, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 10987, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 11600, 876.0470f, -341.8570f, 65.8743f, 4.450590f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 10987, 888.2080f, -332.5640f, 68.1480f, 1.937320f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 10987, 913.0640f, -395.7730f, 60.1364f, 4.415680f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
 	{ 11602, 922.7150f, -405.0110f, 58.1280f, 4.896920f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
-
-	/* rear boss chamber */
-	{ 10987, 852.6320f, -372.4160f, 48.1657f, 3.665190f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 11600, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11657, 865.5541f, -438.7354f, 50.7333f, 0.323308f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 10987, 783.1050f, -343.7300f, 61.4101f, 5.486630f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 834.3540f, -355.5260f, 48.1491f, 6.073750f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 847.9900f, -386.2870f, 60.9277f, 2.323740f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 874.5770f, -414.7860f, 52.7817f, 1.675520f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 888.2080f, -332.5640f, 68.1480f, 1.937320f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 905.0670f, -396.0740f, 60.2085f, 5.078910f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 916.8520f, -393.8910f, 60.1726f, 2.716950f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 931.1460f, -359.6660f, 66.0294f, 3.961900f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 10987, 971.6710f, -442.6570f, 57.6951f, 3.176500f, 0, 59, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11600, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 827.5700f, -417.4830f, 48.4538f, 1.492370f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 850.9220f, -390.3990f, 60.8771f, 2.854050f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 11600, 858.5930f, -439.6140f, 50.2184f, 0.872665f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 11657, 865.5540f, -438.7350f, 50.7333f, 0.323309f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 871.2820f, -403.8430f, 62.1108f, 0.788382f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 876.0470f, -341.8570f, 65.8743f, 4.450590f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 884.2370f, -407.5970f, 61.5660f, 0.820305f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 924.7290f, -397.4530f, 60.2130f, 2.716950f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11600, 957.2930f, -455.0390f, 56.7395f, 5.794490f, 0, 59, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_ALLIANCE[] =
- {
-	/* entrance pocket */
-	{ 13080, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 1, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13396, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 13080, 851.4710f, -362.5200f, 47.3140f, 4.066620f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13396, 857.5130f, -351.8170f, 65.1867f, 4.398230f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+{
+	{ 13078, 880.2361f, -444.5867f, 54.6063f, 2.460914f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 827.5700f, -417.4830f, 48.4538f, 1.492370f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 847.5560f, -388.2280f, 60.9438f, 2.568720f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 13080, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13080, 871.9140f, -404.2090f, 62.1269f, 6.061630f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13396, 921.1000f, -395.8120f, 60.4615f, 2.716950f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* rear boss chamber */
-	{ 13078, 880.2360f, -444.5870f, 54.6063f, 2.460910f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13080, 926.4750f, -419.3450f, 56.1833f, 2.094400f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13080, 955.8120f, -440.3020f, 55.3411f, 3.193950f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13396, 897.9290f, -471.7420f, 59.7729f, 2.548180f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
- };
+	{ 13080, 868.2560f, -392.3630f, 61.4803f, 0.732738f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 871.5610f, -404.1140f, 62.1297f, 0.009817f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 880.1560f, -400.6780f, 61.3113f, 3.413730f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 897.4640f, -338.7580f, 68.1715f, 2.949610f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 924.7290f, -397.4530f, 60.2130f, 2.716950f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13080, 957.2930f, -455.0390f, 56.7395f, 5.794490f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13396, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 835.0770f, -379.4180f, 48.2755f, 5.934120f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 857.5130f, -351.8170f, 65.1867f, 4.398230f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 878.6750f, -345.3600f, 66.1052f, 3.456510f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 893.3760f, -343.1710f, 68.1499f, 5.358160f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 907.2090f, -428.2670f, 59.8065f, 1.867500f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 919.2740f, -394.9860f, 60.3478f, 2.716960f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 931.1460f, -359.6660f, 66.0294f, 3.961900f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13396, 971.6710f, -442.6570f, 57.6951f, 3.176500f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+};
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_IRONDEEP_HORDE[] =
- {
-	/* entrance pocket */
-	{ 13099, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 1, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13397, 831.7110f, -346.7850f, 47.2975f, 0.226893f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 13099, 851.4710f, -362.5200f, 47.3140f, 4.066620f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13397, 859.0300f, -367.2310f, 47.4655f, 0.017453f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+{
+	{ 13079, 879.2206f, -443.2573f, 54.6478f, 1.832596f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 808.9530f, -325.9640f, 52.4043f, 3.019420f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 827.5700f, -417.4830f, 48.4538f, 1.492370f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 847.5560f, -388.2280f, 60.9438f, 2.568720f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 13099, 857.2760f, -395.3950f, 61.2418f, 0.084555f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13099, 871.9140f, -404.2090f, 62.1269f, 6.061630f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13397, 921.4490f, -341.9810f, 67.1264f, 3.438300f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* rear boss chamber */
-	{ 13079, 879.2210f, -443.2570f, 54.6478f, 1.832600f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13099, 926.4750f, -419.3450f, 56.1833f, 2.094400f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13099, 955.8120f, -440.3020f, 55.3411f, 3.193950f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13397, 897.9290f, -471.7420f, 59.7729f, 2.548180f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
- };
+	{ 13099, 868.2560f, -392.3630f, 61.4803f, 0.732738f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 871.5610f, -404.1140f, 62.1297f, 0.009817f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 880.1560f, -400.6780f, 61.3113f, 3.413730f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 897.4640f, -338.7580f, 68.1715f, 2.949610f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 924.7290f, -397.4530f, 60.2130f, 2.716950f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13099, 957.2930f, -455.0390f, 56.7395f, 5.794490f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13397, 754.2040f, -322.7540f, 57.4426f, 5.209390f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 834.6340f, -365.9810f, 62.8801f, 1.326450f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 849.8600f, -340.9440f, 66.2447f, 0.401426f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 877.1270f, -351.8000f, 66.5296f, 5.742130f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 890.5840f, -406.0490f, 61.1925f, 5.672320f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 905.9730f, -459.5280f, 58.7594f, 1.371890f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 919.2740f, -394.9860f, 60.3478f, 2.716960f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 931.1460f, -359.6660f, 66.0294f, 3.961900f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13397, 971.6710f, -442.6570f, 57.6951f, 3.176500f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+};
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_NEUTRAL[] =
 {
-	/* entrance pocket */
-	{ 11603, -865.6480f, -63.2401f, 71.4081f, 3.174600f, 1, 26, 0, 0, 1, 0, 0, 0, 0, 0 },
-	{ 11604, -873.1900f, -50.4899f, 70.0568f, -2.412880f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 11604, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 11603, -877.7600f, -118.0700f, 65.2150f, 2.949610f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 11604, -844.7640f, -92.6998f, 68.6054f, 3.467160f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 11605, -857.7100f, -91.4395f, 68.5389f, 6.089830f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 11677, -848.9020f, -92.9310f, 68.6325f, 3.333580f, 0, 26, 0, 0, 1, 0, 0, 0, 0, 0 },
-
-	/* rear chamber */
-	{ 11603, -920.6770f, -156.8590f, 62.8033f, 3.153060f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11677, -848.9024f, -92.9310f, 68.6325f, 3.333579f, 0, 26, 0, 0, 1, 0, 0, 0, 0, 0 },
+	{ 11603, -978.6780f, -37.3136f, 75.8364f, 2.844890f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -954.2310f, -169.5150f, 78.0482f, 1.962660f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -947.8540f, -170.5000f, 79.7618f, 0.942478f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -938.1970f, -155.8380f, 61.3111f, 1.658060f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -916.7500f, -136.0940f, 62.2357f, 0.069813f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -905.4550f, -84.5179f, 75.3642f, 3.298670f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -901.9770f, -82.8394f, 74.4376f, 5.232970f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -888.4680f, -148.4620f, 61.8012f, 1.658060f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -872.1350f, -150.0800f, 62.7513f, 3.572010f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -865.6480f, -63.2401f, 71.4081f, 3.174600f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11603, -853.3570f, -0.6962f, 72.0655f, 0.994838f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 11604, -976.0860f, -44.1775f, 76.0290f, 1.466080f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -951.4770f, -53.9647f, 80.0235f, 5.323250f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -920.8640f, -40.2009f, 78.2560f, 5.166170f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 11604, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 11603, -950.1690f, -188.0990f, 66.6184f, 5.550150f, 0, 26, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 11604, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -868.4400f, -121.6490f, 64.5056f, 3.333580f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -859.8460f, -19.6549f, 70.7304f, 1.972220f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 11604, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 0, 26, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_ALLIANCE[] =
- {
-	/* entrance pocket */
-	{ 13096, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 1, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13096, -873.1900f, -50.4899f, 70.0568f, -2.412880f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13317, -946.0720f, -54.0555f, 79.8627f, 0.792630f, 1, 1216, 0, 0, 1, 0, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 13086, -849.4900f, -93.5311f, 68.5934f, 3.700100f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13317, -876.7920f, -128.6460f, 64.1045f, 3.403390f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 13317, -915.3190f, -132.7180f, 62.5620f, 1.169840f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* rear chamber */
-	{ 13096, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13096, -956.2170f, -190.8570f, 66.2534f, 1.210150f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13096, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13317, -946.7380f, -139.5670f, 80.0904f, 2.391100f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
- };
+{
+	{ 13086, -849.4902f, -93.5311f, 68.5934f, 3.700098f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -976.0860f, -44.1775f, 76.0290f, 1.466080f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -954.6220f, -110.9580f, 80.7911f, 6.248280f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -933.9540f, -159.6320f, 60.7780f, 2.565630f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -915.8620f, -151.7400f, 76.9427f, 0.942478f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -888.3210f, -159.8310f, 62.5303f, 1.204280f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -868.4400f, -121.6490f, 64.5056f, 3.333580f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -859.8460f, -19.6549f, 70.7304f, 1.972220f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13096, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 0, 1216, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13317, -978.6780f, -37.3136f, 75.8364f, 2.844890f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -957.6230f, -186.5820f, 66.6021f, 1.954770f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -949.9440f, -142.9770f, 80.5382f, 2.705260f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -943.6780f, -110.9860f, 80.2557f, 0.959931f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -927.4120f, -135.3130f, 61.1987f, 3.298670f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -912.6890f, -45.4494f, 76.2277f, 4.607670f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -904.0230f, -90.4558f, 75.3706f, 3.403390f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -892.4080f, -162.5250f, 64.1212f, 2.698840f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -874.9010f, -36.6579f, 69.4246f, 2.007130f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -869.0230f, -82.2118f, 69.5848f, 3.228860f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13317, -853.3570f, -0.6962f, 72.0655f, 0.994838f, 0, 1216, 0, 0, 1, 233, 0, 0, 0, 0 },
+};
 
 static const AlteracValley::AVMineCreatureSpawn AV_MINE_SPAWNS_COLDTOOTH_HORDE[] =
- {
-	/* entrance pocket */
-	{ 13097, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 1, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13316, -874.9010f, -36.6579f, 69.4246f, 2.007130f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
-	{ 13316, -917.6480f, -46.8922f, 77.0872f, 5.270890f, 1, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* central chamber */
-	{ 13088, -849.4160f, -93.4279f, 68.5198f, 3.228860f, 0, 1214, 0, 0, 1, 0, 0, 0, 0, 0 },
-	{ 13097, -868.5110f, -148.3860f, 62.3547f, 3.578750f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13316, -907.5720f, -148.9370f, 76.6898f, 4.764750f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
-
-	/* rear chamber */
-	{ 13097, -894.8910f, -153.9510f, 61.6827f, 3.235690f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+{
+	{ 13088, -849.4163f, -93.4279f, 68.5198f, 3.228859f, 0, 1214, 0, 0, 1, 0, 0, 0, 0, 0 },
+	{ 13097, -987.3580f, -262.4960f, 65.3914f, 0.510012f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
 	{ 13097, -954.6220f, -110.9580f, 80.7911f, 6.248280f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13097, -958.5090f, -173.6520f, 77.9013f, 6.248280f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
-	{ 13316, -957.6230f, -186.5820f, 66.6021f, 1.954770f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
- };
+	{ 13097, -933.9540f, -159.6320f, 60.7780f, 2.565630f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -915.8620f, -151.7400f, 76.9427f, 0.942478f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -888.3210f, -159.8310f, 62.5303f, 1.204280f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -868.4400f, -121.6490f, 64.5056f, 3.333580f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -859.8460f, -19.6549f, 70.7304f, 1.972220f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13097, -824.2040f, -65.0530f, 72.3381f, 3.019420f, 0, 1214, 0, 0, 0, 0, 0, 0, 0, 0 },
+	{ 13316, -978.6780f, -37.3136f, 75.8364f, 2.844890f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -961.9410f, -90.7252f, 81.6629f, 0.820305f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -950.1690f, -188.0990f, 66.6184f, 5.550150f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -943.6780f, -110.9860f, 80.2557f, 0.959931f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -927.4120f, -135.3130f, 61.1987f, 3.298670f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -913.5890f, -146.7940f, 76.9366f, 1.867500f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -904.2700f, -160.4190f, 61.9876f, 3.611920f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -892.4080f, -162.5250f, 64.1212f, 2.698840f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -876.7920f, -128.6460f, 64.1045f, 3.403390f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -870.0300f, -6.2744f, 70.3867f, 2.391100f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+	{ 13316, -853.3570f, -0.6962f, 72.0655f, 0.994838f, 0, 1214, 0, 0, 1, 233, 0, 0, 0, 0 },
+};
+
 static const AlteracValley::AVMineCreatureSpawn* AVGetMineSpawnSet(uint32 mine, AVMineState owner, uint32& count)
 {
 	switch(mine)
@@ -408,6 +755,66 @@ static bool AVIsBaseHordeGuardEntry(uint32 entry)
 	return entry == 12053;
 }
 
+static bool AVIsArmorTierDefenderEntry(uint32 entry)
+{
+	switch(entry)
+	{
+	case 12050:
+	case 12053:
+	case 13326:
+	case 13328:
+	case 13331:
+	case 13332:
+	case 13421:
+	case 13422:
+	case 14762:
+	case 14763:
+	case 14764:
+	case 14765:
+	case 14772:
+	case 14773:
+	case 14776:
+	case 14777:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static int32 AVGetArmorTierDefenderTeam(uint32 entry)
+{
+	if(AVIsAllianceGuardEntry(entry) || entry == 14762 || entry == 14763 || entry == 14764 || entry == 14765)
+		return 0;
+
+	if(AVIsHordeGuardEntry(entry) || entry == 14772 || entry == 14773 || entry == 14776 || entry == 14777)
+		return 1;
+
+	return -1;
+}
+
+static uint32 AVScaleStatByTier(uint32 baseValue, uint32 tier)
+{
+	static const uint32 kTierPct[4] = { 100, 110, 120, 130 };
+	if(tier > 3)
+		tier = 3;
+
+	return (baseValue * kTierPct[tier] + 99) / 100;
+}
+
+static float AVScaleDamageByTier(float baseValue, uint32 tier)
+{
+	static const float kTierPct[4] = { 1.00f, 1.10f, 1.20f, 1.30f };
+	if(tier > 3)
+		tier = 3;
+
+	return baseValue * kTierPct[tier];
+}
+
+static const char* AV_ARMOR_REFRESH_ENTRIES =
+	"12050,12053,13326,13328,13331,13332,13421,13422,14762,14763,14764,14765,14772,14773,14776,14777";
+
+static const char* AV_ARMOR_TIER_SCALING_MODEL = "100/110/120/130";
+
 struct AVGuardSpawnOffset
 {
 	float x, y, z, o;
@@ -421,38 +828,38 @@ static const AVGuardSpawnOffset AV_GRAVEYARD_GUARD_OFFSETS[4] =
 	{ 1.5f, 6.5f, 0.0f, 4.71238f },
 };
 
+static const float AV_AIR_SUPPORT_CAPTIVE_POS[2][3][4] =
+{
+	// Alliance captives: Slidore, Vipore, Ichman
+	{
+		{ -768.864f, -360.926f, 68.6320f, 35.0f },   // Tower Point
+		{ -1219.25f, -353.167f, 57.7513f, 55.0f },   // Frostwolf Village
+		{ -1303.38f, -267.989f, 91.9538f, 35.0f }    // West Frostwolf Tower
+	},
+	// Horde captives: Guse, Jeztor, Mulverick
+	{
+		{ 210.875f, -357.360f, 56.4586f, 35.0f },    // Icewing Bunker
+		{ 320.486f, -502.645f, 71.2321f, 55.0f },    // Stormpike Lumber Mill
+		{ 674.469f, -144.534f, 63.7354f, 35.0f }     // Dun Baldar North Bunker
+	}
+};
+
 static bool AVIsObjectivePrisonerEntry(uint32 index, uint32 entry)
 {
 	switch(index)
 	{
+	case 6:
+		return entry == 13439;            // Vipore (Frostwolf Village / Relief Hut proxy)
 	case 8:
 		return entry == 13181;
 	case 9:
 		return entry == 13179;
 	case 12:
 		return entry == 13438;
-	case 13:
-		return entry == 13437 || entry == 23345;
 	case 14:
-		return entry == 13439;
+ 		return entry == 13437 || entry == 23345;
 	default:
 		return false;
-	}
-}
-
-static int32 AVGetPrisonerOwningTeam(uint32 index)
-{
-	switch(index)
-	{
-	case 8:
-	case 9:
-		return 1;
-	case 12:
-	case 13:
-	case 14:
-		return 0;
-	default:
-		return -1;
 	}
 }
 
@@ -502,13 +909,40 @@ void AlteracValley::Reset()
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
 		ClearMineRuntimeSpawns(i);
+		m_mineRespawnPending[i] = false;
 		m_mineOwner[i] = AV_MINE_STATE_NEUTRAL;
 	}
 	m_mineDbSpawnsHidden = false;
 	m_captainDead[0] = false;
 	m_captainDead[1] = false;
+
+	for(uint32 team = 0; team < 2; ++team)
+	{
+		for(uint32 fleet = 0; fleet < 3; ++fleet)
+		{
+			m_teamAirSupportTurnIns[team][fleet] = 0;
+			m_teamAirSupportReady[team][fleet] = false;
+			m_teamAirSupportEscorting[team][fleet] = false;
+			m_teamAirSupportEscortNode[team][fleet] = 0;
+			m_teamAirSupportReturned[team][fleet] = false;
+			m_teamAirSupportStrikeActive[team][fleet] = false;
+			m_teamAirSupportStrikeTimeLeft[team][fleet] = 0;
+			m_teamAirSupportStrikePulse[team][fleet] = 0;
+			m_teamAirSupportStrikeVisuals[team][fleet].clear();
+			m_teamAirSupportStrikeRiders[team][fleet].clear();
+			m_teamAirSupportStrikePass[team][fleet] = 0;
+		}
+	}
+
 	m_gates[0] = NULL;
 	m_gates[1] = NULL;
+	m_startGatesShouldBeOpen = false;
+	m_defenderBaseHealth.clear();
+	m_teamArmorScraps[0] = m_teamArmorScraps[1] = 0;
+	m_teamArmorTier[0] = m_teamArmorTier[1] = 0;
+	m_teamBlood[0] = m_teamBlood[1] = 0;
+	m_teamStormCrystals[0] = m_teamStormCrystals[1] = 0;
+	m_teamElementalReady[0] = m_teamElementalReady[1] = false;
 	m_lastDeathTime.clear();
 
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
@@ -559,6 +993,8 @@ void AlteracValley::OnCreate()
 	InitializeAlteracValleyNodes();
 	InitializeMines();
 	UpdateBossRoomGuards();
+	RefreshArmorTierDefenders(0);
+	RefreshArmorTierDefenders(1);
 
 	sEventMgr.AddEvent(this, &AlteracValley::EventUpdateObjectives, EVENT_AV_OBJECTIVES_UPDATE, 1000, 0, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 }
@@ -578,6 +1014,9 @@ void AlteracValley::OnStart()
 	m_started = true;
 	PlaySoundToAll(SOUND_BATTLEGROUND_BEGIN);
 
+	m_startGatesShouldBeOpen = true;
+
+	// Initial attempt (still useful if already loaded)
 	for(uint32 i = 0; i < 2; ++i)
 		SetGateOpen(i, true);
 
@@ -586,8 +1025,28 @@ void AlteracValley::OnStart()
 
 void AlteracValley::OnClose()
 {
+	// Server shutdown / battleground teardown safety:
+	// remove all pending AV callbacks before tearing down runtime objects,
+	// otherwise delayed mine respawns / mine ticks / objective updates can
+	// execute against partially freed battleground state during exit.
+	sEventMgr.RemoveEvents(this);
+
+	m_started = false;
+
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
+	{
+		m_mineRespawnPending[i] = false;
 		ClearMineRuntimeSpawns(i);
+	}
+
+	for(uint32 team = 0; team < 2; ++team)
+	{
+		for(uint32 fleet = 0; fleet < 3; ++fleet)
+		{
+			ClearAirSupportStrikeVisuals(team, fleet);
+			ClearAirSupportStrikeRiders(team, fleet);
+		}
+	}
 
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
 	{
@@ -620,7 +1079,9 @@ void AlteracValley::OnClose()
 			if(creature == NULL)
 				continue;
 
-			if(creature->IsInWorld())
+			// During shutdown, the map/world may already be unwinding. Be conservative
+			// and only try world removal if both the creature and its map context still look valid.
+			if(creature->IsInWorld() && creature->GetMapMgr() != NULL)
 				creature->RemoveFromWorld(false, false);
 
 			delete creature;
@@ -839,14 +1300,44 @@ void AlteracValley::AssaultObjective(Player* pPlayer, uint32 index)
 
 void AlteracValley::EventUpdateObjectives()
 {
-	if(m_ended)
+	if (!m_started || m_ended)
 		return;
 
-	if(!m_started)
-		return;
+	// Ensure start gates are opened even if they were not loaded at match start
+	if(m_startGatesShouldBeOpen)
+	{
+		bool allOpen = true;
+
+		for(uint32 i = 0; i < 2; ++i)
+		{
+			GameObject* gate = m_gates[i];
+
+			if(gate == NULL)
+				gate = m_gates[i] = FindGate(i);
+
+			if(gate == NULL)
+			{
+				allOpen = false;
+				continue;
+			}
+
+			// If not already open, force it
+			if(gate->GetUInt32Value(GAMEOBJECT_STATE) != 0)
+			{
+				SetGateOpen(i, true);
+				allOpen = false;
+			}
+		}
+
+		// Once both gates are confirmed open, stop retrying
+		if(allOpen)
+			m_startGatesShouldBeOpen = false;
+	}
 
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
 	{
+		UpdateObjectivePrisoners(i);
+
 		if(m_objectiveStates[i].assaultingTeam == -1 || m_objectiveStates[i].destroyed)
 			continue;
 
@@ -858,6 +1349,9 @@ void AlteracValley::EventUpdateObjectives()
 
 		FinalizeObjective(i);
 	}
+
+	UpdateAirSupportCommanders();
+	UpdateAirSupportStrikes();
 }
 
 void AlteracValley::FinalizeObjective(uint32 index)
@@ -954,6 +1448,11 @@ void AlteracValley::EventMineTick()
 
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
+		// Only grant reinforcement ticks while the mine is actually in a stable,
+		// faction-controlled state and not waiting on its capture-state respawn pass.
+		if(m_mineRespawnPending[i])
+			continue;
+
 		if(m_mineOwner[i] == AV_MINE_STATE_ALLIANCE || m_mineOwner[i] == AV_MINE_STATE_HORDE)
 			ModifyReinforcements((uint32)m_mineOwner[i], 1);
 	}
@@ -1030,7 +1529,7 @@ void AlteracValley::ClearMineRuntimeSpawns(uint32 mine)
 		if(creature == NULL)
 			continue;
 
-		if(creature->IsInWorld())
+		if (creature->IsInWorld() && creature->GetMapMgr() != NULL)
 			creature->RemoveFromWorld(false, false);
 
 		delete creature;
@@ -1110,12 +1609,36 @@ void AlteracValley::UpdateMineNPCs(uint32 mine)
 	SpawnMineState(mine);
 }
 
+void AlteracValley::ScheduleMineRespawn(uint32 mine)
+{
+	if(mine >= AV_MINE_COUNT)
+		return;
+
+	// Do not queue new mine events while the battleground is shutting down.
+	if(!m_started || m_ended || m_mapMgr == NULL)
+		return;
+
+	if(m_mineRespawnPending[mine])
+		return;
+
+	m_mineRespawnPending[mine] = true;
+	sEventMgr.AddEvent(this, &AlteracValley::EventRespawnMineNPCs, mine, EVENT_AV_MINE_RESPAWN, 750, 1, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+}
+
 void AlteracValley::EventRespawnMineNPCs(uint32 mine)
 {
 	if(m_ended || !m_started)
+	{
+		if(mine < AV_MINE_COUNT)
+			m_mineRespawnPending[mine] = false;
+		return;
+	}
+
+	if(mine >= AV_MINE_COUNT)
 		return;
 
 	UpdateMineNPCs(mine);
+	m_mineRespawnPending[mine] = false;
 }
 
 void AlteracValley::InitializeMines()
@@ -1125,6 +1648,7 @@ void AlteracValley::InitializeMines()
 	for(uint32 i = 0; i < AV_MINE_COUNT; ++i)
 	{
 		m_mineOwner[i] = AV_MINE_STATE_NEUTRAL;
+		m_mineRespawnPending[i] = false;
 		UpdateMineWorldStates(i);
 		UpdateMineNPCs(i);
 	}
@@ -1135,7 +1659,18 @@ void AlteracValley::SetMineOwner(uint32 mine, AVMineState owner, uint64 playerGu
 	if(mine >= AV_MINE_COUNT || m_mineOwner[mine] == owner)
 		return;
 
+	if(owner != AV_MINE_STATE_NEUTRAL &&
+		owner != AV_MINE_STATE_ALLIANCE &&
+		owner != AV_MINE_STATE_HORDE)
+		return;
+
 	(void)playerGuid;
+
+	sLog.outDebug("AV mine ownership change: mine=%u old=%d new=%d pending=%u",
+		mine,
+		(int32)m_mineOwner[mine],
+		(int32)owner,
+		m_mineRespawnPending[mine] ? 1 : 0);
 
 	m_mineOwner[mine] = owner;
 	UpdateMineWorldStates(mine);
@@ -1143,7 +1678,7 @@ void AlteracValley::SetMineOwner(uint32 mine, AVMineState owner, uint64 playerGu
 	// Do not immediately delete/respawn mine creatures during the boss kill hook.
 	// The just-killed boss is part of the current runtime spawn set and may still
 	// be in active death-processing code paths.
-	sEventMgr.AddEvent(this, &AlteracValley::EventRespawnMineNPCs, mine, EVENT_AV_MINE_TICK + 100, 750, 1, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
+	ScheduleMineRespawn(mine);
 
 	if(!announce)
 		return;
@@ -1169,6 +1704,26 @@ void AlteracValley::CaptureMine(uint32 mine, uint32 team, uint64 playerGuid)
 	if(mine >= AV_MINE_COUNT || team > 1)
 		return;
 
+	// Ignore duplicate capture attempts while the mine is already transitioning
+	// to the same owner. This prevents repeated boss death or overlapping hooks
+	// from spamming announcements and re-queuing state churn.
+	const AVMineState desiredOwner = (team == 0) ? AV_MINE_STATE_ALLIANCE : AV_MINE_STATE_HORDE;
+	if(m_mineOwner[mine] == desiredOwner && m_mineRespawnPending[mine])
+	{
+		sLog.outDebug("AV mine capture ignored: mine=%u team=%u owner already transitioning",
+			mine, team);
+		return;
+	}
+
+	// If the mine is already fully owned by that faction and not pending a respawn,
+	// do nothing.
+	if(m_mineOwner[mine] == desiredOwner && !m_mineRespawnPending[mine])
+	{
+		sLog.outDebug("AV mine capture ignored: mine=%u team=%u owner unchanged",
+			mine, team);
+		return;
+	}
+
 	SetMineOwner(mine, team == 0 ? AV_MINE_STATE_ALLIANCE : AV_MINE_STATE_HORDE, playerGuid, true);
 }
 
@@ -1184,6 +1739,16 @@ bool AlteracValley::HandleMineBossKill(Player* pPlayer, Creature* pVictim)
 		if(entry != mineInfo.neutralBossEntry && entry != mineInfo.allianceBossEntry && entry != mineInfo.hordeBossEntry)
 			continue;
 
+		// Prevent reprocessing while a prior capture is already in flight.
+		if(m_mineRespawnPending[i])
+		{
+			sLog.outDebug("AV mine boss kill ignored: mine=%u entry=%u pending=1",
+				i, entry);
+			return true;
+		}
+
+		sLog.outDebug("AV mine boss kill: mine=%u bossEntry=%u killerTeam=%u",
+			i, entry, pPlayer->m_bgTeam);
 		CaptureMine(i, pPlayer->m_bgTeam, pPlayer->GetGUID());
 		return true;
 	}
@@ -1329,7 +1894,7 @@ void AlteracValley::RefreshObjectiveLinkedUnit(uint32 index)
 			continue;
 
 		creature->GetAIInterface()->setOutOfCombatRange(90);
-		creature->SetUInt32Value(UNIT_FIELD_HEALTH, creature->GetUInt32Value(UNIT_FIELD_MAXHEALTH));
+		ApplyArmorTierToDefender(creature, teamIndex, false);
 		matched = creature;
 		break;
 	}
@@ -1903,55 +2468,1041 @@ Creature* AlteracValley::SpawnObjectiveGuard(uint32 entry, float x, float y, flo
 	p->m_spawn = 0;
 	delete sp;
 	p->PushToWorld(m_mapMgr);
-	return p;
+	const int32 team = AVGetArmorTierDefenderTeam(entry);
+	if(team >= 0)
+		ApplyArmorTierToDefender(p, static_cast<uint32>(team), true);
+
+ 	return p;
 }
 
 void AlteracValley::UpdateObjectivePrisoners(uint32 index)
 {
-	if(index >= AV_OBJECTIVE_COUNT || m_mapMgr == NULL)
+	if (index >= AV_OBJECTIVE_COUNT || m_mapMgr == NULL)
 		return;
 
-	const int32 rescuedByTeam = AVGetPrisonerOwningTeam(index);
-	if(rescuedByTeam < 0)
-		return;
-
-	const AVObjectiveState& state = m_objectiveStates[index];
-	const bool shouldShow = (!state.destroyed && state.assaultingTeam == -1 && state.owner == rescuedByTeam);
 	vector<Creature*> prisonersToShow;
 	vector<Creature*> prisonersToHide;
 
-	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	for (CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
 	{
 		Creature* creature = itr->second;
-		if(creature == NULL || !AVIsObjectivePrisonerEntry(index, creature->GetEntry()))
+		if (creature == NULL || !AVIsObjectivePrisonerEntry(index, creature->GetEntry()))
+			continue;
+
+		uint32 team = 0, fleet = 0;
+		if (!AVGetAirSupportCommanderByEntry(creature->GetEntry(), team, fleet))
 			continue;
 
 		const float dx = creature->GetPositionX() - AV_OBJECTIVES[index].bannerX;
 		const float dy = creature->GetPositionY() - AV_OBJECTIVES[index].bannerY;
-		if(((dx * dx) + (dy * dy)) > (80.0f * 80.0f))
+		if (((dx * dx) + (dy * dy)) > (80.0f * 80.0f))
 			continue;
 
-		if(shouldShow)
+		const bool shouldShow = (!m_teamAirSupportEscorting[team][fleet] && !m_teamAirSupportReturned[team][fleet]);
+
+		if (shouldShow)
 		{
-			if(!creature->IsInWorld())
+			if (!creature->IsInWorld())
 				prisonersToShow.push_back(creature);
 		}
-		else if(creature->IsInWorld())
+		else if (creature->IsInWorld())
 			prisonersToHide.push_back(creature);
 	}
 
-	for(vector<Creature*>::iterator itr = prisonersToShow.begin(); itr != prisonersToShow.end(); ++itr)
+	for (vector<Creature*>::iterator itr = prisonersToShow.begin(); itr != prisonersToShow.end(); ++itr)
 	{
 		Creature* creature = *itr;
-		if(creature != NULL && !creature->IsInWorld())
+		if (creature == NULL)
+			continue;
+
+		uint32 team = 0, fleet = 0;
+		if (!AVGetAirSupportCommanderByEntry(creature->GetEntry(), team, fleet))
+			continue;
+
+		if (!creature->IsInWorld())
 			creature->PushToWorld(m_mapMgr);
+
+		ConfigureAirSupportCommander(creature, team, fleet, true, false);
 	}
 
-	for(vector<Creature*>::iterator itr = prisonersToHide.begin(); itr != prisonersToHide.end(); ++itr)
+	for (vector<Creature*>::iterator itr = prisonersToHide.begin(); itr != prisonersToHide.end(); ++itr)
 	{
 		Creature* creature = *itr;
-		if(creature != NULL && creature->IsInWorld())
+		if (creature != NULL && creature->IsInWorld())
 			creature->RemoveFromWorld(false, false);
+	}
+
+	// Jeztor is not tied to a normal AV objective node in this core, so keep his
+	// captive state synchronized here as well.
+	if (index == 0)
+	{
+		Creature* jeztor = FindAirSupportCommander(1, 1);
+		if (jeztor != NULL && jeztor->IsInWorld() && !m_teamAirSupportEscorting[1][1] && !m_teamAirSupportReturned[1][1])
+			ConfigureAirSupportCommander(jeztor, 1, 1, true, false);
+	}
+}
+
+void AlteracValley::SendProgressMessage(uint32 team, const char* fmt, ...)
+{
+	char msg[256];
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(msg, sizeof(msg), fmt, ap);
+	va_end(ap);
+
+	SendChatMessage(team == 0 ? CHAT_MSG_BG_EVENT_ALLIANCE : CHAT_MSG_BG_EVENT_HORDE, 0, msg);
+}
+
+Creature* AlteracValley::FindAirSupportCommander(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2 || m_mapMgr == NULL)
+		return NULL;
+
+	const uint32 entry = AV_AIR_SUPPORT_COMMANDER_ENTRY[team][fleet];
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature != NULL && creature->GetEntry() == entry)
+			return creature;
+	}
+
+	return NULL;
+}
+
+void AlteracValley::ConfigureAirSupportCommander(Creature* creature, uint32 team, uint32 fleet, bool captive, bool returned)
+{
+	if(creature == NULL || team > 1 || fleet > 2)
+		return;
+
+	creature->SetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE, captive ? AVGetAirSupportCaptiveFaction(team) : AVGetAirSupportHomeFaction(team));
+	creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+
+	if(captive || returned)
+		creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_2);
+	else
+		creature->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_2);
+
+	if(creature->GetAIInterface() != NULL)
+	{
+		creature->GetAIInterface()->SetAllowedToEnterCombat(false);
+		creature->GetAIInterface()->disable_melee = true;
+
+		if(captive || returned)
+		{
+			creature->GetAIInterface()->m_canMove = false;
+			creature->GetAIInterface()->StopMovement(0);
+		}
+		else
+		{
+			creature->GetAIInterface()->m_canMove = true;
+		}
+	}
+
+	if(captive)
+	{
+		creature->Root();
+		creature->SetStandState(STANDSTATE_KNEEL);
+	}
+	else if(returned)
+	{
+		creature->Root();
+		creature->SetStandState(STANDSTATE_STAND);
+	}
+	else
+	{
+		creature->Unroot();
+		creature->SetStandState(STANDSTATE_STAND);
+	}
+}
+
+void AlteracValley::MoveAirSupportCommanderToEscortNode(uint32 team, uint32 fleet, Creature* commander)
+{
+	if(team > 1 || fleet > 2 || commander == NULL || commander->GetAIInterface() == NULL)
+		return;
+
+	uint32 count = 0;
+	const AVAirSupportWaypoint* route = AVGetAirSupportRoute(team, fleet, count);
+	if(route == NULL || count == 0)
+		return;
+
+	uint32 node = m_teamAirSupportEscortNode[team][fleet];
+	if(node >= count)
+		node = count - 1;
+
+	commander->GetAIInterface()->MoveTo(
+		route[node].x,
+		route[node].y,
+		route[node].z,
+		route[node].o);
+}
+
+bool AlteracValley::AdvanceAirSupportEscort(uint32 team, uint32 fleet, Creature* commander)
+{
+	if(team > 1 || fleet > 2 || commander == NULL)
+		return false;
+
+	uint32 count = 0;
+	const AVAirSupportWaypoint* route = AVGetAirSupportRoute(team, fleet, count);
+	if(route == NULL || count == 0)
+		return false;
+
+	uint32& node = m_teamAirSupportEscortNode[team][fleet];
+	if(node >= count)
+		node = count - 1;
+
+	if((node + 1) >= count)
+		return true;
+
+	++node;
+	MoveAirSupportCommanderToEscortNode(team, fleet, commander);
+	return false;
+}
+
+void AlteracValley::StartAirSupportEscort(uint32 team, uint32 fleet, Creature* commander)
+{
+	if(team > 1 || fleet > 2 || commander == NULL || m_teamAirSupportEscorting[team][fleet] || m_teamAirSupportReturned[team][fleet])
+		return;
+
+	m_teamAirSupportEscorting[team][fleet] = true;
+	m_teamAirSupportReturned[team][fleet] = false;
+	m_teamAirSupportEscortNode[team][fleet] = 0;
+
+	ConfigureAirSupportCommander(commander, team, fleet, false, false);
+	MoveAirSupportCommanderToEscortNode(team, fleet, commander);
+
+	SendProgressMessage(team, "Wing Commander %s has been rescued and is making for home!",
+		AVGetAirSupportFleetName(team, fleet));
+
+	sLog.outDebug("AV air support escort start: team=%u fleet=%u commander=%s",
+		team, fleet, AVGetAirSupportFleetName(team, fleet));
+}
+
+void AlteracValley::CompleteAirSupportEscort(uint32 team, uint32 fleet, Creature* commander)
+{
+	if(team > 1 || fleet > 2 || commander == NULL)
+		return;
+
+	m_teamAirSupportEscorting[team][fleet] = false;
+	m_teamAirSupportReturned[team][fleet] = true;
+	m_teamAirSupportEscortNode[team][fleet] = 0;
+
+	ConfigureAirSupportCommander(commander, team, fleet, false, true);
+
+	if(commander->GetAIInterface() != NULL)
+		commander->GetAIInterface()->StopMovement(0);
+
+
+	SendProgressMessage(team, "Wing Commander %s has returned home and can now support air operations.",
+		AVGetAirSupportFleetName(team, fleet));
+
+	sLog.outDebug("AV air support escort complete: team=%u fleet=%u commander=%s",
+		team, fleet, AVGetAirSupportFleetName(team, fleet));
+}
+
+void AlteracValley::UpdateAirSupportCommanders()
+{
+	if(m_mapMgr == NULL || !m_started || m_ended)
+		return;
+
+	for(uint32 team = 0; team < 2; ++team)
+	{
+		for(uint32 fleet = 0; fleet < 3; ++fleet)
+		{
+			Creature* commander = FindAirSupportCommander(team, fleet);
+			if(commander == NULL || !commander->IsInWorld())
+				continue;
+
+			if(commander->isDead())
+			{
+				if(m_teamAirSupportEscorting[team][fleet])
+				{
+					m_teamAirSupportEscorting[team][fleet] = false;
+					SendProgressMessage(team, "Wing Commander %s was slain before reaching home.",
+						AVGetAirSupportFleetName(team, fleet));
+				}
+				continue;
+			}
+
+			if(m_teamAirSupportReturned[team][fleet])
+			{
+				ConfigureAirSupportCommander(commander, team, fleet, false, true);
+				continue;
+			}
+
+			if(m_teamAirSupportEscorting[team][fleet])
+			{
+				uint32 count = 0;
+				const AVAirSupportWaypoint* route = AVGetAirSupportRoute(team, fleet, count);
+				if(route == NULL || count == 0)
+				{
+					CompleteAirSupportEscort(team, fleet, commander);
+					continue;
+				}
+
+				ConfigureAirSupportCommander(commander, team, fleet, false, false);
+				uint32 node = m_teamAirSupportEscortNode[team][fleet];
+				if(node >= count)
+					node = count - 1;
+
+				const float dx = commander->GetPositionX() - route[node].x;
+				const float dy = commander->GetPositionY() - route[node].y;
+				const float dz = commander->GetPositionZ() - route[node].z;
+				if(((dx * dx) + (dy * dy) + (dz * dz)) <= (route[node].radius * route[node].radius))
+				{
+					if(AdvanceAirSupportEscort(team, fleet, commander))
+						CompleteAirSupportEscort(team, fleet, commander);
+				}
+
+				continue;
+			}
+
+			ConfigureAirSupportCommander(commander, team, fleet, true, false);
+		}
+	}
+}
+
+void AlteracValley::ClearAirSupportStrikeVisuals(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2)
+		return;
+
+	vector<GameObject*>& visuals = m_teamAirSupportStrikeVisuals[team][fleet];
+	for(vector<GameObject*>::iterator itr = visuals.begin(); itr != visuals.end(); ++itr)
+	{
+		GameObject* go = *itr;
+		if(go == NULL)
+			continue;
+
+		if(go->IsInWorld())
+			go->RemoveFromWorld(true);
+
+		delete go;
+	}
+
+	visuals.clear();
+}
+
+void AlteracValley::ClearAirSupportStrikeRiders(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2)
+		return;
+
+	vector<Creature*>& riders = m_teamAirSupportStrikeRiders[team][fleet];
+	for(vector<Creature*>::iterator itr = riders.begin(); itr != riders.end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature == NULL)
+			continue;
+
+		if(creature->IsInWorld() && creature->GetMapMgr() != NULL)
+			creature->RemoveFromWorld(false, false);
+
+		delete creature;
+	}
+
+	riders.clear();
+}
+
+void AlteracValley::SpawnAirSupportStrikeVisuals(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2 || m_mapMgr == NULL)
+		return;
+
+	ClearAirSupportStrikeVisuals(team, fleet);
+
+	const AVAirSupportStrikeProfile& profile = AVGetAirSupportStrikeProfile(team, fleet);
+	for(uint32 i = 0; i < 4; ++i)
+	{
+		const float x = profile.x + AV_AIR_SUPPORT_STRIKE_VISUAL_OFFSETS[i].x;
+		const float y = profile.y + AV_AIR_SUPPORT_STRIKE_VISUAL_OFFSETS[i].y;
+		float z = profile.z + AV_AIR_SUPPORT_STRIKE_VISUAL_OFFSETS[i].z;
+
+		float landZ = m_mapMgr->GetLandHeight(x, y);
+		if(landZ != 0.0f)
+			z = landZ;
+
+		GameObject* go = SpawnGameObject(AV_GO_TOWER_BURNING,
+			m_mapMgr->GetMapId(),
+			x,
+			y,
+			z,
+			AV_AIR_SUPPORT_STRIKE_VISUAL_OFFSETS[i].o,
+			32,
+			AV_FACTION_NEUTRAL,
+			1.2f);
+		if(go == NULL)
+			continue;
+
+		go->SetUInt32Value(GAMEOBJECT_STATE, 1);
+		go->PushToWorld(m_mapMgr);
+		m_teamAirSupportStrikeVisuals[team][fleet].push_back(go);
+	}
+}
+
+void AlteracValley::SpawnAirSupportStrikeRiders(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2 || m_mapMgr == NULL)
+		return;
+
+	ClearAirSupportStrikeRiders(team, fleet);
+
+	const uint32 entry = AV_AIR_SUPPORT_RIDER_ENTRY[team][fleet];
+	CreatureProto* proto = CreatureProtoStorage.LookupEntry(entry);
+	CreatureInfo* info = CreatureNameStorage.LookupEntry(entry);
+	if(proto == NULL || info == NULL)
+		return;
+
+	const AVAirSupportStrikeProfile& profile = AVGetAirSupportStrikeProfile(team, fleet);
+	const float passRadius = (profile.radius > 35.0f) ? 35.0f : profile.radius;
+	float z = profile.z + AV_AIR_SUPPORT_RIDER_ALTITUDE;
+	const bool reverse = ((m_teamAirSupportStrikePass[team][fleet] % 2) != 0);
+	const float baseStartX = reverse ? (profile.x - passRadius) : (profile.x + passRadius);
+	const float baseEndX   = reverse ? (profile.x + passRadius) : (profile.x - passRadius);
+	const float o = reverse ? 0.0f : 3.14159f;
+
+	for(uint32 i = 0; i < 3; ++i)
+	{
+		const float y = profile.y + AV_AIR_SUPPORT_RIDER_LATERAL_OFFSETS[i];
+
+		CreatureSpawn* sp = new CreatureSpawn;
+		sp->entry = entry;
+		sp->form = 0;
+		sp->id = 0;
+		sp->movetype = 0;
+		sp->x = baseStartX;
+		sp->y = y;
+		sp->z = z;
+		sp->o = o;
+		sp->emote_state = 0;
+		sp->flags = 0;
+		sp->factionid = AV_FACTION_NEUTRAL;
+		sp->bytes = 0;
+		sp->bytes2 = 0;
+		sp->stand_state = 0;
+		sp->channel_spell = 0;
+		sp->channel_target_go = 0;
+		sp->channel_target_creature = 0;
+
+		Creature* rider = m_mapMgr->CreateCreature(entry);
+		if(rider == NULL)
+		{
+			delete sp;
+			continue;
+		}
+
+		rider->Load(sp, (uint32)NULL, NULL);
+		rider->spawnid = 0;
+		rider->m_spawn = 0;
+		delete sp;
+
+		rider->SetUInt32Value(UNIT_FIELD_FACTIONTEMPLATE, AV_FACTION_NEUTRAL);
+		rider->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_SELECTABLE);
+		rider->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NOT_ATTACKABLE_2);
+
+		if(rider->GetAIInterface() != NULL)
+		{
+			rider->GetAIInterface()->SetAllowedToEnterCombat(false);
+			rider->GetAIInterface()->disable_melee = true;
+			rider->GetAIInterface()->disable_targeting = true;
+			rider->GetAIInterface()->m_canMove = true;
+		}
+
+		rider->PushToWorld(m_mapMgr);
+
+		if(rider->GetAIInterface() != NULL)
+			rider->GetAIInterface()->MoveTo(baseEndX, y, z, o);
+
+		m_teamAirSupportStrikeRiders[team][fleet].push_back(rider);
+	}
+
+	++m_teamAirSupportStrikePass[team][fleet];
+}
+
+bool AlteracValley::IsAirSupportCommanderRescued(uint32 team, uint32 fleet)
+{
+	if (team > 1 || fleet > 2)
+		return false;
+
+	return m_teamAirSupportReturned[team][fleet];
+}
+
+bool AlteracValley::HandleAirSupportRescue(Player* plr, Creature* commander)
+{
+	if(plr == NULL || commander == NULL || m_mapMgr == NULL || !m_started || m_ended)
+		return false;
+
+	if(plr->m_bg != this || plr->GetMapMgr() != m_mapMgr)
+		return false;
+
+	uint32 team = 0, fleet = 0;
+	if(!AVGetAirSupportCommanderByEntry(commander->GetEntry(), team, fleet))
+		return false;
+
+	if(plr->m_bgTeam != team)
+		return false;
+
+	if(commander->isDead())
+		return false;
+
+	if (m_teamAirSupportEscorting[team][fleet] || m_teamAirSupportReturned[team][fleet])
+	{
+		SendProgressMessage(team, "%s is already on the move or safely home.", AVGetAirSupportCommanderFullName(team, fleet));
+		return false;
+	}
+
+	// Captive interaction only: kneeling, rooted, passive commander at prison site.
+	if(commander->GetStandState() != STANDSTATE_KNEEL)
+		return false;
+
+	StartAirSupportEscort(team, fleet, commander);
+
+	sLog.outDebug("AV air support rescue: player=%s team=%u fleet=%u commanderEntry=%u",
+		plr->GetName(),
+		team,
+		fleet,
+		commander->GetEntry());
+	return true;
+}
+
+bool AlteracValley::HandleAirSupportDeploy(Player* plr, Creature* commander)
+{
+	if(plr == NULL || commander == NULL || m_mapMgr == NULL || !m_started || m_ended)
+		return false;
+
+	if(plr->m_bg != this || plr->GetMapMgr() != m_mapMgr)
+		return false;
+
+	uint32 team = 0, fleet = 0;
+	if(!AVGetAirSupportCommanderByEntry(commander->GetEntry(), team, fleet))
+		return false;
+
+	if(plr->m_bgTeam != team)
+		return false;
+
+	if(commander->isDead())
+		return false;
+
+	if (!m_teamAirSupportReturned[team][fleet])
+	{
+		SendProgressMessage(team, "%s must make it home before that strike can be launched.",
+			AVGetAirSupportCommanderFullName(team, fleet));
+		return false;
+	}
+
+	if (!m_teamAirSupportReady[team][fleet])
+	{
+		const uint32 threshold = AVGetAirSupportReadyThreshold(fleet);
+		const uint32 current = m_teamAirSupportTurnIns[team][fleet];
+		const uint32 remaining = (current >= threshold) ? 0 : (threshold - current);
+		SendProgressMessage(team, "%s still needs %u more supplies before the strike on %s can begin.",
+			AVGetAirSupportCommanderFullName(team, fleet),
+			remaining,
+			AVGetAirSupportStrikeProfile(team, fleet).targetDescription);
+		return false;
+	}
+
+	if (m_teamAirSupportStrikeActive[team][fleet])
+	{
+		SendProgressMessage(team, "%s is already carrying out a strike run.",
+			AVGetAirSupportCommanderFullName(team, fleet));
+		return false;
+	}
+
+	m_teamAirSupportReady[team][fleet] = false;
+	m_teamAirSupportStrikeActive[team][fleet] = true;
+	m_teamAirSupportStrikeTimeLeft[team][fleet] = AV_AIR_SUPPORT_STRIKE_DURATION_MS;
+	m_teamAirSupportStrikePulse[team][fleet] = AV_AIR_SUPPORT_STRIKE_PULSE_MS;
+	m_teamAirSupportTurnIns[team][fleet] = 0;
+	m_teamAirSupportStrikePass[team][fleet] = 0;
+	SpawnAirSupportStrikeVisuals(team, fleet);
+	SpawnAirSupportStrikeRiders(team, fleet);
+
+	SendProgressMessage(team, "%s has launched an air strike toward %s!",
+		AVGetAirSupportStrikeName(team, fleet),
+		AVGetAirSupportStrikeProfile(team, fleet).targetDescription);
+	SendProgressMessage(team == 0 ? 1 : 0, "Enemy %s are inbound over %s!",
+		AVGetAirSupportStrikeName(team, fleet),
+		AVGetAirSupportStrikeProfile(team, fleet).targetDescription);
+
+	sLog.outDebug("AV air strike deploy: player=%s team=%u fleet=%u strike=%s target=%s duration=%u pulseDamage=%u",
+		plr->GetName(),
+		team,
+		fleet,
+		AVGetAirSupportStrikeName(team, fleet),
+		AVGetAirSupportStrikeProfile(team, fleet).targetDescription,
+		AV_AIR_SUPPORT_STRIKE_DURATION_MS,
+		AVGetAirSupportStrikeProfile(team, fleet).reinforcementDamagePerPulse);
+
+	return true;
+}
+
+void AlteracValley::AddAirSupportTurnIn(uint32 team, uint32 fleet, uint32 questId)
+{
+	if(team > 1 || fleet > 2)
+		return;
+
+	const char* fleetName = AVGetAirSupportFleetName(team, fleet);
+	if(!IsAirSupportCommanderRescued(team, fleet))
+	{
+		SendProgressMessage(team, "%s's wing commander must be rescued before that fleet can be supplied.", fleetName);
+		sLog.outDebug("AV air support blocked: team=%u fleet=%u quest=%u commander=%s rescued=0",
+			team, fleet, questId, fleetName);
+		return;
+	}
+
+	if(m_teamAirSupportStrikeActive[team][fleet])
+	{
+		SendProgressMessage(team, "%s's air support is already on a strike run.", fleetName);
+		return;
+	}
+
+	if(m_teamAirSupportReady[team][fleet])
+	{
+		SendProgressMessage(team, "%s's air support is already awaiting deployment orders.", fleetName);
+		return;
+	}
+
+	++m_teamAirSupportTurnIns[team][fleet];
+	const uint32 readyThreshold = AVGetAirSupportReadyThreshold(fleet);
+	if(m_teamAirSupportTurnIns[team][fleet] > readyThreshold)
+		m_teamAirSupportTurnIns[team][fleet] = readyThreshold;
+
+	UpdateAirSupportStrikeState(team, fleet);
+
+	if(!m_teamAirSupportReady[team][fleet])
+	{
+		const uint32 remaining = readyThreshold - m_teamAirSupportTurnIns[team][fleet];
+		SendProgressMessage(team, "%s's fleet has received supplies (%u/%u). %u more are needed before the strike on %s is ready.",
+			fleetName,
+			m_teamAirSupportTurnIns[team][fleet],
+			readyThreshold,
+			remaining,
+			AVGetAirSupportStrikeProfile(team, fleet).targetDescription);
+	}
+
+	sLog.outDebug("AV air support progress: team=%u fleet=%u quest=%u commander=%s turnins=%u rescued=1",
+		team, fleet, questId, fleetName, m_teamAirSupportTurnIns[team][fleet]);
+}
+
+bool AlteracValley::IsAirSupportReady(uint32 team, uint32 fleet) const
+{
+	if(team > 1 || fleet > 2)
+		return false;
+
+	return m_teamAirSupportReady[team][fleet];
+}
+
+void AlteracValley::UpdateAirSupportStrikeState(uint32 team, uint32 fleet)
+{
+	if(team > 1 || fleet > 2)
+		return;
+
+	if(m_teamAirSupportStrikeActive[team][fleet])
+		return;
+
+	const bool ready = (m_teamAirSupportReturned[team][fleet] &&
+		m_teamAirSupportTurnIns[team][fleet] >= AVGetAirSupportReadyThreshold(fleet));
+
+	if(ready == m_teamAirSupportReady[team][fleet])
+		return;
+
+	m_teamAirSupportReady[team][fleet] = ready;
+
+	if(ready)
+	{
+		SendProgressMessage(team, "%s is fully supplied and ready to strike %s.",
+			AVGetAirSupportStrikeName(team, fleet),
+			AVGetAirSupportStrikeProfile(team, fleet).targetDescription);
+	}
+}
+
+void AlteracValley::UpdateAirSupportStrikes()
+{
+	if(!m_started || m_ended)
+		return;
+
+	for(uint32 team = 0; team < 2; ++team)
+	{
+		const uint32 enemyTeam = (team == 0) ? 1 : 0;
+
+		for(uint32 fleet = 0; fleet < 3; ++fleet)
+		{
+			if(!m_teamAirSupportStrikeActive[team][fleet])
+				continue;
+
+			if(m_teamAirSupportStrikeTimeLeft[team][fleet] <= 1000)
+			{
+				m_teamAirSupportStrikeActive[team][fleet] = false;
+				m_teamAirSupportStrikeTimeLeft[team][fleet] = 0;
+				m_teamAirSupportStrikePulse[team][fleet] = 0;
+				ClearAirSupportStrikeVisuals(team, fleet);
+				ClearAirSupportStrikeRiders(team, fleet);
+				SendProgressMessage(team, "%s has completed its strike run.", AVGetAirSupportStrikeName(team, fleet));
+				continue;
+			}
+
+			m_teamAirSupportStrikeTimeLeft[team][fleet] -= 1000;
+
+			if(m_teamAirSupportStrikePulse[team][fleet] <= 1000)
+			{
+				m_teamAirSupportStrikePulse[team][fleet] = AV_AIR_SUPPORT_STRIKE_PULSE_MS;
+				ModifyReinforcements(enemyTeam, -(int32)AVGetAirSupportStrikeProfile(team, fleet).reinforcementDamagePerPulse);
+
+				// Refresh the strike visuals on each pulse so late-arriving players see the bombardment.
+				SpawnAirSupportStrikeVisuals(team, fleet);
+				SpawnAirSupportStrikeRiders(team, fleet);
+ 
+				sLog.outDebug("AV air strike pulse: team=%u fleet=%u strike=%s target=%s enemyTeam=%u remainingMs=%u pulseDamage=%u",
+					team,
+					fleet,
+					AVGetAirSupportStrikeName(team, fleet),
+					AVGetAirSupportStrikeProfile(team, fleet).targetDescription,
+					enemyTeam,
+					m_teamAirSupportStrikeTimeLeft[team][fleet],
+					AVGetAirSupportStrikeProfile(team, fleet).reinforcementDamagePerPulse);
+			}
+			else
+			{
+				m_teamAirSupportStrikePulse[team][fleet] -= 1000;
+			}
+		}
+	}
+}
+
+void AlteracValley::ApplyArmorTierToDefender(Creature* creature, uint32 team, bool restoreFullHealth)
+{
+	if(creature == NULL || team > 1 || !AVIsArmorTierDefenderEntry(creature->GetEntry()))
+		return;
+
+	CreatureProto* proto = creature->proto;
+	if(proto == NULL)
+		proto = CreatureProtoStorage.LookupEntry(creature->GetEntry());
+	if(proto == NULL)
+		return;
+
+	const uint32 entry = creature->GetEntry();
+	map<uint32, uint32>::iterator baseHealthItr = m_defenderBaseHealth.find(entry);
+	if(baseHealthItr == m_defenderBaseHealth.end())
+	{
+		uint32 protoBaseHealth = proto->MaxHealth;
+
+		// AV bunker marshals and tower warmasters are dynamically spawned by the battleground
+		// and must always scale from immutable proto max health, not from live instance health.
+		if(protoBaseHealth == 0)
+			protoBaseHealth = proto->MinHealth;
+		if(protoBaseHealth == 0)
+			protoBaseHealth = creature->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+
+		baseHealthItr = m_defenderBaseHealth.insert(make_pair(entry, protoBaseHealth)).first;
+	}
+
+	const uint32 tier = (m_teamArmorTier[team] > 3) ? 3 : m_teamArmorTier[team];
+	uint32 baseHealth = baseHealthItr->second;
+	if(baseHealth == 0)
+	{
+		baseHealth = proto->MaxHealth;
+		if(baseHealth == 0)
+			baseHealth = proto->MinHealth;
+		if(baseHealth == 0)
+			baseHealth = creature->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+	}
+
+	const uint32 oldMaxHealth = creature->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+	const uint32 oldHealth = creature->GetUInt32Value(UNIT_FIELD_HEALTH);
+	const uint32 scaledHealth = AVScaleStatByTier(baseHealth, tier);
+	const uint32 scaledArmor = AVScaleStatByTier(proto->Resistances[0], tier);
+	const float scaledMinDamage = AVScaleDamageByTier(proto->MinDamage, tier);
+	const float scaledMaxDamage = AVScaleDamageByTier(proto->MaxDamage, tier);
+	const float scaledMinRangedDamage = AVScaleDamageByTier(proto->RangedMinDamage, tier);
+	const float scaledMaxRangedDamage = AVScaleDamageByTier(proto->RangedMaxDamage, tier);
+
+	creature->BaseResistance[0] = scaledArmor;
+	creature->SetUInt32Value(UNIT_FIELD_RESISTANCES, scaledArmor);
+
+	for(uint32 school = 1; school < 7; ++school)
+	{
+		creature->BaseResistance[school] = proto->Resistances[school];
+		creature->SetUInt32Value(UNIT_FIELD_RESISTANCES + school, proto->Resistances[school]);
+	}
+
+	creature->BaseDamage[0] = scaledMinDamage;
+	creature->BaseDamage[1] = scaledMaxDamage;
+	creature->BaseRangedDamage[0] = scaledMinRangedDamage;
+	creature->BaseRangedDamage[1] = scaledMaxRangedDamage;
+	creature->SetFloatValue(UNIT_FIELD_MINDAMAGE, scaledMinDamage);
+	creature->SetFloatValue(UNIT_FIELD_MAXDAMAGE, scaledMaxDamage);
+	creature->SetFloatValue(UNIT_FIELD_MINRANGEDDAMAGE, scaledMinRangedDamage);
+	creature->SetFloatValue(UNIT_FIELD_MAXRANGEDDAMAGE, scaledMaxRangedDamage);
+
+	creature->SetUInt32Value(UNIT_FIELD_MAXHEALTH, scaledHealth);
+
+	if(creature->isAlive())
+	{
+		if(restoreFullHealth || oldMaxHealth == 0 || oldHealth == 0)
+		{
+			creature->SetUInt32Value(UNIT_FIELD_HEALTH, scaledHealth);
+		}
+		else
+		{
+			uint32 newHealth = scaledHealth;
+			if(oldHealth < oldMaxHealth)
+			{
+				newHealth = (uint32)(((uint64)scaledHealth * (uint64)oldHealth) / (uint64)oldMaxHealth);
+				if(newHealth == 0)
+					newHealth = 1;
+				if(newHealth > scaledHealth)
+					newHealth = scaledHealth;
+			}
+
+			creature->SetUInt32Value(UNIT_FIELD_HEALTH, newHealth);
+		}
+	}
+
+	sLog.outDebug("AV defender scale: entry=%u team=%u tier=%u baseHealth=%u oldHealth=%u oldMax=%u scaledHealth=%u full=%u scaling=%s",
+		entry,
+		team,
+		tier,
+		baseHealth,
+		oldHealth,
+		oldMaxHealth,
+		scaledHealth,
+		restoreFullHealth ? 1 : 0,
+		AV_ARMOR_TIER_SCALING_MODEL);
+}
+
+uint32 AlteracValley::RefreshArmorTierDefenders(uint32 team)
+{
+	if(team > 1 || m_mapMgr == NULL)
+		return 0;
+
+	set<Creature*> defenders;
+
+	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
+	{
+		AVObjectiveState& state = m_objectiveStates[i];
+		if(state.linkedUnit != NULL && AVGetArmorTierDefenderTeam(state.linkedUnit->GetEntry()) == static_cast<int32>(team))
+			defenders.insert(state.linkedUnit);
+
+		vector<Creature*>& guards = (team == 0) ? state.allianceGuards : state.hordeGuards;
+		for(vector<Creature*>::iterator itr = guards.begin(); itr != guards.end(); ++itr)
+		{
+			if(*itr != NULL && AVGetArmorTierDefenderTeam((*itr)->GetEntry()) == static_cast<int32>(team))
+				defenders.insert(*itr);
+		}
+	}
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL || AVGetArmorTierDefenderTeam(creature->GetEntry()) != static_cast<int32>(team))
+			continue;
+
+		defenders.insert(creature);
+	}
+
+	uint32 refreshed = 0;
+	for(set<Creature*>::iterator itr = defenders.begin(); itr != defenders.end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature == NULL)
+			continue;
+
+		ApplyArmorTierToDefender(creature, team);
+		++refreshed;
+	}
+
+	sLog.outDebug("AV armor refresh: team=%u tier=%u refreshed=%u entries=[%s] scaling=%s",
+		team, m_teamArmorTier[team], refreshed, AV_ARMOR_REFRESH_ENTRIES, AV_ARMOR_TIER_SCALING_MODEL);
+	return refreshed;
+}
+
+void AlteracValley::UpdateArmorTier(uint32 team)
+{
+	if(team > 1)
+		return;
+
+	const uint32 oldTier = m_teamArmorTier[team];
+	uint32 newTier = 0;
+	if(m_teamArmorScraps[team] >= AV_ARMOR_TIER3_THRESHOLD)
+		newTier = 3;
+	else if(m_teamArmorScraps[team] >= AV_ARMOR_TIER2_THRESHOLD)
+		newTier = 2;
+	else if(m_teamArmorScraps[team] >= AV_ARMOR_TIER1_THRESHOLD)
+		newTier = 1;
+
+	if(newTier == oldTier)
+		return;
+
+	m_teamArmorTier[team] = newTier;
+	sLog.outDebug("AV armor tier changed: team=%u scraps=%u tier=%u->%u entries=[%s] scaling=%s",
+		team, m_teamArmorScraps[team], oldTier, newTier, AV_ARMOR_REFRESH_ENTRIES, AV_ARMOR_TIER_SCALING_MODEL);
+
+	switch(newTier)
+	{
+	case 1:
+		SendProgressMessage(team, "%s armor supplies are improving.", team == 0 ? "Alliance" : "Horde");
+		break;
+	case 2:
+		SendProgressMessage(team, "%s armor supplies have been significantly reinforced.", team == 0 ? "Alliance" : "Horde");
+		break;
+	case 3:
+		SendProgressMessage(team, "%s troops are now fully supplied with armor.", team == 0 ? "Alliance" : "Horde");
+		break;
+	default:
+		break;
+	}
+
+	RefreshArmorTierDefenders(team);
+}
+
+void AlteracValley::AddScraps(uint32 team, uint32 amount)
+{
+	if(team > 1 || amount == 0)
+		return;
+
+	m_teamArmorScraps[team] += amount;
+	UpdateArmorTier(team);
+}
+
+bool AlteracValley::IsElementalSummonReady(uint32 team) const
+{
+	if(team > 1)
+		return false;
+
+	return m_teamElementalReady[team];
+}
+
+void AlteracValley::UpdateElementalSummonState(uint32 team)
+{
+	if(team > 1)
+		return;
+
+	const uint32 current = (team == 0) ? m_teamStormCrystals[team] : m_teamBlood[team];
+	const bool ready = (current >= AV_ELEMENTAL_SUMMON_THRESHOLD);
+	if(ready == m_teamElementalReady[team])
+		return;
+
+	m_teamElementalReady[team] = ready;
+
+	if(ready)
+	{
+		SendProgressMessage(team,
+			"%s have gathered enough %s to prepare the ritual for %s.",
+			team == 0 ? "Alliance" : "Horde",
+			AVGetElementalResourceName(team),
+			AVGetElementalName(team));
+
+		sLog.outDebug("AV elemental ritual ready: team=%u elemental=%s amount=%u threshold=%u",
+			team,
+			AVGetElementalName(team),
+			current,
+			AV_ELEMENTAL_SUMMON_THRESHOLD);
+	}
+}
+
+void AlteracValley::AddBlood(uint32 team, uint32 amount)
+{
+	if(team > 1 || amount == 0)
+		return;
+
+	if(team != 1)
+	{
+		sLog.outDebug("AV blood ignored: team=%u amount=%u (Lokholar is Horde-only)", team, amount);
+		return;
+	}
+
+	m_teamBlood[team] += amount;
+
+	if(m_teamBlood[team] > AV_ELEMENTAL_SUMMON_THRESHOLD)
+		m_teamBlood[team] = AV_ELEMENTAL_SUMMON_THRESHOLD;
+
+	UpdateElementalSummonState(team);
+}
+
+void AlteracValley::AddStormCrystals(uint32 team, uint32 amount)
+{
+	if(team > 1 || amount == 0)
+		return;
+
+	if(team != 0)
+	{
+		sLog.outDebug("AV storm crystals ignored: team=%u amount=%u (Ivus is Alliance-only)", team, amount);
+		return;
+	}
+
+	m_teamStormCrystals[team] += amount;
+
+	if(m_teamStormCrystals[team] > AV_ELEMENTAL_SUMMON_THRESHOLD)
+		m_teamStormCrystals[team] = AV_ELEMENTAL_SUMMON_THRESHOLD;
+
+	UpdateElementalSummonState(team);
+}
+
+void AlteracValley::HandleQuestTurnIn(Player* plr, uint32 questId)
+{
+	if(plr == NULL || plr->m_bg != this || plr->GetMapMgr() != m_mapMgr || m_ended)
+		return;
+
+	switch(questId)
+	{
+	case AV_QUEST_ARMOR_SCRAPS:
+	case AV_QUEST_MORE_ARMOR_SCRAPS:
+		sLog.outDebug("AV scrap turn-in: player=%s team=%u quest=%u amount=%u",
+			plr->GetName(), plr->m_bgTeam, questId, AV_SCRAPS_PER_TURNIN);
+		AddScraps(plr->m_bgTeam, AV_SCRAPS_PER_TURNIN);
+		break;
+
+	case AV_QUEST_MORE_BOOTY:
+	case AV_QUEST_ENEMY_BOOTY:
+		break;
+
+	case AV_QUEST_A_GALLON_OF_BLOOD:
+	case AV_QUEST_LOKHOLAR_THE_ICE_LORD:
+		if(plr->m_bgTeam == 1)
+		{
+			sLog.outDebug("AV blood turn-in: player=%s team=%u quest=%u amount=%u",
+				plr->GetName(), plr->m_bgTeam, questId, AV_BLOOD_PER_TURNIN);
+			AddBlood(1, AV_BLOOD_PER_TURNIN);
+		}
+		else
+		{
+			sLog.outDebug("AV blood turn-in ignored: player=%s team=%u quest=%u",
+				plr->GetName(), plr->m_bgTeam, questId);
+		}
+		break;
+
+	case AV_QUEST_CRYSTAL_CLUSTER:
+	case AV_QUEST_IVUS_THE_FOREST_LORD:
+		if(plr->m_bgTeam == 0)
+		{
+			sLog.outDebug("AV storm crystal turn-in: player=%s team=%u quest=%u amount=%u",
+				plr->GetName(), plr->m_bgTeam, questId, AV_STORM_CRYSTALS_PER_TURNIN);
+			AddStormCrystals(0, AV_STORM_CRYSTALS_PER_TURNIN);
+		}
+		else
+		{
+			sLog.outDebug("AV storm crystal turn-in ignored: player=%s team=%u quest=%u",
+				plr->GetName(), plr->m_bgTeam, questId);
+		}
+		break;
+
+	case AV_QUEST_CALL_OF_AIR_SLIDORES_FLEET:
+	case AV_QUEST_CALL_OF_AIR_VIPORES_FLEET:
+	case AV_QUEST_CALL_OF_AIR_ICHMANS_FLEET:
+	case AV_QUEST_CALL_OF_AIR_GUSES_FLEET:
+	case AV_QUEST_CALL_OF_AIR_JEZTORS_FLEET:
+	case AV_QUEST_CALL_OF_AIR_MULVERICKS_FLEET:
+	{
+		uint32 airTeam = 0, airFleet = 0;
+		if(AVGetAirSupportQuestInfo(questId, airTeam, airFleet) && airTeam == plr->m_bgTeam)
+			AddAirSupportTurnIn(airTeam, airFleet, questId);
+		else
+			sLog.outDebug("AV air support ignored: player=%s team=%u quest=%u", plr->GetName(), plr->m_bgTeam, questId);
+		break;
+	}
+
+	default:
+		break;
 	}
 }
 

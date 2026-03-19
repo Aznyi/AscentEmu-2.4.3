@@ -17,6 +17,8 @@
  *
  */
 
+#pragma once
+
 enum AVObjectiveType
 {
 	AV_OBJECTIVE_GRAVEYARD = 0,
@@ -135,9 +137,14 @@ public:
 	void HookOnPlayerKill(Player* plr, Unit* pVictim);
 	void HookOnHK(Player* plr);
 	LocationVector GetStartingCoords(uint32 Team);
+	void HookOnQuestTurnIn(Player* plr, uint32 questId) { HandleQuestTurnIn(plr, questId); }
 	void OnStart();
 	void OnClose();
 	bool HookSlowLockOpen(GameObject* pGo, Player* pPlayer, Spell* pSpell);
+	/* AV quest-turn-in progression entry point. Call this from the quest completion handler. */
+	void HandleQuestTurnIn(Player* plr, uint32 questId);
+	virtual bool HandleAirSupportRescue(Player* plr, Creature* commander);
+	virtual bool HandleAirSupportDeploy(Player* plr, Creature* commander);
 
 	bool SupportsPlayerLoot() { return true; }
 	void HookGenerateLoot(Player* plr, Corpse* pCorpse);
@@ -166,6 +173,7 @@ private:
 	void InitializeMines();
 	void SetMineOwner(uint32 mine, AVMineState owner, uint64 playerGuid, bool announce);
 	void EventRespawnMineNPCs(uint32 mine);
+	void ScheduleMineRespawn(uint32 mine);
 	void CaptureMine(uint32 mine, uint32 team, uint64 playerGuid);
 	bool HandleMineBossKill(Player* pPlayer, Creature* pVictim);
 	void RepopPlayersOfTeam(int32 team, Creature* spiritGuide);
@@ -185,19 +193,63 @@ private:
 	void RefreshObjectiveGuards(uint32 index);
 	void CleanupObjectiveDbGuards(uint32 index);
 	void UpdateObjectiveGuards(uint32 index);
+	bool IsAirSupportCommanderRescued(uint32 team, uint32 fleet);
+	Creature* FindAirSupportCommander(uint32 team, uint32 fleet);
+	void ConfigureAirSupportCommander(Creature* creature, uint32 team, uint32 fleet, bool captive, bool returned);
+	void StartAirSupportEscort(uint32 team, uint32 fleet, Creature* commander);
+	void CompleteAirSupportEscort(uint32 team, uint32 fleet, Creature* commander);
+	void MoveAirSupportCommanderToEscortNode(uint32 team, uint32 fleet, Creature* commander);
+	bool AdvanceAirSupportEscort(uint32 team, uint32 fleet, Creature* commander);
+	void UpdateAirSupportCommanders();
+	void UpdateAirSupportStrikeState(uint32 team, uint32 fleet);
+	void UpdateAirSupportStrikes();
+	void SpawnAirSupportStrikeVisuals(uint32 team, uint32 fleet);
+	void ClearAirSupportStrikeVisuals(uint32 team, uint32 fleet);
+	void SpawnAirSupportStrikeRiders(uint32 team, uint32 fleet);
+	void ClearAirSupportStrikeRiders(uint32 team, uint32 fleet);
+	void AddAirSupportTurnIn(uint32 team, uint32 fleet, uint32 questId);
 	Creature* SpawnObjectiveGuard(uint32 entry, float x, float y, float z, float o);
 	void CleanupObjectiveDbFireVisuals(uint32 index);
 	void UpdateObjectivePrisoners(uint32 index);
 	Creature* FindObjectiveLinkedUnit(uint32 index);
 	void RefreshObjectiveLinkedUnit(uint32 index);
+	void AddScraps(uint32 team, uint32 amount);
+	void AddBlood(uint32 team, uint32 amount);
+	void AddStormCrystals(uint32 team, uint32 amount);
+	void UpdateArmorTier(uint32 team);
+	bool IsAirSupportReady(uint32 team, uint32 fleet) const;
+	void ApplyArmorTierToDefender(Creature* creature, uint32 team, bool restoreFullHealth = false);
+	void UpdateElementalSummonState(uint32 team);
+	bool IsElementalSummonReady(uint32 team) const;
+	uint32 RefreshArmorTierDefenders(uint32 team);
+	void SendProgressMessage(uint32 team, const char* fmt, ...);
 	void RemoveObjectiveLinkedUnit(uint32 index);
 
 	AVObjectiveState m_objectiveStates[15];
 	int32 m_reinforcements[2];
 	AVMineState m_mineOwner[AV_MINE_COUNT];
 	vector<Creature*> m_mineRuntimeSpawns[AV_MINE_COUNT];
+	bool m_mineRespawnPending[AV_MINE_COUNT];
 	bool m_mineDbSpawnsHidden;
 	bool m_captainDead[2];
 	GameObject* m_gates[2];
+	bool m_startGatesShouldBeOpen;
 	map<uint32, uint32> m_lastDeathTime;
+	map<uint32, uint32> m_defenderBaseHealth;
+	uint32 m_teamArmorScraps[2];
+	uint32 m_teamArmorTier[2];
+	uint32 m_teamAirSupportTurnIns[2][3];
+	bool m_teamAirSupportReady[2][3];
+	bool m_teamAirSupportEscorting[2][3];
+	uint32 m_teamAirSupportEscortNode[2][3];
+	bool m_teamAirSupportReturned[2][3];
+	bool m_teamAirSupportStrikeActive[2][3];
+	uint32 m_teamAirSupportStrikeTimeLeft[2][3];
+	uint32 m_teamAirSupportStrikePulse[2][3];
+	vector<GameObject*> m_teamAirSupportStrikeVisuals[2][3];
+	vector<Creature*> m_teamAirSupportStrikeRiders[2][3];
+	uint32 m_teamAirSupportStrikePass[2][3];
+	uint32 m_teamBlood[2];
+	uint32 m_teamStormCrystals[2];
+	bool m_teamElementalReady[2];
 };

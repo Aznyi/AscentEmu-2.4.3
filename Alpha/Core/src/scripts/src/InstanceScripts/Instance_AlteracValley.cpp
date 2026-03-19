@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "Setup.h"
 #include "BattlegroundMgr.h"
+#include "AlteracValley.h"
 #include "MapMgr.h"
 #include "Spell.h"
 
@@ -8,6 +9,8 @@
 #define CN_DREKTHAR 11946
 #define CN_BALINDA_STONEHEARTH 11949
 #define CN_GALVANGAR 11947
+#define GOSSIP_INTID_AV_RESCUE 9001
+#define GOSSIP_INTID_AV_DEPLOY 9002
 
 #define CN_DUN_BALDAR_NORTH_MARSHAL 14762
 #define CN_DUN_BALDAR_SOUTH_MARSHAL 14763
@@ -20,6 +23,12 @@
 #define CN_STORMPIKE_BOWMAN 13358
 #define CN_FROSTWOLF_BOWMAN 13359
 #define AV_SPELL_BOW_SHOOT 22121
+#define CN_WC_SLIDORE 13438
+#define CN_WC_VIPORE 13439
+#define CN_WC_ICHMAN 13437
+#define CN_WC_GUSE 13179
+#define CN_WC_JEZTOR 13180
+#define CN_WC_MULVERICK 13181
 
 #define AV_SPELL_CLEAVE 15284
 #define AV_SPELL_WHIRLWIND 15589
@@ -35,6 +44,44 @@
 #define AV_SPELL_FIREBALL 20823
 #define AV_SPELL_CONE_OF_COLD 20828
 #define AV_SPELL_SUMMON_WATER_ELEMENTAL 45067
+
+static bool AVIsAllianceWingCommanderEntry(uint32 entry)
+{
+	return entry == CN_WC_SLIDORE || entry == CN_WC_VIPORE || entry == CN_WC_ICHMAN;
+}
+
+static bool AVIsHordeWingCommanderEntry(uint32 entry)
+{
+	return entry == CN_WC_GUSE || entry == CN_WC_JEZTOR || entry == CN_WC_MULVERICK;
+}
+
+static const char* AVGetWingCommanderRescueText(uint32 entry)
+{
+	switch(entry)
+	{
+	case CN_WC_SLIDORE:   return "Free Wing Commander Slidore and send her back to Dun Baldar.";
+	case CN_WC_VIPORE:    return "Free Wing Commander Vipore and send her back to Dun Baldar.";
+	case CN_WC_ICHMAN:    return "Free Wing Commander Ichman and send him back to Dun Baldar.";
+	case CN_WC_GUSE:      return "Free Wing Commander Guse and send him back to Frostwolf Keep.";
+	case CN_WC_JEZTOR:    return "Free Wing Commander Jeztor and send him back to Frostwolf Keep.";
+	case CN_WC_MULVERICK: return "Free Wing Commander Mulverick and send him back to Frostwolf Keep.";
+	default:              return "Rescue the wing commander.";
+	}
+}
+
+static const char* AVGetWingCommanderDeployText(uint32 entry)
+{
+	switch(entry)
+	{
+	case CN_WC_SLIDORE:   return "Order Slidore's gryphon riders to strike Frostwolf Graveyard.";
+	case CN_WC_VIPORE:    return "Order Vipore's gryphon riders to strike Frostwolf Village.";
+	case CN_WC_ICHMAN:    return "Order Ichman's gryphon riders to strike Drek'Thar's fortress.";
+	case CN_WC_GUSE:      return "Order Guse's war riders to strike Stormpike Graveyard.";
+	case CN_WC_JEZTOR:    return "Order Jeztor's war riders to strike the Dun Baldar bunker line.";
+	case CN_WC_MULVERICK: return "Order Mulverick's war riders to strike Stormpike Aid Station.";
+	default:              return "Launch the air strike.";
+	}
+}
 
 static uint32 GetAVDefenderAura(uint32 entry)
 {
@@ -420,6 +467,103 @@ protected:
 	uint32 m_whirlwindTimer;
 };
 
+class AVWingCommanderGossip : public GossipScript
+{
+public:
+	void GossipHello(Object* pObject, Player* Plr, bool AutoSend)
+	{
+		if(pObject == NULL || pObject->GetTypeId() != TYPEID_UNIT || Plr == NULL)
+			return;
+
+		Creature* pCreature = static_cast<Creature*>(pObject);
+		GossipMenu* Menu;
+		uint32 textId = objmgr.GetGossipTextForNpc(pCreature->GetEntry());
+		if(textId == 0)
+			textId = 2;
+
+		objmgr.CreateGossipMenuForPlayer(&Menu, pCreature->GetGUID(), textId, Plr);
+
+		if(Plr->m_bg != NULL && Plr->m_bg->GetType() == BATTLEGROUND_ALTERAC_VALLEY &&
+			!pCreature->isDead() && pCreature->GetStandState() == STANDSTATE_KNEEL)
+		{
+			const uint32 myTeam = (Plr->m_bgTeam > 1) ? 1 : Plr->m_bgTeam;
+			if((myTeam == 0 && AVIsAllianceWingCommanderEntry(pCreature->GetEntry())) ||
+			   (myTeam == 1 && AVIsHordeWingCommanderEntry(pCreature->GetEntry())))
+			{
+				Menu->AddItem(0, AVGetWingCommanderRescueText(pCreature->GetEntry()), GOSSIP_INTID_AV_RESCUE);
+			}
+		}
+
+		if(Plr->m_bg != NULL && Plr->m_bg->GetType() == BATTLEGROUND_ALTERAC_VALLEY &&
+			!pCreature->isDead() && pCreature->GetStandState() == STANDSTATE_STAND)
+		{
+			const uint32 myTeam = (Plr->m_bgTeam > 1) ? 1 : Plr->m_bgTeam;
+			if((myTeam == 0 && AVIsAllianceWingCommanderEntry(pCreature->GetEntry())) ||
+			   (myTeam == 1 && AVIsHordeWingCommanderEntry(pCreature->GetEntry())))
+			{
+				Menu->AddItem(0, AVGetWingCommanderDeployText(pCreature->GetEntry()), GOSSIP_INTID_AV_DEPLOY);
+			}
+		}
+
+		if(AutoSend)
+			Menu->SendTo(Plr);
+	}
+
+	void GossipSelectOption(Object* pObject, Player* Plr, uint32 Id, uint32 IntId, const char* EnteredCode)
+	{
+		(void)Id;
+		(void)EnteredCode;
+
+		if((IntId != GOSSIP_INTID_AV_RESCUE && IntId != GOSSIP_INTID_AV_DEPLOY) ||
+			pObject == NULL || pObject->GetTypeId() != TYPEID_UNIT || Plr == NULL)
+			return;
+
+		Creature* pCreature = static_cast<Creature*>(pObject);
+		if(Plr->m_bg != NULL && Plr->m_bg->GetType() == BATTLEGROUND_ALTERAC_VALLEY)
+		{
+			if(IntId == GOSSIP_INTID_AV_RESCUE)
+				Plr->m_bg->HandleAirSupportRescue(Plr, pCreature);
+			else
+				Plr->m_bg->HandleAirSupportDeploy(Plr, pCreature);
+		}
+
+		Plr->Gossip_Complete();
+	}
+
+	void Destroy()
+	{
+		delete this;
+	}
+};
+
+class AVWingCommanderAI : public CreatureAIScript
+{
+public:
+	ADD_CREATURE_FACTORY_FUNCTION(AVWingCommanderAI);
+
+	AVWingCommanderAI(Creature* pCreature) : CreatureAIScript(pCreature)
+	{
+		if(_unit->GetAIInterface() != NULL)
+		{
+			_unit->GetAIInterface()->SetAllowedToEnterCombat(false);
+			_unit->GetAIInterface()->disable_melee = true;
+			_unit->GetAIInterface()->disable_targeting = true;
+		}
+	}
+
+	void OnCombatStart(Unit* mTarget)
+	{
+		(void)mTarget;
+		if(_unit->GetAIInterface() != NULL)
+		{
+			_unit->GetAIInterface()->HandleEvent(EVENT_LEAVECOMBAT, _unit, 0);
+			_unit->GetAIInterface()->SetAllowedToEnterCombat(false);
+			_unit->GetAIInterface()->disable_melee = true;
+			_unit->GetAIInterface()->disable_targeting = true;
+		}
+	}
+};
+
 class AVBowmanAI : public CreatureAIScript
 {
 public:
@@ -616,8 +760,22 @@ void SetupAlteracValley(ScriptMgr* mgr)
 	mgr->register_creature_script(CN_STORMPIKE_BOWMAN, &AVBowmanAI::Create);
 	mgr->register_creature_script(CN_FROSTWOLF_BOWMAN, &AVBowmanAI::Create);
 
+	mgr->register_creature_script(CN_WC_SLIDORE, &AVWingCommanderAI::Create);
+	mgr->register_creature_script(CN_WC_VIPORE, &AVWingCommanderAI::Create);
+	mgr->register_creature_script(CN_WC_ICHMAN, &AVWingCommanderAI::Create);
+	mgr->register_creature_script(CN_WC_GUSE, &AVWingCommanderAI::Create);
+	mgr->register_creature_script(CN_WC_JEZTOR, &AVWingCommanderAI::Create);
+	mgr->register_creature_script(CN_WC_MULVERICK, &AVWingCommanderAI::Create);
+
+	GossipScript* wc = (GossipScript*)new AVWingCommanderGossip();
+	mgr->register_gossip_script(CN_WC_SLIDORE, wc);
+	mgr->register_gossip_script(CN_WC_VIPORE, wc);
+	mgr->register_gossip_script(CN_WC_ICHMAN, wc);
+	mgr->register_gossip_script(CN_WC_GUSE, wc);
+	mgr->register_gossip_script(CN_WC_JEZTOR, wc);
+	mgr->register_gossip_script(CN_WC_MULVERICK, wc);
+ 
 	/* Quest-turn-in progression is handled by AlteracValley::HandleQuestTurnIn().
-	 * Wire the quest completion callback into the battleground core; this script file only owns creature AI.
+	 * Rescue / deploy interaction is routed through battleground hooks.
 	 */
-	// TODO: Wing Commander rescue scripting / Ivus / Lokholar / air support events.
 }

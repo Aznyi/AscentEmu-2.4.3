@@ -142,6 +142,9 @@ DELETE FROM creature_spawns WHERE id = 3002000 AND entry = 22515 AND map = 30;
 DELETE FROM creature_spawns WHERE id = 3000632;
 DELETE FROM creature_spawns WHERE id = 3001076;
 
+-- Stray Kobold Miner
+DELETE FROM creature_spawns WHERE id = 3000031;
+
 -- Purge Mine spawns in AlteracValley allow the core to handle it
 -- Review counts before delete
 SELECT COUNT(*) AS irondeep_rows
