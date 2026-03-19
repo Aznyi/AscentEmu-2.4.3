@@ -365,7 +365,16 @@ public:
 	{
 		uint32 aura = GetAVDefenderAura(pCreature->GetEntry());
 		if(aura != 0)
+		{
 			pCreature->CastSpell(pCreature, aura, true);
+		
+			// These AV defender auras can modify derived stats/max health after the battleground
+			// code has already initialized the creature. Normalize current health afterward so
+			// marshals and warmasters do not appear spawned at partial health (observed ~80%).
+			const uint32 maxHealth = pCreature->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+			if(maxHealth != 0)
+				pCreature->SetUInt32Value(UNIT_FIELD_HEALTH, maxHealth);
+		}
 
 		m_cleaveTimer = 8000;
 		m_whirlwindTimer = 15000;
@@ -607,5 +616,8 @@ void SetupAlteracValley(ScriptMgr* mgr)
 	mgr->register_creature_script(CN_STORMPIKE_BOWMAN, &AVBowmanAI::Create);
 	mgr->register_creature_script(CN_FROSTWOLF_BOWMAN, &AVBowmanAI::Create);
 
+	/* Quest-turn-in progression is handled by AlteracValley::HandleQuestTurnIn().
+	 * Wire the quest completion callback into the battleground core; this script file only owns creature AI.
+	 */
 	// TODO: Wing Commander rescue scripting / Ivus / Lokholar / air support events.
 }
