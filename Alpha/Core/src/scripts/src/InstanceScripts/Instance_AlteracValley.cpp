@@ -114,10 +114,10 @@ static uint32 GetAVDefenderAura(uint32 entry)
 		case CN_STONEHEARTH_MARSHAL:      return 45831;
 
 		// Horde Warmasters
-		case CN_EAST_FROSTWOLF_WARMASTER: return 45824;
-		case CN_ICEBLOOD_WARMASTER:       return 45722;
+		case CN_EAST_FROSTWOLF_WARMASTER: return 45826;
+		case CN_ICEBLOOD_WARMASTER:       return 45822;
 		case CN_TOWER_POINT_WARMASTER:    return 45823;
-		case CN_WEST_FROSTWOLF_WARMASTER: return 45826;
+		case CN_WEST_FROSTWOLF_WARMASTER: return 45824;
 	}
 
 	return 0;

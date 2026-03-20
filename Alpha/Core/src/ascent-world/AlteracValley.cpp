@@ -781,6 +781,11 @@ static bool AVIsArmorTierDefenderEntry(uint32 entry)
 	}
 }
 
+static uint32 AVGetBossEntryForTeam(uint32 team)
+{
+	return (team == 0) ? AV_NPC_VANNDAR : AV_NPC_DREKTHAR;
+}
+
 static int32 AVGetArmorTierDefenderTeam(uint32 entry)
 {
 	if(AVIsAllianceGuardEntry(entry) || entry == 14762 || entry == 14763 || entry == 14764 || entry == 14765)
@@ -1309,6 +1314,12 @@ void AlteracValley::EventUpdateObjectives()
 	if (!m_started || m_ended)
 		return;
 
+	// Boss-room cells may not be loaded yet during OnCreate/OnStart.
+	// Refresh boss support health here as well so once the general is loaded
+	// into the map instance the surviving officers immediately affect max health.
+	RefreshBossSupportHealth(0);
+	RefreshBossSupportHealth(1);
+
 	// Ensure start gates are opened even if they were not loaded at match start
 	if(m_startGatesShouldBeOpen)
 	{
@@ -1822,6 +1833,107 @@ void AlteracValley::CheckForEnd()
 		EndBattleground(0);
 }
 
+Creature* AlteracValley::FindBossCreature(uint32 team)
+{
+    if(team > 1 || m_mapMgr == NULL)
+        return NULL;
+
+	const uint32 entry = AVGetBossEntryForTeam(team);
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL)
+			continue;
+
+		if(creature->GetEntry() == entry)
+			return creature;
+	}
+
+	return NULL;
+}
+
+void AlteracValley::RefreshBossSupportHealth(uint32 team)
+{
+	if(team > 1 || m_mapMgr == NULL)
+		return;
+
+ 	Creature* boss = FindBossCreature(team);
+ 	if (boss == NULL)
+ 	{
+ 		return;
+ 	}
+ 
+	CreatureProto* proto = boss->proto;
+	if(proto == NULL)
+		proto = CreatureProtoStorage.LookupEntry(boss->GetEntry());
+	if(proto == NULL)
+		return;
+
+	map<uint32, uint32>::iterator baseHealthItr = m_defenderBaseHealth.find(boss->GetEntry());
+	if(baseHealthItr == m_defenderBaseHealth.end())
+	{
+		uint32 protoBaseHealth = proto->MaxHealth;
+		if(protoBaseHealth == 0)
+			protoBaseHealth = proto->MinHealth;
+		if(protoBaseHealth == 0)
+			protoBaseHealth = boss->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+
+		baseHealthItr = m_defenderBaseHealth.insert(make_pair(boss->GetEntry(), protoBaseHealth)).first;
+	}
+
+	uint32 baseHealth = baseHealthItr->second;
+	if(baseHealth == 0)
+	{
+		baseHealth = proto->MaxHealth;
+		if(baseHealth == 0)
+			baseHealth = proto->MinHealth;
+		if(baseHealth == 0)
+			baseHealth = boss->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+	}
+ 
+ 	const uint32 oldMaxHealth = boss->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+ 	const uint32 oldHealth = boss->GetUInt32Value(UNIT_FIELD_HEALTH);
+ 
+	uint32 officerCount = 0;
+ 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
+ 	{
+ 		if(!(AV_OBJECTIVES[i].type == AV_OBJECTIVE_TOWER || AV_OBJECTIVES[i].type == AV_OBJECTIVE_BUNKER))
+ 			continue;
+ 
+ 		if(AV_OBJECTIVES[i].initialOwner != static_cast<int32>(team))
+ 			continue;
+ 
+ 		if(m_objectiveStates[i].destroyed)
+ 			continue;
+ 
+		Creature* officer = m_objectiveStates[i].linkedUnit;
+		if(officer != NULL && officer->isAlive())
+			++officerCount;
+ 	}
+ 
+	const uint32 scaledHealth = (baseHealth * (100 + (25 * officerCount)) + 99) / 100;
+	boss->SetUInt32Value(UNIT_FIELD_MAXHEALTH, scaledHealth);
+
+ 	if(boss->isAlive())
+ 	{
+		uint32 newHealth = scaledHealth;
+		if(oldMaxHealth != 0 && oldHealth != 0 && oldHealth < oldMaxHealth)
+		{
+			newHealth = (uint32)(((uint64)scaledHealth * (uint64)oldHealth) / (uint64)oldMaxHealth);
+			if(newHealth == 0)
+				newHealth = 1;
+			if(newHealth > scaledHealth)
+				newHealth = scaledHealth;
+		}
+
+		boss->SetUInt32Value(UNIT_FIELD_HEALTH, newHealth);
+ 	}
+ 
+	sLog.outDebug("AV boss support refresh: team=%u bossEntry=%u officers=%u baseHealth=%u scaledHealth=%u",
+		team, boss->GetEntry(), officerCount, baseHealth, scaledHealth);
+}
+
 void AlteracValley::UpdateBossRoomGuards()
 {
 	for(uint32 i = 0; i < AV_OBJECTIVE_COUNT; ++i)
@@ -1836,6 +1948,9 @@ void AlteracValley::UpdateBossRoomGuards()
 
 		RefreshObjectiveLinkedUnit(i);
 	}
+
+	RefreshBossSupportHealth(0);
+	RefreshBossSupportHealth(1);
 }
 
 void AlteracValley::RepopPlayersOfTeam(int32 team, Creature* spiritGuide)

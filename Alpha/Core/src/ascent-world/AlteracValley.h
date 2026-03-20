@@ -216,6 +216,8 @@ private:
 	void AddScraps(uint32 team, uint32 amount);
 	void AddBlood(uint32 team, uint32 amount);
 	void AddStormCrystals(uint32 team, uint32 amount);
+	Creature* FindBossCreature(uint32 team);
+	void RefreshBossSupportHealth(uint32 team);
 	void UpdateArmorTier(uint32 team);
 	bool IsAirSupportReady(uint32 team, uint32 fleet) const;
 	void ApplyArmorTierToDefender(Creature* creature, uint32 team, bool restoreFullHealth = false);
