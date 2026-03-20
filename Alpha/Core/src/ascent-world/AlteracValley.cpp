@@ -1158,9 +1158,15 @@ void AlteracValley::HookOnPlayerKill(Player* plr, Unit* pVictim)
 
 	uint32 entry = pVictim->GetEntry();
 	if(entry == AV_NPC_VANNDAR)
+	{
+		SendChatMessage(CHAT_MSG_BG_EVENT_HORDE, 0, "Vanndar Stormpike has been slain! The Horde is victorious!");
 		EndBattleground(1);
-	else if(entry == AV_NPC_DREKTHAR)
+	}
+	else if (entry == AV_NPC_DREKTHAR)
+	{
+		SendChatMessage(CHAT_MSG_BG_EVENT_ALLIANCE, 0, "Drek'Thar has been slain! The Alliance is victorious!");
 		EndBattleground(0);
+	}
 	else if(HandleMineBossKill(plr, static_cast<Creature*>(pVictim)))
 		return;
 	else if(entry == AV_NPC_BALINDA && !m_captainDead[0])

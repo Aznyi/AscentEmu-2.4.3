@@ -9,6 +9,8 @@
 #define CN_DREKTHAR 11946
 #define CN_BALINDA_STONEHEARTH 11949
 #define CN_GALVANGAR 11947
+#define CN_DRAKAN 12121
+#define CN_DUROS 12122
 #define GOSSIP_INTID_AV_RESCUE 9001
 #define GOSSIP_INTID_AV_DEPLOY 9002
 
@@ -44,6 +46,24 @@
 #define AV_SPELL_FIREBALL 20823
 #define AV_SPELL_CONE_OF_COLD 20828
 #define AV_SPELL_SUMMON_WATER_ELEMENTAL 45067
+
+static bool AVIsAllianceCaptainSupportEntry(uint32 entry)
+{
+	return entry == CN_STORMPIKE_BOWMAN ||
+		entry == CN_DUN_BALDAR_NORTH_MARSHAL ||
+		entry == CN_DUN_BALDAR_SOUTH_MARSHAL ||
+		entry == CN_ICEWING_MARSHAL ||
+		entry == CN_STONEHEARTH_MARSHAL;
+}
+
+static bool AVIsHordeCaptainSupportEntry(uint32 entry)
+{
+	return entry == CN_FROSTWOLF_BOWMAN ||
+		entry == CN_EAST_FROSTWOLF_WARMASTER ||
+		entry == CN_ICEBLOOD_WARMASTER ||
+		entry == CN_TOWER_POINT_WARMASTER ||
+		entry == CN_WEST_FROSTWOLF_WARMASTER;
+}
 
 static bool AVIsAllianceWingCommanderEntry(uint32 entry)
 {
@@ -254,6 +274,7 @@ public:
 		m_secondaryTimer = 12000;
 		m_supportTimer = 18000;
 		m_frenzied = false;
+		SendAggroBark();
 		CallBaseDefenders(mTarget);
 	}
 
@@ -262,6 +283,11 @@ protected:
 	virtual uint32 GetSecondarySpell() = 0;
 	virtual uint32 GetEmergencySpell() = 0;
 	virtual bool DefenderEntry(uint32 entry) = 0;
+	virtual const char* const* GetAggroBarks(uint32& count)
+	{
+		count = 0;
+		return NULL;
+	}
 
 	void DoBattlefieldAI()
 	{
@@ -320,6 +346,14 @@ protected:
 		}
 	}
 
+	void SendAggroBark()
+	{
+		uint32 count = 0;
+		const char* const* lines = GetAggroBarks(count);
+		if(lines != NULL && count != 0)
+			SendRandomCombatBark(lines, count);
+	}
+
 	uint32 m_primaryTimer;
 	uint32 m_secondaryTimer;
 	uint32 m_supportTimer;
@@ -339,6 +373,7 @@ public:
 		m_secondaryTimer = 14000;
 		m_selfTimer = 20000;
 		m_extraTimer = 26000;
+		m_supportTimer = 12000;
 	}
 
 	void OnCombatStart(Unit* mTarget)
@@ -348,9 +383,19 @@ public:
 		m_secondaryTimer = 14000;
 		m_selfTimer = 20000;
 		m_extraTimer = 26000;
+		m_supportTimer = 12000;
+		SendAggroBark();
+		CallNearbySupport(mTarget);
 	}
 
 protected:
+	virtual bool IsSupportEntry(uint32 entry) = 0;
+	virtual const char* const* GetAggroBarks(uint32& count)
+	{
+		count = 0;
+		return NULL;
+	}
+
 	void DoBattlefieldAI()
 	{
 		uint32 diff = GetUpdateFrequency();
@@ -393,6 +438,38 @@ protected:
 			SpellReady(m_primaryTimer, diff);
 			SpellReady(m_secondaryTimer, diff);
 		}
+
+		if(SpellReady(m_supportTimer, diff))
+		{
+			CallNearbySupport(_unit->GetAIInterface()->GetNextTarget());
+			m_supportTimer = 18000;
+		}
+	}
+
+	void CallNearbySupport(Unit* target)
+	{
+		if(target == NULL)
+			return;
+
+		for(Object::InRangeSet::iterator itr = _unit->GetInRangeSetBegin(); itr != _unit->GetInRangeSetEnd(); ++itr)
+		{
+			if((*itr) == NULL || !(*itr)->IsCreature())
+				continue;
+
+			Creature* ally = static_cast<Creature*>(*itr);
+			if(ally->isDead() || ally->GetEntry() == _unit->GetEntry() || !IsSupportEntry(ally->GetEntry()))
+				continue;
+
+			ally->GetAIInterface()->AttackReaction(target, 1, 0);
+		}
+	}
+
+	void SendAggroBark()
+	{
+		uint32 count = 0;
+		const char* const* lines = GetAggroBarks(count);
+		if(lines != NULL && count != 0)
+			SendRandomCombatBark(lines, count);
 	}
 
 	uint32 m_primarySpell;
@@ -403,6 +480,7 @@ protected:
 	uint32 m_secondaryTimer;
 	uint32 m_selfTimer;
 	uint32 m_extraTimer;
+	uint32 m_supportTimer;
 };
 
 class AlteracValleyDefenderAI : public AlteracValleyCreatureAI
@@ -465,6 +543,19 @@ protected:
 
 	uint32 m_cleaveTimer;
 	uint32 m_whirlwindTimer;
+};
+
+// Duros and Drakan
+class AVBossWolfAI : public AlteracValleyCreatureAI
+{
+public:
+	ADD_CREATURE_FACTORY_FUNCTION(AVBossWolfAI);
+
+	AVBossWolfAI(Creature* pCreature) : AlteracValleyCreatureAI(pCreature, 35.0f)
+	{
+	}
+
+protected:
 };
 
 class AVWingCommanderGossip : public GossipScript
@@ -623,6 +714,18 @@ protected:
 	{
 		return entry == CN_DUN_BALDAR_NORTH_MARSHAL || entry == CN_DUN_BALDAR_SOUTH_MARSHAL || entry == CN_ICEWING_MARSHAL || entry == CN_STONEHEARTH_MARSHAL;
 	}
+
+	const char* const* GetAggroBarks(uint32& count)
+	{
+		static const char* kLines[] =
+		{
+			"Stormpike soldiers, to me!",
+			"You will never leave Dun Baldar alive!",
+			"Defend the Stormpike banner!"
+		};
+		count = 3;
+		return kLines;
+	}
 };
 
 class DrekTharAI : public AlteracValleyBossAI
@@ -641,6 +744,18 @@ protected:
 	bool DefenderEntry(uint32 entry)
 	{
 		return entry == CN_EAST_FROSTWOLF_WARMASTER || entry == CN_ICEBLOOD_WARMASTER || entry == CN_TOWER_POINT_WARMASTER || entry == CN_WEST_FROSTWOLF_WARMASTER;
+	}
+
+	const char* const* GetAggroBarks(uint32& count)
+	{
+		static const char* kLines[] =
+		{
+			"Frostwolf warriors, attack!",
+			"You face the might of the Frostwolf clan!",
+			"Defend Frostwolf Keep!"
+		};
+		count = 3;
+		return kLines;
 	}
 
 	void DoBattlefieldAI()
@@ -675,6 +790,24 @@ public:
 	ADD_CREATURE_FACTORY_FUNCTION(BalindaStonehearthAI);
 	BalindaStonehearthAI(Creature* pCreature) : AlteracValleyCaptainAI(
 		pCreature, 45.0f, AV_SPELL_FROSTBOLT, AV_SPELL_FIREBALL, AV_SPELL_CONE_OF_COLD, AV_SPELL_SUMMON_WATER_ELEMENTAL) {}
+
+protected:
+	bool IsSupportEntry(uint32 entry)
+	{
+		return AVIsAllianceCaptainSupportEntry(entry);
+	}
+
+	const char* const* GetAggroBarks(uint32& count)
+	{
+		static const char* kLines[] =
+		{
+			"To me, Stormpike warriors!",
+			"The Horde will break upon us!",
+			"You dare attack Captain Balinda?"
+		};
+		count = 3;
+		return kLines;
+	}
 };
 
 class GalvangarAI : public AlteracValleyCaptainAI
@@ -683,6 +816,24 @@ public:
 	ADD_CREATURE_FACTORY_FUNCTION(GalvangarAI);
 	GalvangarAI(Creature* pCreature) : AlteracValleyCaptainAI(
 		pCreature, 45.0f, AV_SPELL_CLEAVE, AV_SPELL_MORTAL_STRIKE, AV_SPELL_FEAR, AV_SPELL_WHIRLWIND) {}
+
+protected:
+	bool IsSupportEntry(uint32 entry)
+	{
+		return AVIsHordeCaptainSupportEntry(entry);
+	}
+
+	const char* const* GetAggroBarks(uint32& count)
+	{
+		static const char* kLines[] =
+		{
+			"Frostwolves, crush them!",
+			"The Alliance weaklings have come to die!",
+			"Feel the wrath of Galvangar!"
+		};
+		count = 3;
+		return kLines;
+	}
 };
 
 class DunBaldarNorthMarshalAI : public AlteracValleyDefenderAI
@@ -747,6 +898,9 @@ void SetupAlteracValley(ScriptMgr* mgr)
 	mgr->register_creature_script(CN_DREKTHAR, &DrekTharAI::Create);
 	mgr->register_creature_script(CN_BALINDA_STONEHEARTH, &BalindaStonehearthAI::Create);
 	mgr->register_creature_script(CN_GALVANGAR, &GalvangarAI::Create);
+
+	mgr->register_creature_script(CN_DRAKAN, &AVBossWolfAI::Create);
+	mgr->register_creature_script(CN_DUROS, &AVBossWolfAI::Create);
 
 	mgr->register_creature_script(CN_DUN_BALDAR_NORTH_MARSHAL, &DunBaldarNorthMarshalAI::Create);
 	mgr->register_creature_script(CN_DUN_BALDAR_SOUTH_MARSHAL, &DunBaldarSouthMarshalAI::Create);
