@@ -139,12 +139,12 @@ bool Master::Run(int argc, char ** argv)
 		switch (c)
 		{
 		case 'c':
-			config_file = new char[strlen(ascent_optarg)];
+			config_file = new char[strlen(ascent_optarg) + 1];
 			strcpy(config_file, ascent_optarg);
 			break;
 
 		case 'r':
-			realm_config_file = new char[strlen(ascent_optarg)];
+			realm_config_file = new char[strlen(ascent_optarg) + 1];
 			strcpy(realm_config_file, ascent_optarg);
 			break;
 
