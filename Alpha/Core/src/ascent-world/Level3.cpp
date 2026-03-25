@@ -1202,13 +1202,13 @@ bool ChatHandler::HandleDBReloadCommand(const char* args, WorldSession* m_sessio
 		return false;
 
 	uint32 mstime = getMSTime();
-	snprintf(str, 200, "%s%s initiated server-side reload of table `%s`. The server may experience some lag while this occurs.",
+	snprintf(str, sizeof(str), "%s%s initiated server-side reload of table `%s`. The server may experience some lag while this occurs.",
 		MSG_COLOR_LIGHTRED, m_session->GetPlayer()->GetName(), args);
 	sWorld.SendWorldText(str, 0);
 	if(!Storage_ReloadTable(args))
-		snprintf(str, 256, "%sDatabase reload failed.", MSG_COLOR_LIGHTRED);
+		snprintf(str, sizeof(str), "%sDatabase reload failed.", MSG_COLOR_LIGHTRED);
 	else
-		snprintf(str, 256, "%sDatabase reload completed in %u ms.", MSG_COLOR_LIGHTBLUE, (unsigned int)(getMSTime() - mstime));
+		snprintf(str, sizeof(str), "%sDatabase reload completed in %u ms.", MSG_COLOR_LIGHTBLUE, (unsigned int)(getMSTime() - mstime));
 	sWorld.SendWorldText(str, 0);
 	sGMLog.writefromsession(m_session, "reloaded table %s", args);
 	return true;
