@@ -1129,7 +1129,7 @@ void saveInputFileMetaInfo ( Char *srcName )
 
 
 static 
-void applySavedMetaInfoToOutputFile ( Char *dstName )
+void applySavedMetaInfoToOutputFile ( Char *dstName, int dstFd )
 {
 #  if BZ_UNIX
    IntNative      retVal;
@@ -1138,14 +1138,17 @@ void applySavedMetaInfoToOutputFile ( Char *dstName )
    uTimBuf.actime = fileMetaInfo.st_atime;
    uTimBuf.modtime = fileMetaInfo.st_mtime;
 
-   retVal = chmod ( dstName, fileMetaInfo.st_mode );
+   /* Use descriptor-based operations to avoid TOCTOU on dstName. */
+   retVal = fchmod ( dstFd, fileMetaInfo.st_mode );
    ERROR_IF_NOT_ZERO ( retVal );
 
+   /* POSIX does not provide a fully portable futime equivalent;
+      we still use utime(2) with the path for timestamps. */
    retVal = utime ( dstName, &uTimBuf );
    ERROR_IF_NOT_ZERO ( retVal );
 
-   retVal = chown ( dstName, fileMetaInfo.st_uid, fileMetaInfo.st_gid );
-   /* chown() will in many cases return with EPERM, which can
+   retVal = fchown ( dstFd, fileMetaInfo.st_uid, fileMetaInfo.st_gid );
+   /* fchown() will in many cases return with EPERM, which can
       be safely ignored.
    */
 #  endif
