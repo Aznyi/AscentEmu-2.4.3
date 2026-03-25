@@ -201,3 +201,20 @@ DELETE FROM creature_spawns WHERE id = 3000464;
 DELETE FROM creature_spawns WHERE id = 3000031;
 DELETE FROM creature_spawns WHERE id = 3000644;
 DELETE FROM creature_spawns WHERE id = 3000505;
+
+-- CMangos TBC DB spawn cleanup
+-- Arathi Basin node banners and faction civilians are now runtime-spawned by ArathiBasin.cpp.
+-- Remove the old map 529 DB node spawns so they do not duplicate runtime state.
+
+DELETE FROM creature_spawns
+WHERE id BETWEEN 5290001 AND 5290110;
+
+DELETE FROM gameobject_spawns
+WHERE id BETWEEN 5290005 AND 5290029;
+
+DELETE FROM gameobject_spawns
+WHERE id BETWEEN 5290253 AND 5290254;
+
+DELETE FROM gameobject_spawns
+WHERE id BETWEEN 5290300 AND 5290314;
+

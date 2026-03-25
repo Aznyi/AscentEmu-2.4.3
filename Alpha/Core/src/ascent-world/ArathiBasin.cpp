@@ -154,7 +154,7 @@ uint32 buffentrys[3] = {180380,180362,180146};
 		1000,
 	};
 
-	static uint32 PointBonusPerUpdate[6] = {
+static uint32 PointBonusPerUpdate[6] = {
 		0,
 		10,
 		10,
@@ -164,6 +164,218 @@ uint32 buffentrys[3] = {180380,180362,180146};
 	};
 
 /* End BG Data */
+
+struct ABControlPointCreatureSpawn
+{
+	uint32 entry;
+	float x, y, z, o;
+	uint32 factionId;
+	uint32 emoteState;
+	uint8 moveType;
+};
+
+static const uint32 AB_DB_CREATURE_SQLID_BEGIN = 5290001;
+static const uint32 AB_DB_CREATURE_SQLID_END = 5290110;
+static const uint32 AB_DB_BANNER_SQLID_BEGIN = 5290005;
+static const uint32 AB_DB_BANNER_SQLID_END = 5290029;
+static const uint32 AB_DB_GATE_SQLID_BEGIN = 5290253;
+static const uint32 AB_DB_GATE_SQLID_END = 5290254;
+static const uint32 AB_DB_BUFF_SQLID_BEGIN = 5290300;
+static const uint32 AB_DB_BUFF_SQLID_END = 5290314;
+
+static const ABControlPointCreatureSpawn AB_STABLE_ALLIANCE_SPAWNS[] =
+{
+	{ 15086, 1157.72f, 1162.02f, -56.3494f, 4.68379f, 1577, 0, 2 },
+	{ 15086, 1207.82f, 1198.78f, -56.1779f, 2.86234f, 1577, 69, 0 },
+	{ 15086, 1184.96f, 1200.12f, -56.3163f, 0.733038f, 1577, 0, 0 },
+	{ 15107, 1153.16f, 1154.29f, -56.4169f, 2.5387f, 190, 0, 0 },
+	{ 15107, 1157.58f, 1172.96f, -56.2799f, 2.84489f, 190, 0, 0 },
+	{ 15107, 1187.5f, 1181.29f, -55.9973f, 2.40855f, 190, 0, 0 },
+	{ 15107, 1158.07f, 1165.48f, -56.2712f, 4.56288f, 190, 0, 0 },
+	{ 15107, 1186.39f, 1190.51f, -56.009f, 2.35619f, 190, 0, 0 },
+	{ 15107, 1169.2f, 1163.53f, -56.4816f, 1.07924f, 190, 0, 0 },
+	{ 15107, 1189.31f, 1183.63f, -56.0443f, 2.44346f, 190, 0, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_STABLE_HORDE_SPAWNS[] =
+{
+	{ 15087, 1187.37f, 1199.46f, -56.3711f, 5.2709f, 412, 0, 0 },
+	{ 15087, 1201.63f, 1174.92f, -56.3803f, 5.14872f, 412, 233, 0 },
+	{ 15087, 1167.45f, 1182.16f, -56.3106f, 5.17983f, 412, 0, 2 },
+	{ 15108, 1160.12f, 1169.93f, -56.3168f, 2.04316f, 190, 0, 0 },
+	{ 15108, 1184.85f, 1179.24f, -55.9334f, 2.21657f, 190, 0, 0 },
+	{ 15108, 1171.04f, 1144.41f, -56.0605f, 3.24631f, 190, 0, 0 },
+	{ 15108, 1175.07f, 1155.1f, -56.4464f, 0.728899f, 190, 0, 0 },
+	{ 15108, 1167.13f, 1186.34f, -56.2799f, 4.59022f, 190, 0, 0 },
+	{ 15108, 1191.47f, 1185.54f, -56.0253f, 2.30383f, 190, 0, 0 },
+	{ 15108, 1186.12f, 1190.79f, -56.0364f, 2.35619f, 190, 0, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_FARM_ALLIANCE_SPAWNS[] =
+{
+	{ 15045, 811.552f, 792.473f, -57.8178f, 0.471185f, 1577, 0, 2 },
+	{ 15045, 841.648f, 864.919f, -57.4323f, 1.26686f, 1577, 0, 2 },
+	{ 15045, 822.796f, 869.174f, -57.843f, 4.24193f, 1577, 0, 2 },
+	{ 15045, 786.069f, 824.469f, -55.9782f, 5.05953f, 1577, 0, 2 },
+	{ 15045, 815.798f, 831.478f, -57.1758f, 4.94565f, 1577, 0, 2 },
+	{ 15045, 799.065f, 846.511f, -56.8651f, 2.39458f, 1577, 0, 2 },
+	{ 15045, 847.3f, 836.659f, -57.8924f, 5.89317f, 1577, 0, 2 },
+	{ 15045, 792.457f, 823.458f, -56.5414f, 2.52741f, 1577, 69, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_FARM_HORDE_SPAWNS[] =
+{
+	{ 15046, 849.179f, 833.499f, -57.7416f, 5.61996f, 412, 0, 2 },
+	{ 15046, 791.34f, 822.852f, -56.4006f, 1.8326f, 412, 69, 0 },
+	{ 15046, 812.433f, 791.921f, -57.7863f, 2.91346f, 412, 0, 2 },
+	{ 15046, 822.677f, 867.832f, -57.7916f, 4.67619f, 412, 0, 2 },
+	{ 15046, 843.426f, 857.894f, -57.6725f, 2.27435f, 412, 0, 2 },
+	{ 15046, 815.514f, 831.668f, -57.1119f, 4.46503f, 412, 0, 2 },
+	{ 15046, 823.35f, 817.641f, -57.6701f, 1.54966f, 412, 0, 2 },
+	{ 15046, 798.336f, 847.737f, -56.7132f, 5.14592f, 412, 0, 2 },
+};
+
+static const ABControlPointCreatureSpawn AB_BLACKSMITH_ALLIANCE_SPAWNS[] =
+{
+	{ 15063, 991.74f, 1000.92f, -42.5199f, 2.67035f, 1577, 233, 0 },
+	{ 15063, 969.127f, 999.597f, -43.9439f, 2.3911f, 1577, 233, 1 },
+	{ 15063, 983.693f, 1008.41f, -42.5199f, 5.35816f, 1577, 233, 0 },
+	{ 15063, 996.188f, 1003.25f, -42.5221f, 4.72984f, 1577, 233, 0 },
+	{ 15063, 979.588f, 997.244f, -43.9798f, 0.575959f, 1577, 69, 0 },
+	{ 15063, 980.162f, 989.083f, -43.9306f, 0.191986f, 1577, 69, 1 },
+	{ 15063, 990.042f, 1014.51f, -42.5199f, 6.16101f, 1577, 233, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_BLACKSMITH_HORDE_SPAWNS[] =
+{
+	{ 15064, 968.975f, 999.732f, -43.9377f, 2.53073f, 412, 233, 0 },
+	{ 15064, 996.413f, 1002.88f, -42.52f, 4.7822f, 412, 233, 0 },
+	{ 15064, 990.38f, 1014.8f, -42.5199f, 6.12611f, 412, 233, 0 },
+	{ 15064, 983.581f, 1008.55f, -42.5199f, 5.34071f, 412, 233, 0 },
+	{ 15064, 979.603f, 997.367f, -43.9784f, 1.01229f, 412, 69, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_MINE_ALLIANCE_SPAWNS[] =
+{
+	{ 15074, 1214.26f, 803.153f, -102.681f, 5.25344f, 1577, 233, 0 },
+	{ 15074, 1138.93f, 811.071f, -99.5951f, 5.16617f, 1577, 0, 0 },
+	{ 15074, 1202.03f, 810.835f, -103.166f, 1.46608f, 1577, 233, 0 },
+	{ 15074, 1235.97f, 802.637f, -103.035f, 3.64774f, 1577, 233, 0 },
+	{ 15074, 1139.79f, 809.247f, -99.5951f, 2.02458f, 1577, 0, 0 },
+	{ 15074, 1258.31f, 775.819f, -105.636f, 6.23082f, 1577, 233, 0 },
+	{ 15074, 1226.12f, 816.11f, -102.404f, 1.01229f, 1577, 233, 0 },
+	{ 15074, 1231.03f, 786.665f, -102.642f, 3.63029f, 1577, 233, 0 },
+	{ 15074, 1184.03f, 834.479f, -102.975f, 4.90438f, 1577, 233, 0 },
+	{ 15074, 1249.79f, 794.31f, -102.989f, 0.750492f, 1577, 233, 0 },
+	{ 15074, 1197.5f, 860.736f, -98.6642f, 1.60941f, 1577, 0, 2 },
+};
+
+static const ABControlPointCreatureSpawn AB_MINE_HORDE_SPAWNS[] =
+{
+	{ 15075, 1200.75f, 802.971f, -103.325f, 5.0091f, 412, 233, 0 },
+	{ 15075, 1242.1f, 808.662f, -102.936f, 0.663225f, 412, 233, 0 },
+	{ 15075, 1211.4f, 810.13f, -102.83f, 1.3439f, 412, 233, 0 },
+	{ 15075, 1229.6f, 807.341f, -103.111f, 4.17134f, 412, 233, 0 },
+	{ 15075, 1250.52f, 793.177f, -103.23f, 0.471239f, 412, 233, 0 },
+	{ 15075, 1258.08f, 775.87f, -105.596f, 6.0912f, 412, 233, 0 },
+	{ 15075, 1195.33f, 849.472f, -98.6098f, 4.39823f, 412, 0, 2 },
+	{ 15075, 1232.78f, 788.376f, -102.684f, 2.6529f, 412, 233, 0 },
+	{ 15075, 1186.86f, 884.933f, -103.591f, 1.41372f, 412, 133, 0 },
+};
+
+static const ABControlPointCreatureSpawn AB_LUMBERMILL_ALLIANCE_SPAWNS[] =
+{
+	{ 15062, 812.093f, 1161.07f, 11.6124f, 2.3911f, 1577, 233, 2 },
+	{ 15062, 838.966f, 1241.34f, 16.6564f, 3.75246f, 1577, 234, 2 },
+	{ 15062, 830.316f, 1136.88f, 11.3574f, 5.14872f, 1577, 234, 2 },
+	{ 15062, 815.829f, 1088.29f, 9.53132f, 0.05236f, 1577, 234, 2 },
+	{ 15062, 909.461f, 1232.72f, 6.57686f, 3.29867f, 1577, 234, 2 },
+	{ 15062, 908.642f, 1183.09f, 5.05999f, 0.820305f, 1577, 234, 2 },
+	{ 15062, 873.048f, 1264.44f, 18.8553f, 1.39626f, 1577, 234, 2 },
+	{ 15062, 884.481f, 1176.69f, 9.99647f, 4.08407f, 1577, 234, 2 },
+	{ 15062, 751.68f, 1198.45f, 18.232f, 3.35103f, 1577, 234, 2 },
+	{ 15062, 760.732f, 1083.22f, 15.693f, 4.03171f, 1577, 234, 2 },
+	{ 15062, 767.403f, 1118.95f, 17.3766f, 2.33874f, 1577, 234, 2 },
+};
+
+static const ABControlPointCreatureSpawn AB_LUMBERMILL_HORDE_SPAWNS[] =
+{
+	{ 15089, 812.393f, 1160.85f, 11.6123f, 2.33874f, 412, 233, 2 },
+	{ 15089, 913.165f, 1311.43f, 24.9025f, 0.558505f, 412, 234, 2 },
+	{ 15089, 872.633f, 1264.29f, 18.8666f, 1.44862f, 412, 234, 2 },
+	{ 15089, 742.763f, 1243.59f, 22.7741f, 1.3439f, 412, 234, 2 },
+	{ 15089, 831.255f, 1236.06f, 17.2953f, 0.506145f, 412, 234, 2 },
+	{ 15089, 761.081f, 1082.74f, 15.5728f, 3.80482f, 412, 234, 2 },
+	{ 15089, 787.803f, 1230.45f, 18.6236f, 3.89208f, 412, 234, 2 },
+	{ 15089, 884.648f, 1176.52f, 9.96061f, 3.94444f, 412, 234, 2 },
+	{ 15089, 909.529f, 1232.81f, 6.55989f, 3.47321f, 412, 234, 2 },
+	{ 15089, 908.431f, 1248.12f, 9.23548f, 0.890118f, 412, 234, 2 },
+	{ 15089, 908.765f, 1183.24f, 5.00921f, 0.331613f, 412, 234, 2 },
+	{ 15089, 764.691f, 1147.38f, 18.9711f, 1.74533f, 412, 234, 2 },
+	{ 15089, 920.323f, 1251.82f, 8.46854f, 3.40339f, 412, 234, 2 },
+	{ 15089, 815.915f, 1088.65f, 9.58834f, 6.23082f, 412, 234, 2 },
+	{ 15089, 751.929f, 1198.46f, 18.1631f, 3.38594f, 412, 234, 2 },
+};
+
+static const ABControlPointCreatureSpawn* ABGetControlPointSpawnSet(uint32 node, uint32 team, size_t& count)
+{
+	count = 0;
+
+	switch(node)
+	{
+	case AB_CONTROL_POINT_STABLE:
+		if(team == 0)
+		{
+			count = sizeof(AB_STABLE_ALLIANCE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+			return AB_STABLE_ALLIANCE_SPAWNS;
+		}
+
+		count = sizeof(AB_STABLE_HORDE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+		return AB_STABLE_HORDE_SPAWNS;
+
+	case AB_CONTROL_POINT_FARM:
+		if(team == 0)
+		{
+			count = sizeof(AB_FARM_ALLIANCE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+			return AB_FARM_ALLIANCE_SPAWNS;
+		}
+
+		count = sizeof(AB_FARM_HORDE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+		return AB_FARM_HORDE_SPAWNS;
+
+	case AB_CONTROL_POINT_BLACKSMITH:
+		if(team == 0)
+		{
+			count = sizeof(AB_BLACKSMITH_ALLIANCE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+			return AB_BLACKSMITH_ALLIANCE_SPAWNS;
+		}
+
+		count = sizeof(AB_BLACKSMITH_HORDE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+		return AB_BLACKSMITH_HORDE_SPAWNS;
+
+	case AB_CONTROL_POINT_MINE:
+		if(team == 0)
+		{
+			count = sizeof(AB_MINE_ALLIANCE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+			return AB_MINE_ALLIANCE_SPAWNS;
+		}
+
+		count = sizeof(AB_MINE_HORDE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+		return AB_MINE_HORDE_SPAWNS;
+
+	case AB_CONTROL_POINT_LUMBERMILL:
+		if(team == 0)
+		{
+			count = sizeof(AB_LUMBERMILL_ALLIANCE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+			return AB_LUMBERMILL_ALLIANCE_SPAWNS;
+		}
+
+		count = sizeof(AB_LUMBERMILL_HORDE_SPAWNS) / sizeof(ABControlPointCreatureSpawn);
+		return AB_LUMBERMILL_HORDE_SPAWNS;
+	}
+
+	return NULL;
+}
 
 void ArathiBasin::SpawnBuff(uint32 x)
 {
@@ -331,6 +543,8 @@ void ArathiBasin::OnCreate()
 	gate->PushToWorld(m_mapMgr);
 	m_gates.push_back(gate);
 
+	CleanupControlPointDbSpawns();
+
 	// spawn (default) control points
 	SpawnControlPoint(AB_CONTROL_POINT_STABLE,		AB_SPAWN_TYPE_NEUTRAL);
 	SpawnControlPoint(AB_CONTROL_POINT_BLACKSMITH,	AB_SPAWN_TYPE_NEUTRAL);
@@ -344,6 +558,8 @@ void ArathiBasin::OnCreate()
 	SpawnBuff(AB_BUFF_LUMBERMILL);
 	SpawnBuff(AB_BUFF_MINE);
 	SpawnBuff(AB_BUFF_FARM);
+
+	CreateControlPointCreatures();
 
 	// spawn the h/a base spirit guides
 	AddSpiritGuide(SpawnSpiritGuide(NoBaseGYLocations[0][0],NoBaseGYLocations[0][1],NoBaseGYLocations[0][2], 0.0f, 0));
@@ -477,7 +693,175 @@ ArathiBasin::~ArathiBasin()
 			if( !m_controlPointAuras[i]->IsInWorld() )
 				delete m_controlPointAuras[i];
 		}
+
+		for(uint32 team = 0; team < 2; ++team)
+		{
+			for(vector<Creature*>::iterator itr = m_controlPointCreatures[i][team].begin(); itr != m_controlPointCreatures[i][team].end(); ++itr)
+			{
+				Creature* creature = *itr;
+				if(creature == NULL)
+					continue;
+
+				if(!creature->IsInWorld())
+					delete creature;
+			}
+		}
 	}
+}
+
+void ArathiBasin::CleanupControlPointDbSpawns()
+{
+	if(m_mapMgr == NULL)
+		return;
+
+	for(CreatureSqlIdMap::iterator itr = m_mapMgr->_sqlids_creatures.begin(); itr != m_mapMgr->_sqlids_creatures.end(); ++itr)
+	{
+		Creature* creature = itr->second;
+		if(creature == NULL || itr->first < AB_DB_CREATURE_SQLID_BEGIN || itr->first > AB_DB_CREATURE_SQLID_END)
+			continue;
+
+		if(creature->IsInWorld())
+			creature->RemoveFromWorld(false, false);
+	}
+
+	for(GameObjectSqlIdMap::iterator itr = m_mapMgr->_sqlids_gameobjects.begin(); itr != m_mapMgr->_sqlids_gameobjects.end(); ++itr)
+	{
+		GameObject* go = itr->second;
+		if(go == NULL)
+			continue;
+
+		if((itr->first >= AB_DB_BANNER_SQLID_BEGIN && itr->first <= AB_DB_BANNER_SQLID_END) ||
+			(itr->first >= AB_DB_GATE_SQLID_BEGIN && itr->first <= AB_DB_GATE_SQLID_END) ||
+			(itr->first >= AB_DB_BUFF_SQLID_BEGIN && itr->first <= AB_DB_BUFF_SQLID_END))
+		{
+			if(go->IsInWorld())
+				go->RemoveFromWorld(false);
+		}
+	}
+}
+
+Creature * ArathiBasin::SpawnControlPointCreature(uint32 entry, float x, float y, float z, float o, uint32 factionId, uint32 emoteState, uint8 moveType)
+{
+	CreatureProto* proto = CreatureProtoStorage.LookupEntry(entry);
+	CreatureInfo* info = CreatureNameStorage.LookupEntry(entry);
+	if(proto == NULL || info == NULL || m_mapMgr == NULL)
+		return NULL;
+
+	CreatureSpawn* sp = new CreatureSpawn;
+	sp->entry = entry;
+	sp->form = 0;
+	sp->id = 0;
+	sp->movetype = moveType;
+	sp->x = x;
+	sp->y = y;
+	sp->z = z;
+	sp->o = o;
+	sp->emote_state = emoteState;
+	sp->flags = 0;
+	sp->factionid = factionId ? factionId : proto->Faction;
+	sp->bytes = 0;
+	sp->bytes2 = 0;
+	sp->stand_state = 0;
+	sp->channel_spell = 0;
+	sp->channel_target_creature = 0;
+	sp->channel_target_go = 0;
+
+	Creature* creature = m_mapMgr->CreateCreature(entry);
+	if(creature == NULL)
+	{
+		delete sp;
+		return NULL;
+	}
+
+	creature->Load(sp, (uint32)NULL, NULL);
+	creature->spawnid = 0;
+	creature->m_spawn = 0;
+	delete sp;
+	return creature;
+}
+
+void ArathiBasin::CreateControlPointCreatures()
+{
+	for(uint32 node = 0; node < AB_NUM_CONTROL_POINTS; ++node)
+	{
+		for(uint32 team = 0; team < 2; ++team)
+			m_controlPointCreatures[node][team].clear();
+	}
+
+	for(uint32 node = 0; node < AB_NUM_CONTROL_POINTS; ++node)
+		UpdateControlPointCreatureState(node);
+}
+
+void ArathiBasin::ClearControlPointCreatures(uint32 Id, uint32 Team)
+{
+	if(Id >= AB_NUM_CONTROL_POINTS || Team > 1)
+		return;
+
+	for(vector<Creature*>::iterator itr = m_controlPointCreatures[Id][Team].begin(); itr != m_controlPointCreatures[Id][Team].end(); ++itr)
+	{
+		Creature* creature = *itr;
+		if(creature == NULL)
+			continue;
+
+		if(creature->IsInWorld())
+			creature->RemoveFromWorld(false, false);
+
+		delete creature;
+	}
+
+	m_controlPointCreatures[Id][Team].clear();
+}
+
+void ArathiBasin::EnsureControlPointCreatures(uint32 Id, uint32 Team)
+{
+	if(Id >= AB_NUM_CONTROL_POINTS || Team > 1)
+		return;
+
+	if(!m_controlPointCreatures[Id][Team].empty())
+	{
+		for(vector<Creature*>::iterator itr = m_controlPointCreatures[Id][Team].begin(); itr != m_controlPointCreatures[Id][Team].end(); ++itr)
+		{
+			Creature* creature = *itr;
+			if(creature != NULL && creature->isAlive() && !creature->IsInWorld())
+				creature->PushToWorld(m_mapMgr);
+		}
+		return;
+	}
+
+	size_t count = 0;
+	const ABControlPointCreatureSpawn* spawns = ABGetControlPointSpawnSet(Id, Team, count);
+	if(spawns == NULL)
+		return;
+
+	for(size_t i = 0; i < count; ++i)
+	{
+		Creature* creature = SpawnControlPointCreature(spawns[i].entry, spawns[i].x, spawns[i].y, spawns[i].z, spawns[i].o,
+			spawns[i].factionId, spawns[i].emoteState, spawns[i].moveType);
+		if(creature == NULL)
+			continue;
+
+		creature->PushToWorld(m_mapMgr);
+		m_controlPointCreatures[Id][Team].push_back(creature);
+	}
+}
+
+void ArathiBasin::UpdateControlPointCreatureState(uint32 Id)
+{
+	if(Id >= AB_NUM_CONTROL_POINTS)
+		return;
+
+	const bool showAlliance = (m_basesOwnedBy[Id] == 0);
+	const bool showHorde = (m_basesOwnedBy[Id] == 1);
+
+	if(showAlliance)
+		EnsureControlPointCreatures(Id, 0);
+	else
+		ClearControlPointCreatures(Id, 0);
+
+	if(showHorde)
+		EnsureControlPointCreatures(Id, 1);
+	else
+		ClearControlPointCreatures(Id, 1);
 }
 
 void ArathiBasin::EventUpdateResources(uint32 Team)
@@ -735,6 +1119,7 @@ void ArathiBasin::CaptureControlPoint(uint32 Id, uint32 Team)
 
 	// respawn the control point with the correct aura
 	SpawnControlPoint(Id, Team ? AB_SPAWN_TYPE_HORDE_CONTROLLED : AB_SPAWN_TYPE_ALLIANCE_CONTROLLED);
+	UpdateControlPointCreatureState(Id);
 
 	// update the map
 	SetWorldState(AssaultFields[Id][Team], 0);
@@ -832,6 +1217,7 @@ void ArathiBasin::AssaultControlPoint(Player * pPlayer, uint32 Id)
 
 	// spawn the new control point gameobject
 	SpawnControlPoint(Id, Team ? AB_SPAWN_TYPE_HORDE_ASSAULT : AB_SPAWN_TYPE_ALLIANCE_ASSAULT);
+	UpdateControlPointCreatureState(Id);
 
 	// send out the chat message and sound
 	SendChatMessage(Team ? CHAT_MSG_BG_EVENT_HORDE : CHAT_MSG_BG_EVENT_ALLIANCE, pPlayer->GetGUID(), "$N claims the %s! If left unchallenged, the %s will control it in 1 minute!", ControlPointNames[Id],

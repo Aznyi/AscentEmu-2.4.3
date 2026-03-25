@@ -19,6 +19,12 @@
 
 #define AB_BUFF_RESPAWN_TIME 90000
 
+class Creature;
+class GameObject;
+class Player;
+class Spell;
+class MapMgr;
+
 enum ABBuffs
 {
 	AB_BUFF_STABLES						= 0,
@@ -58,6 +64,7 @@ public:
 
 protected:
 	list<GameObject*> m_gates;
+	vector<Creature*> m_controlPointCreatures[AB_NUM_CONTROL_POINTS][2];
 	
 	uint32 m_resources[2];
 	uint32 m_capturedBases[2];
@@ -98,4 +105,10 @@ public:
 	void SpawnControlPoint(uint32 Id, uint32 Type);
 	void CaptureControlPoint(uint32 Id, uint32 Team);
 	void AssaultControlPoint(Player * pPlayer, uint32 Id);
+	void CleanupControlPointDbSpawns();
+	void CreateControlPointCreatures();
+	Creature * SpawnControlPointCreature(uint32 entry, float x, float y, float z, float o, uint32 factionId, uint32 emoteState, uint8 moveType);
+	void ClearControlPointCreatures(uint32 Id, uint32 Team);
+	void EnsureControlPointCreatures(uint32 Id, uint32 Team);
+	void UpdateControlPointCreatureState(uint32 Id);
 };
