@@ -866,6 +866,12 @@ void CBattleground::PortPlayer(Player * plr, bool skip_teleport /* = false*/)
 			plr->RemoveFromWorld();
 	}
 
+	// Once the player actually enters the battleground, clear their queue state
+	// so the client stops showing the queue/minimap indicator.
+	plr->m_bgIsQueued = false;
+	plr->m_bgQueueRated = false;
+	plr->m_bgQueueType = 0;
+	plr->m_bgQueueInstanceId = 0;
 	plr->m_pendingBattleground = 0;
 	plr->m_bg = this;
 
