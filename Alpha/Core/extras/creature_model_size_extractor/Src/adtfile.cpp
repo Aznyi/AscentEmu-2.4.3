@@ -64,7 +64,7 @@ bool ADTFile::init(char *map_id)
     dirfile = fopen(dirname, "ab");
 	if(!dirfile)
 	{
-		printf("Can't open dirfile!'%s'\n");
+		printf("Can't open dirfile! '%s'\n", dirname);
 		return false;
 	}
 
