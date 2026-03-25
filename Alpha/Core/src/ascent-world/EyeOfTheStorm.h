@@ -23,6 +23,12 @@
 
 #define EOTS_TOWER_COUNT 4
 
+class Creature;
+class GameObject;
+class MapMgr;
+class Player;
+class Spell;
+
 class EyeOfTheStorm : public CBattleground
 {
 public:
@@ -59,6 +65,11 @@ public:
 	void DropFlag(Player * plr);
 	void EventResetFlag();
 	void RepopPlayersOfTeam(int32 team, Creature * sh);
+	void CleanupBattlegroundDbSpawns();
+	void UpdateTowerVisualState(uint32 tower);
+	void UpdateTowerIconWorldState(uint32 tower);
+	void UpdateTowerSpiritGuide(uint32 tower);
+	bool IsPlayerInCaptureRange(uint32 tower, Player* plr) const;
 
 protected:
 	int32 m_CPStatus[EOTS_TOWER_COUNT];		
@@ -68,7 +79,7 @@ protected:
 	GameObject * m_dropFlag;
 
 	GameObject * m_CPStatusGO[EOTS_TOWER_COUNT];
-	GameObject * m_CPBanner[EOTS_TOWER_COUNT];
+	GameObject * m_CPBanner[EOTS_TOWER_COUNT][3];
 	GameObject * m_bubbles[2];
 
 	typedef set<Player*> EOTSCaptureDisplayList;
