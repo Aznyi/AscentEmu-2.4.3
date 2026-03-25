@@ -1144,10 +1144,10 @@ void applySavedMetaInfoToOutputFile ( Char *dstName )
    retVal = utime ( dstName, &uTimBuf );
    ERROR_IF_NOT_ZERO ( retVal );
 
-   retVal = chown ( dstName, fileMetaInfo.st_uid, fileMetaInfo.st_gid );
-   /* chown() will in many cases return with EPERM, which can
-      be safely ignored.
-   */
+   /* Ownership is not adjusted here to avoid a TOCTOU race on dstName.
+      Previously this used chown(dstName, fileMetaInfo.st_uid,
+      fileMetaInfo.st_gid), which could be exploited if dstName were
+      replaced between file creation and this call. */
 #  endif
 }
 
