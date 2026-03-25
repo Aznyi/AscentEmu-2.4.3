@@ -937,7 +937,7 @@ bool ChatHandler::HandleRenameCommand(const char * args, WorldSession * m_sessio
 	char name1[100];
 	char name2[100];
 
-	if(sscanf(args, "%s %s", name1, name2) != 2)
+	if(sscanf(args, "%99s %99s", name1, name2) != 2)
 		return false;
 
 	if(VerifyName(name2, strlen(name2)) == false)

@@ -425,7 +425,7 @@ bool ChatHandler::HandleUnBanCharacterCommand(const char* args, WorldSession *m_
 		return false;
 
 	char Character[255];
-	if(sscanf(args, "%s", Character) == 0)
+	if(sscanf(args, "%254s", Character) != 1)
 	{
 		RedSystemMessage(m_session, "A character name and reason is required.");
 		return true;
@@ -781,7 +781,7 @@ bool ChatHandler::HandleAccountLevelCommand(const char * args, WorldSession * m_
 
 	char account[100];
 	char gmlevel[100];
-	int argc = sscanf(args, "%s %s", account, gmlevel);
+	int argc = sscanf(args, "%99s %99s", account, gmlevel);
 	if(argc != 2)
 		return false;
 
@@ -2768,7 +2768,7 @@ bool ChatHandler::HandleCreateArenaTeamCommands(const char * args, WorldSession 
 	char name[1000];
 	uint32 real_type;
 	Player * plr = getSelectedChar(m_session, true);
-	if(sscanf(args, "%u %s", &arena_team_type, name) != 2)
+	if(sscanf(args, "%u %999s", &arena_team_type, name) != 2)
 	{
 		SystemMessage(m_session, "Invalid syntax.");
 		return true;
