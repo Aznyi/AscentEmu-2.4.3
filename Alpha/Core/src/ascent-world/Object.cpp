@@ -2229,7 +2229,10 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 					if( !static_cast< Pet* >( pVictim )->IsSummon() )
 					{
 						uint32 hap = static_cast< Pet* >( pVictim )->GetUInt32Value( UNIT_FIELD_POWER5 );
-						hap = hap - PET_HAPPINESS_UPDATE_VALUE > 0 ? hap - PET_HAPPINESS_UPDATE_VALUE : 0;
+						if( hap > PET_HAPPINESS_UPDATE_VALUE )
+							hap -= PET_HAPPINESS_UPDATE_VALUE;
+						else
+							hap = 0;
 						static_cast< Pet* >( pVictim )->SetUInt32Value( UNIT_FIELD_POWER5, hap );
 					}
 					
