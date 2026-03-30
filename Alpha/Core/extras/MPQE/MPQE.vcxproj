@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{B3CC3F7B-473A-4F6B-89A8-8C243EF51A7B}</ProjectGuid>
+    <RootNamespace>MPQE</RootNamespace>
+    <ProjectName>MPQE</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)obj\$(Configuration)\$(Platform)\</IntDir>
+    <TargetName>MPQE</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4244;4267;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>..\collision\extractor\stormlib;..\collision\extractor\stormlib\huffman;..\collision\extractor\stormlib\pklib;..\collision\extractor\stormlib\wave;..\collision\extractor\stormlib\zlib;..\collision\extractor\stormlib\bzip2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4244;4267;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>..\collision\extractor\stormlib;..\collision\extractor\stormlib\huffman;..\collision\extractor\stormlib\pklib;..\collision\extractor\stormlib\wave;..\collision\extractor\stormlib\zlib;..\collision\extractor\stormlib\bzip2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4244;4267;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>..\collision\extractor\stormlib;..\collision\extractor\stormlib\huffman;..\collision\extractor\stormlib\pklib;..\collision\extractor\stormlib\wave;..\collision\extractor\stormlib\zlib;..\collision\extractor\stormlib\bzip2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <DisableSpecificWarnings>4244;4267;4838;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalIncludeDirectories>..\collision\extractor\stormlib;..\collision\extractor\stormlib\huffman;..\collision\extractor\stormlib\pklib;..\collision\extractor\stormlib\wave;..\collision\extractor\stormlib\zlib;..\collision\extractor\stormlib\bzip2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="mpqe.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SCommon.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SCompression.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileCompactArchive.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileCreateArchiveEx.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileExtractFile.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileFindFile.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileOpenArchive.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileOpenFileEx.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SFileReadFile.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\SListFile.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\huffman\huff.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\pklib\crc32.c">
+      <ObjectFileName>$(IntDir)pklib_crc32.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\collision\extractor\stormlib\pklib\explode.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\pklib\implode.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\wave\wave.cpp" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\adler32.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\compress.c">
+      <ObjectFileName>$(IntDir)zlib_compress.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\crc32.c">
+      <ObjectFileName>$(IntDir)zlib_crc32.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\deflate.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\infblock.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\infcodes.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\inffast.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\inflate.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\inftrees.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\infutil.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\trees.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\uncompr.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\zlib\zmemory.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\blocksort.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\bzlib.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\compress.c">
+      <ObjectFileName>$(IntDir)bzip2_compress.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\crctable.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\decompress.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\huffman.c" />
+    <ClCompile Include="..\collision\extractor\stormlib\bzip2\randtable.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\collision\extractor\stormlib\StormLib.h" />
+    <ClInclude Include="..\collision\extractor\stormlib\SCommon.h" />
+    <ClInclude Include="..\collision\extractor\stormlib\StormPort.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

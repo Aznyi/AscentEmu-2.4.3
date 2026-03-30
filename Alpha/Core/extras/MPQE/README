@@ -1,10 +1,19 @@
-MPQE v1.4 by WRS
+MPQE v2.0 by WRS / Ascent maintainers
 
-MPQE is a wrapper for the ShadowFlare MPQ Library and provides several features for MoPaQ archive extraction.
+MPQE now builds as a native StormLib-backed extractor and no longer depends on ShadowFlare's `SFmpq.dll`.
 
-It is written in C# and makes use of the SFmpqapi class, the author of which is unknown ( its not wowglider ).
+For usage instructions, run `MPQE.exe` with no options or arguments.
 
-For usage instructions, run MPQE.exe with no options or arguments.
+Notable additions in this tree:
+- deterministic patch ordering
+- TBC archive stack mode from a WoW client or Data directory
+- DBC-only extraction mode that strips `DBFilesClient\\` into a server-ready `DBC\\` output tree
+- native Visual Studio solution/project with no runtime MPQ DLL dependency
+
+Examples:
+- `MPQE.exe /tbc /p "D:\\WoW243\\Data"`
+- `MPQE.exe /dbc /locale enGB "D:\\WoW243"`
+- `MPQE.exe /dbc /locale enGB /d "D:\\Extracted\\DBC" "D:\\WoW243"`
 
 Ascent - http://www.ascentemu.com/
-Shadowflare - http://shadowflare.samods.org/
+StormLib - https://github.com/ladislav-zezula/StormLib
