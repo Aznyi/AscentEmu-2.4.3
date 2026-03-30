@@ -933,7 +933,7 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 	}*/
 #endif
 
-	if ( m_nextTarget != NULL && m_nextTarget->GetTypeId() == TYPEID_UNIT && m_AIState == EVADE)
+	if ( m_nextTarget != NULL && m_nextTarget->GetTypeId() == TYPEID_UNIT && m_AIState == STATE_EVADE)
 		HandleEvent( EVENT_LEAVECOMBAT, m_Unit, 0);
 #ifdef HACKY_CRASH_FIXES
 	bool cansee = (m_nextTarget != NULL) ? CheckCurrentTarget() : NULL;
@@ -1036,9 +1036,7 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				combatReach[0] = PLAYER_SIZE;
 				combatReach[1] = _CalcCombatRange(m_nextTarget, false);
 
-				if(	
-					distance >= combatReach[0] && 
-					distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK) // Target is in Range -> Attack
+				if(distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK) // Target is in Range -> Attack
 				{
 					if(UnitToFollow != NULL)
 					{
