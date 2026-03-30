@@ -12935,33 +12935,7 @@ void ApplyNormalFixes()
 		uint32 result = 0;
 		// SpellID
 		uint32 spellid = sp->Id;
-		uint32 rank = sp->RankNumber;   // derived in PostProcessSpellDBC()
-		uint32 type = sp->buffType;     // derived in PostProcessSpellDBC()
-		uint32 namehash = 0;
-	
-		// NameHash / base range / school normalization / aura-state remapping are now handled
-		// in PostProcessSpellDBC() right after Spell.dbc is loaded.
-		// Keep a small fallback here in case ApplyNormalFixes() is called without that pass.
-		if(sp->NameHash == 0 && sp->Name != NULL && sp->Name[0] != 0)
-			sp->NameHash = crc32((const unsigned char*)sp->Name, (unsigned int)strlen(sp->Name));
-		namehash = sp->NameHash;
-
-		/*
-		AURASTATE_FLAG_DODGE_BLOCK			= 1,        //1
-		AURASTATE_FLAG_HEALTH20             = 2,        //2
-		AURASTATE_FLAG_BERSERK              = 4,        //3
-		AURASTATE_FLAG_JUDGEMENT            = 16,       //5
-		AURASTATE_FLAG_PARRY                = 64,       //7
-		AURASTATE_FLAG_LASTKILLWITHHONOR    = 512,      //10
-		AURASTATE_FLAG_CRITICAL             = 1024,     //11
-		AURASTATE_FLAG_HEALTH35             = 4096,     //13
-		AURASTATE_FLAG_IMMOLATE             = 8192,     //14
-		AURASTATE_FLAG_REJUVENATE           = 16384,    //15 //where do i use this ?
-		AURASTATE_FLAG_POISON               = 32768,    //16
-		*/
-
-		// Aura state ordinal remapping is handled in PostProcessSpellDBC().
-		// Keep ApplyNormalFixes() focused on true exceptions and avoid double-remapping.
+		uint32 namehash = sp->NameHash;
 
 		// apply on shapeshift change
 		if( sp->NameHash == SPELL_HASH_TRACK_HUMANOIDS )
@@ -13023,15 +12997,6 @@ void ApplyNormalFixes()
 			sp->self_cast_only = true;
 
 		// proc/coefficient defaults + talent_tree mapping are handled in PostProcessSpellDBC().
-
-		// RankNumber is derived in PostProcessSpellDBC(). Fallback guard only.
-		if(rank == 0 && sp->Rank != NULL && sp->Rank[0] != 0)
-		{
-			if(sscanf(sp->Rank, "Rank %u", (unsigned int*)&rank) != 1)
-				rank = 0;
-			sp->RankNumber = rank;
-		}
-
 		//seal of light 
 		if( namehash == SPELL_HASH_SEAL_OF_LIGHT )			
 			sp->procChance = 45;	/* this will do */
@@ -13066,11 +13031,6 @@ void ApplyNormalFixes()
 
         if( strstr( sp->Name, "Sharpen Blade") && sp->Effect[0] == 54 ) //All BS stones
             sp->EffectBasePoints[0] = 3599;
-
-		// buffType + c_is_flags derived in PostProcessSpellDBC(). Fallback guard only.
-		type = sp->buffType;
-		
-
 		// spellLevel training-name fix is handled in PostProcessSpellDBC().
 
 		/*FILE * f = fopen("C:\\spells.txt", "a");
@@ -13130,27 +13090,6 @@ void ApplyNormalFixes()
 			sp->buffIndexType = SPELL_TYPE_INDEX_JUDGEMENT;
 			break;
 		}
-
-		// AuraInterruptFlags fear/root helper + melee/ranged classification handled in PostProcessSpellDBC().
-		// Fallback guard only:
-		if((sp->is_melee_spell == false) && (sp->is_ranged_spell == false) &&
-		   ((sp->AuraInterruptFlags & AURA_INTERRUPT_ON_ANY_DAMAGE_TAKEN) != 0))
-		{
-			for(uint32 z = 0; z < 3; ++z)
-			{
-				if(sp->EffectApplyAuraName[z] == SPELL_AURA_MOD_FEAR ||
-				   sp->EffectApplyAuraName[z] == SPELL_AURA_MOD_ROOT)
-				{
-					sp->AuraInterruptFlags |= AURA_INTERRUPT_ON_UNUSED2;
-					break;
-				}
-			}
-		}
-
-		// set extra properties
-		sp->buffType   = type;  // already derived; keep assignment for safety
-		sp->RankNumber = rank;  // already derived; keep assignment for safety
-
 		uint32 pr=sp->procFlags;
 		for(uint32 y=0;y < 3; y++)
 		{
@@ -15024,6 +14963,31 @@ void ApplyNormalFixes()
 			sp->School = SCHOOL_HOLY;
 
 		/**********************************************************
+		 * Blessing of Sanctuary
+		 **********************************************************/
+		sp = dbcSpell.LookupEntryForced( 20911 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 20912 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 20913 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 20914 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 27168 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 25899 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 27169 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+
+		/**********************************************************
 		 * Reckoning
 		 **********************************************************/
 		sp = dbcSpell.LookupEntryForced( 20177 );
@@ -16687,6 +16651,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 18137 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28377;
@@ -16694,6 +16659,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 19308 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28378;
@@ -16701,6 +16667,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 19309 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28379;
@@ -16708,6 +16675,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 19310 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28380;
@@ -16715,6 +16683,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 19311 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28381;
@@ -16722,6 +16691,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 19312 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28382;
@@ -16729,10 +16699,32 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 25477 );
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_SHADOW;
 			sp->procFlags = PROC_ON_SPELL_HIT_VICTIM | PROC_ON_RANGED_ATTACK_VICTIM | PROC_ON_MELEE_ATTACK_VICTIM;
 			sp->proc_interval = 3000; //every 3 seconds
 			sp->EffectTriggerSpell[0] = 28385;
 		}
+		sp = dbcSpell.LookupEntryForced( 28377 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28378 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28379 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28380 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28381 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28382 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
+		sp = dbcSpell.LookupEntryForced( 28385 );
+		if( sp != NULL )
+			sp->School = SCHOOL_SHADOW;
 
 		//priest - Absolution 
 		sp = dbcSpell.LookupEntryForced( 33167 ); 
@@ -16988,6 +16980,67 @@ void ApplyNormalFixes()
 	//////////////////////////////////////////
 
 	// Insert shaman spell fixes here
+
+		/**********************************************************
+		 * Lightning Shield
+		 **********************************************************/
+		sp = dbcSpell.LookupEntryForced( 324 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 325 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 905 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 945 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 8134 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 10431 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 10432 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 25469 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 25472 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26364 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26365 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26366 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26367 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 8788 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26369 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26370 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26363 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26371 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26372 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
 
 		/**********************************************************
 		 *	Shamanistic Rage
@@ -17931,6 +17984,28 @@ void ApplyNormalFixes()
 	//////////////////////////////////////////
 
 	// Insert warlock spell fixes here
+
+		/**********************************************************
+		 * Fire Shield
+		 **********************************************************/
+		sp = dbcSpell.LookupEntryForced( 2947 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
+		sp = dbcSpell.LookupEntryForced( 8316 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
+		sp = dbcSpell.LookupEntryForced( 8317 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
+		sp = dbcSpell.LookupEntryForced( 11770 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
+		sp = dbcSpell.LookupEntryForced( 11771 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
+		sp = dbcSpell.LookupEntryForced( 27269 );
+		if( sp != NULL )
+			sp->School = SCHOOL_FIRE;
 
 		/**********************************************************
 		 *	Nether Protection
@@ -19114,6 +19189,31 @@ void ApplyNormalFixes()
 	//////////////////////////////////////////
 
 	// Insert druid spell fixes here
+
+		/**********************************************************
+		 * Thorns
+		 **********************************************************/
+		sp = dbcSpell.LookupEntryForced( 467 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 782 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 1075 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 8914 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 9756 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 9910 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
+		sp = dbcSpell.LookupEntryForced( 26992 );
+		if( sp != NULL )
+			sp->School = SCHOOL_NATURE;
 
 		//Druid: Feral Swiftness
 		sp = dbcSpell.LookupEntryForced( 17002 );
