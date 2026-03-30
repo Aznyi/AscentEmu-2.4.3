@@ -1880,13 +1880,23 @@ void Unit::HandleProcDmgShield(uint32 flag, Unit* attacker)
 		{
 			if(PROC_MISC & (*i2).m_flags)
 			{
-				data.Initialize(SMSG_SPELLDAMAGESHIELD);
-				data << this->GetGUID();
-				data << attacker->GetGUID();
-				data << (*i2).m_damage;
-				data << (*i2).m_school;
-				SendMessageToSet(&data,true);
-				this->DealDamage(attacker,(*i2).m_damage,0,0,(*i2).m_spellId);
+				SpellEntry* ability = dbcSpell.LookupEntry((*i2).m_spellId);
+				if(ability != NULL)
+				{
+					// Damage-shield style effects such as Retribution Aura should be
+					// resolved as spell damage so school handling stays correct.
+					this->SpellNonMeleeDamageLog(attacker, ability->Id, (*i2).m_damage, false, true);
+				}
+				else
+				{
+					data.Initialize(SMSG_SPELLDAMAGESHIELD);
+					data << this->GetGUID();
+					data << attacker->GetGUID();
+					data << (*i2).m_damage;
+					data << (*i2).m_school;
+					SendMessageToSet(&data,true);
+					this->DealDamage(attacker,(*i2).m_damage,0,0,(*i2).m_spellId);
+				}
 			}
 			else
 			{

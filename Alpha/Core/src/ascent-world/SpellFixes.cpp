@@ -15002,6 +15002,28 @@ void ApplyNormalFixes()
 		}
 
 		/**********************************************************
+		 * Retribution Aura
+		 **********************************************************/
+		sp = dbcSpell.LookupEntryForced( 7294 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 10298 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 10299 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 10300 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 10301 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+		sp = dbcSpell.LookupEntryForced( 27150 );
+		if( sp != NULL )
+			sp->School = SCHOOL_HOLY;
+
+		/**********************************************************
 		 * Reckoning
 		 **********************************************************/
 		sp = dbcSpell.LookupEntryForced( 20177 );
@@ -15205,6 +15227,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 20925 ); // -- rank 1
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_HOLY;
 			sp->EffectApplyAuraName[0] = SPELL_AURA_PROC_TRIGGER_DAMAGE;
 			sp->procFlags = PROC_ON_BLOCK_VICTIM;
 			sp->procChance = 100;
@@ -15212,6 +15235,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 20927 ); // -- rank 2
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_HOLY;
 			sp->EffectApplyAuraName[0] = SPELL_AURA_PROC_TRIGGER_DAMAGE;
 			sp->procFlags = PROC_ON_BLOCK_VICTIM;
 			sp->procChance = 100;
@@ -15219,6 +15243,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 20928 ); // -- rank 3
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_HOLY;
 			sp->EffectApplyAuraName[0] = SPELL_AURA_PROC_TRIGGER_DAMAGE;
 			sp->procFlags = PROC_ON_BLOCK_VICTIM;
 			sp->procChance = 100;
@@ -15226,6 +15251,7 @@ void ApplyNormalFixes()
 		sp = dbcSpell.LookupEntryForced( 27179 ); // -- rank 4
 		if( sp != NULL )
 		{
+			sp->School = SCHOOL_HOLY;
 			sp->EffectApplyAuraName[0] = SPELL_AURA_PROC_TRIGGER_DAMAGE;
 			sp->procFlags = PROC_ON_BLOCK_VICTIM;
 			sp->procChance = 100;
