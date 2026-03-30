@@ -19,6 +19,33 @@
 
 #include "StdAfx.h"
 
+namespace
+{
+	static uint32 GetEffectiveGuildBankMoneyLimit(const GuildRank * rank)
+	{
+		if(rank == NULL || rank->iGoldLimitPerDay <= 0)
+			return 0;
+
+		// TBC rank configuration is expressed in gold/day. Older Ascent data may still
+		// have raw gold values persisted here, so treat sub-1g positive limits as legacy
+		// gold values and normalize them for server-side copper accounting.
+		const uint32 configuredLimit = static_cast<uint32>(rank->iGoldLimitPerDay);
+		return (configuredLimit < MONEY_ONE_GOLD) ? (configuredLimit * MONEY_ONE_GOLD) : configuredLimit;
+	}
+
+	static bool CanGuildActorManageTarget(const PlayerInfo * actor, const PlayerInfo * target)
+	{
+		if(actor == NULL || target == NULL || actor->guild != target->guild ||
+			actor->guildRank == NULL || target->guildRank == NULL)
+			return false;
+
+		if(actor->guildRank->iId == 0)
+			return true;
+
+		return actor->guildRank->iId < target->guildRank->iId;
+	}
+}
+
 Guild::Guild()
 {
 	m_commandLogging=true;
@@ -114,12 +141,17 @@ GuildRank * Guild::FindHighestRank()
 
 bool GuildRank::CanPerformCommand(uint32 t)
 {
-	return ((iRights & t) >0 ? true : false);
+	return (iId == 0) ? true : ((iRights & t) > 0);
 }
 
 bool GuildRank::CanPerformBankCommand(uint32 t, uint32 tab)
 {
-	return ((iTabPermissions[tab].iFlags & t) >0 ? true : false);
+	return (iId == 0) ? true : (tab < MAX_GUILD_BANK_TABS && ((iTabPermissions[tab].iFlags & t) > 0));
+}
+
+bool GuildRank::CanWithdrawBankMoney() const
+{
+	return (iId == 0) ? true : ((iRights & GR_RIGHT_GUILD_BANK_WITHDRAW_MONEY) > 0);
 }
 
 void Guild::LogGuildEvent(uint8 iEvent, uint8 iStringCount, ...)
@@ -314,6 +346,12 @@ void Guild::PromoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 		return;
 	}
 
+	if(!CanGuildActorManageTarget(pClient->GetPlayer()->m_playerInfo, pMember))
+	{
+		SendGuildCommandResult(pClient, GUILD_PROMOTE_S, pMember->name, GUILD_PERMISSIONS);
+		return;
+	}
+
 	// find the lowest rank that isnt his rank
 	int32 nh = pMember->guildRank->iId - 1;
 	GuildRank * newRank = NULL;
@@ -329,6 +367,14 @@ void Guild::PromoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 	{
 		m_lock.Release();
 		pClient->SystemMessage("Could not find a rank to promote this member to.");
+		return;
+	}
+
+	if(pClient->GetPlayer()->m_playerInfo->guildRank->iId != 0 &&
+		newRank->iId <= pClient->GetPlayer()->m_playerInfo->guildRank->iId)
+	{
+		m_lock.Release();
+		SendGuildCommandResult(pClient, GUILD_PROMOTE_S, pMember->name, GUILD_PERMISSIONS);
 		return;
 	}
 
@@ -369,6 +415,12 @@ void Guild::DemoteGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 		pMember->guid == GetGuildLeader())
 	{
 		SendGuildCommandResult(pClient, GUILD_PROMOTE_S, "", GUILD_PERMISSIONS);
+		return;
+	}
+
+	if(!CanGuildActorManageTarget(pClient->GetPlayer()->m_playerInfo, pMember))
+	{
+		SendGuildCommandResult(pClient, GUILD_PROMOTE_S, pMember->name, GUILD_PERMISSIONS);
 		return;
 	}
 
@@ -793,6 +845,13 @@ void Guild::RemoveGuildMember(PlayerInfo * pMember, WorldSession * pClient)
 		return;
 	}
 
+	if(pClient && pClient->GetPlayer()->m_playerInfo != pMember &&
+		!CanGuildActorManageTarget(pClient->GetPlayer()->m_playerInfo, pMember))
+	{
+		Guild::SendGuildCommandResult(pClient, GUILD_CREATE_S, pMember->name, GUILD_PERMISSIONS);
+		return;
+	}
+
 	if(pMember->guildRank->iId==0)
 	{
 		if(pClient)
@@ -978,6 +1037,7 @@ void Guild::Disband()
 	CharacterDatabase.Execute("DELETE FROM guild_data WHERE guildid = %u", m_guildId);
 	CharacterDatabase.Execute("DELETE FROM guild_bankitems WHERE guildId = %u", m_guildId);
 	CharacterDatabase.Execute("DELETE FROM guild_banktabs WHERE guildId = %u", m_guildId);
+	CharacterDatabase.Execute("DELETE FROM guild_banklogs WHERE guildId = %u", m_guildId);
 	m_lock.Release();
 	delete this;
 }
@@ -1352,7 +1412,7 @@ void GuildMember::OnItemWithdraw(uint32 tab)
 		uLastItemWithdrawReset[tab] = (uint32)UNIXTIME;
 		uItemWithdrawlsSinceLastReset[tab] = 1;
 		CharacterDatabase.Execute("UPDATE guild_data SET lastItemWithdrawReset%u = %u, itemWithdrawlsSinceLastReset%u = 1 WHERE playerid = %u",
-			tab, uLastItemWithdrawReset, tab, pPlayer->guid);
+			tab, uLastItemWithdrawReset[tab], tab, pPlayer->guid);
 	}
 	else
 	{
@@ -1365,16 +1425,23 @@ void GuildMember::OnItemWithdraw(uint32 tab)
 
 uint32 GuildMember::CalculateAvailableAmount()
 {
+	if(pRank == NULL || !pRank->CanWithdrawBankMoney())
+		return 0;
+
 	if(pRank->iGoldLimitPerDay == -1)		// Unlimited
 		return 0xFFFFFFFF;
 
-	if(pRank->iGoldLimitPerDay == 0)
+	const uint32 dailyLimit = GetEffectiveGuildBankMoneyLimit(pRank);
+	if(dailyLimit == 0)
 		return 0;
 
 	if((UNIXTIME - uLastWithdrawReset) >= TIME_DAY)
-		return pRank->iGoldLimitPerDay;
-	else
-		return (pRank->iGoldLimitPerDay - uWithdrawlsSinceLastReset);
+		return dailyLimit;
+
+	if(uWithdrawlsSinceLastReset >= dailyLimit)
+		return 0;
+
+	return (dailyLimit - uWithdrawlsSinceLastReset);
 }
 
 void GuildMember::OnMoneyWithdraw(uint32 amt)
@@ -1429,24 +1496,36 @@ void Guild::WithdrawMoney(WorldSession * pClient, uint32 uAmount)
 	if(pMember==NULL)
 		return;
 
-	// sanity checks
-	if(pMember->pRank->iGoldLimitPerDay > 0)
-	{
-		if(pMember->CalculateAvailableAmount() < uAmount)
-		{
-			pClient->SystemMessage("You have already withdrawn too much today.");
-			return;
-		}
-	}
+	if(pClient->GetPlayer()->m_playerInfo->guild != this || pMember->pRank == NULL)
+		return;
 
-	if(pMember->pRank->iGoldLimitPerDay == 0)
+	if(uAmount == 0)
+		return;
+
+	if(!pMember->pRank->CanWithdrawBankMoney())
 	{
 		pClient->SystemMessage("You don't have permission to do that.");
 		return;
 	}
 
-	if(m_bankBalance < uAmount)
+	if(pClient->GetPlayer()->GetUInt32Value(PLAYER_FIELD_COINAGE) > (0xFFFFFFFF - uAmount))
+	{
+		pClient->SystemMessage("You can't carry any more money.");
 		return;
+	}
+
+	const uint32 availableAmount = pMember->CalculateAvailableAmount();
+	if(availableAmount != 0xFFFFFFFF && availableAmount < uAmount)
+	{
+		pClient->SystemMessage("You have already withdrawn too much today.");
+		return;
+	}
+
+	if(m_bankBalance < uAmount)
+	{
+		pClient->SystemMessage("There is not enough money in the guild bank.");
+		return;
+	}
 
 	// update his bank state
 	pMember->OnMoneyWithdraw(uAmount);

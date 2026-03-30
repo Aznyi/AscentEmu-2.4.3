@@ -126,7 +126,10 @@ void WorldSession::HandleGuildAccept(WorldPacket & recv_data)
 		return;
 	}
 
-	pGuild->AddGuildMember(plyr->m_playerInfo, NULL);
+	if(plyr->GetGuildId() != 0)
+		return;
+
+	pGuild->AddGuildMember(plyr->m_playerInfo, inviter->GetSession());
 }
 
 void WorldSession::HandleGuildDecline(WorldPacket & recv_data)
@@ -333,6 +336,7 @@ void WorldSession::HandleGuildRank(WorldPacket & recv_data)
 	// TBC 2.4.3: rankId, rights, rankName, goldLimitPerDay, tab perms...
 	recv_data >> pRank->iRights;
 	recv_data >> newName;
+	pRank->iRights &= GR_RIGHT_ALL;
 
     if(newName.length() < 2)
         newName = string(pRank->szRankName);
@@ -351,6 +355,7 @@ void WorldSession::HandleGuildRank(WorldPacket & recv_data)
     {
         recv_data >> pRank->iTabPermissions[i].iFlags;
         recv_data >> pRank->iTabPermissions[i].iStacksPerDay;
+		pRank->iTabPermissions[i].iFlags &= (GR_RIGHT_GUILD_BANK_VIEW_TAB | GR_RIGHT_GUILD_BANK_DEPOSIT_ITEMS | GR_RIGHT_GUILD_BANK_CHANGE_TEXT);
     }
 
     CharacterDatabase.Execute(
@@ -1136,7 +1141,7 @@ void WorldSession::HandleGuildBankModifyTab(WorldPacket & recv_data)
 		if( !(pTab->szTabIcon && strcmp(pTab->szTabIcon, tabicon.c_str()) == 0) )
 		{
 			ptmp = pTab->szTabIcon;
-			pTab->szTabIcon = strdup(tabname.c_str());
+			pTab->szTabIcon = strdup(tabicon.c_str());
 			if(ptmp)
 				free(ptmp);
 
@@ -1398,9 +1403,6 @@ void WorldSession::HandleGuildBankDepositItem(WorldPacket & recv_data)
 					SystemMessage("You have withdrawn the maximum amount for today.");
 					return;
 				}
-
-				/* reduce his count by one */
-				pMember->OnItemWithdraw(dest_bank);
 			}
 		}
 
@@ -1487,23 +1489,31 @@ void WorldSession::HandleGuildBankDepositItem(WorldPacket & recv_data)
 		}
 		else
 		{
+			const bool shouldCountWithdraw = (pMember->pRank->iTabPermissions[dest_bank].iStacksPerDay > 0);
+
 			/* the guild was robbed by some n00b! :O */
 			pDestItem->SetOwner(_player);
 			pDestItem->SetUInt32Value(ITEM_FIELD_OWNER, _player->GetLowGUID());
 			pDestItem->SaveToDB(source_bagslot, source_slot, true, NULL);
 
 			/* add it to him in game */
-			if(!_player->GetItemInterface()->SafeAddItem(pDestItem, source_bagslot, source_slot))
+			bool addedToInventory = _player->GetItemInterface()->SafeAddItem(pDestItem, source_bagslot, source_slot);
+			if(!addedToInventory)
 			{
 				/* this *really* shouldn't happen. */
-				if(!_player->GetItemInterface()->AddItemToFreeSlot(pDestItem))
+				addedToInventory = _player->GetItemInterface()->AddItemToFreeSlot(pDestItem);
+				if(!addedToInventory)
 				{
 					//pDestItem->DeleteFromDB();
 					delete pDestItem;
 				}
 			}
-			else
+
+			if(addedToInventory)
 			{
+				if(shouldCountWithdraw)
+					pMember->OnItemWithdraw(dest_bank);
+
 				/* log it */
 				pGuild->LogGuildBankAction(GUILD_BANK_LOG_EVENT_WITHDRAW_ITEM, _player->GetLowGUID(), pDestItem->GetEntry(), 
 					(uint8)pDestItem->GetUInt32Value(ITEM_FIELD_STACK_COUNT), pTab);
