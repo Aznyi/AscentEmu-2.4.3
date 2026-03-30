@@ -373,7 +373,8 @@ bool Unit::canReachWithAttack(Unit *pVictim)
 
 
 //	float attackreach = (((targetradius*targetscale) + selfreach) + (((selfradius*selfradius)*selfscale)+1.50f));
-	float attackreach = targetradius + selfreach + selfradius;
+	// Keep player melee reach aligned with the creature AI combat envelope.
+	float attackreach = targetradius + selfreach + selfradius + 1.5f;
 
 	//formula adjustment for player side.
 	if( IsPlayer() )
