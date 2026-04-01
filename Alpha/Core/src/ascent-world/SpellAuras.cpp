@@ -426,6 +426,13 @@ void Aura::Remove()
 	if( m_deleted )
 		return;
 
+	if( m_spellProto->Id == 6016 || m_spellProto->Id == 12097 )
+	{
+		uint32 stackCount = m_target->GetAuraStackCount(m_auraSlot);
+		sLog.outDebug("WORLD: Pierce Armor remove spell=%u target=%u final_stack=%u",
+			m_spellProto->Id, m_target->GetLowGUID(), stackCount);
+	}
+
 	m_deleted = true;
 	sEventMgr.RemoveEvents( this );
 
@@ -2974,16 +2981,32 @@ void Aura::SpellAuraModResistance(bool apply)
 {
 	uint32 Flag = mod->m_miscValue; 
 	int32 amt;
+	uint32 stackCount = 1;
+	const bool isPierceArmor = (m_spellProto->Id == 6016 || m_spellProto->Id == 12097);
+	if(isPierceArmor)
+	{
+		if(m_auraSlot < MAX_AURAS)
+			stackCount = m_target->GetAuraStackCount(m_auraSlot);
+		if(stackCount == 0)
+			stackCount = 1;
+	}
+
 	if(apply)
 	{
-		amt = mod->m_amount;
+		amt = isPierceArmor ? (mod->m_amount * static_cast<int32>(stackCount)) : mod->m_amount;
 		if(amt <0 )//dont' change it
 			SetNegative();
 		else 
 			SetPositive();
 	}
 	else 
-		amt = -mod->m_amount;  
+		amt = isPierceArmor ? -(mod->m_amount * static_cast<int32>(stackCount)) : -mod->m_amount;
+
+	if(isPierceArmor)
+	{
+		sLog.outDebug("WORLD: Pierce Armor apply spell=%u target=%u stack=%u total_armor_reduction=%d apply=%s",
+			m_spellProto->Id, m_target->GetLowGUID(), stackCount, abs(amt), apply ? "true" : "false");
+	}
 
 	if( this->GetSpellProto() && ( this->GetSpellProto()->NameHash == SPELL_HASH_FAERIE_FIRE || this->GetSpellProto()->NameHash == SPELL_HASH_FAERIE_FIRE__FERAL_ ) )
 		m_target->m_can_stealth = !apply;

@@ -3548,31 +3548,40 @@ void Unit::AddAura(Aura *aur)
 					{
 						if( !aur->IsPositive() && m_auras[x]->m_casterGuid != aur->m_casterGuid )
 							continue;
-						f++;
-						//if(maxStack > 1)
+						uint32 currentStack = GetAuraStackCount(x);
+						const bool isPierceArmor = (aur->GetSpellId() == 6016 || aur->GetSpellId() == 12097);
+
+						// update duration, the same aura refreshes the whole stack whenever we cast a new one
+						m_auras[x]->SetDuration(aur->GetDuration());
+						sEventMgr.ModifyEventTimeLeft(m_auras[x], EVENT_AURA_REMOVE, aur->GetDuration());
+
+						if(isPierceArmor && maxStack > 1 && currentStack < maxStack)
 						{
-							//update duration,the same aura (update the whole stack whenever we cast a new one)
-							m_auras[x]->SetDuration(aur->GetDuration());
-							sEventMgr.ModifyEventTimeLeft(m_auras[x], EVENT_AURA_REMOVE, aur->GetDuration());
-							if(maxStack <= 1)
-							{
-								if(this->IsPlayer())
-								{
-									data.Initialize(SMSG_UPDATE_AURA_DURATION);
-									data << (uint8)m_auras[x]->m_visualSlot <<(uint32) aur->GetDuration();
-									((Player*)this)->GetSession()->SendPacket(&data);
-								}
-								
-								data.Initialize(SMSG_SET_EXTRA_AURA_INFO);
-								data << GetNewGUID() << m_auras[x]->m_visualSlot << uint32(m_auras[x]->GetSpellProto()->Id) << uint32(aur->GetDuration()) << uint32(aur->GetDuration());
-								SendMessageToSet(&data,false);
-							}
+							m_auras[x]->ApplyModifiers(false);
+							uint32 newStack = ModAuraStackCount(x, 1);
+							m_auras[x]->ApplyModifiers(true);
+							sLog.outDebug("WORLD: aura stack refresh spell=%u target=%u stack=%u/%u duration=%u",
+								aur->GetSpellId(), GetLowGUID(), newStack, maxStack, aur->GetDuration());
 						}
-						if(maxStack <= f)
+						else
 						{
-							deleteAur = true;
-							break;
+							sLog.outDebug("WORLD: aura refresh spell=%u target=%u stack=%u/%u duration=%u",
+								aur->GetSpellId(), GetLowGUID(), currentStack, maxStack, aur->GetDuration());
 						}
+
+						if(this->IsPlayer())
+						{
+							data.Initialize(SMSG_UPDATE_AURA_DURATION);
+							data << (uint8)m_auras[x]->m_visualSlot << (uint32)aur->GetDuration();
+							((Player*)this)->GetSession()->SendPacket(&data);
+						}
+
+						data.Initialize(SMSG_SET_EXTRA_AURA_INFO);
+						data << GetNewGUID() << m_auras[x]->m_visualSlot << uint32(m_auras[x]->GetSpellProto()->Id) << uint32(aur->GetDuration()) << uint32(aur->GetDuration());
+						SendMessageToSet(&data,false);
+
+						deleteAur = true;
+						break;
 					}
 				}
 			}

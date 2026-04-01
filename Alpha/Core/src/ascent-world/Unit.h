@@ -1145,6 +1145,10 @@ public:
 
 	//! returns: aura stack count
 	uint32 ModAuraStackCount(uint32 slot, int32 count);
+	ASCENT_INLINE uint32 GetAuraStackCount(uint32 slot) const
+	{
+		return (slot < MAX_AURAS) ? m_auraStackCount[slot] : 1;
+	}
 	uint8 m_auraStackCount[MAX_AURAS];
 
 	void RemoveAurasOfSchool(uint32 School, bool Positive, bool Immune);
