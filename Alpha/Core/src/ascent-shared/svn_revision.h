@@ -1,7 +1,7 @@
 #ifndef SVN_REVISION_H
 #define SVN_REVISION_H
 
-#if defined(__has_include)
+#if defined(ASCENT_INCLUDE_GIT_REVISION_H) && defined(__has_include)
 # if __has_include("git_revision.h")
 #  include "git_revision.h"
 # endif

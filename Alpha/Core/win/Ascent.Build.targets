@@ -1,28 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Target Name="AscentGenerateGitRevision" BeforeTargets="PrepareForBuild">
+  <Target Name="AscentGenerateGitRevision" BeforeTargets="PrepareForBuild" Condition="'$(ProjectName)'=='ascent-shared'">
     <MakeDir Directories="$(AscentGeneratedIncludeDir)" />
 
     <PropertyGroup>
       <AscentGitHash>unknown</AscentGitHash>
       <AscentGitCount>0</AscentGitCount>
       <AscentGitBranch>detached</AscentGitBranch>
+      <AscentGitExe />
     </PropertyGroup>
 
-    <Exec Command="git rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
+    <Exec Command="where git" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="AscentGitExeLines" />
+    </Exec>
+
+    <PropertyGroup>
+      <AscentGitExe Condition="'@(AscentGitExeLines)' != ''">%(AscentGitExeLines.Identity)</AscentGitExe>
+    </PropertyGroup>
+
+    <Exec Condition="'$(AscentGitExe)' != ''" Command="&quot;$(AscentGitExe)&quot; rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitHashLines" />
     </Exec>
-    <Exec Command="git rev-list --count HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
+    <Exec Condition="'$(AscentGitExe)' != ''" Command="&quot;$(AscentGitExe)&quot; rev-list --count HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitCountLines" />
     </Exec>
-    <Exec Command="git branch --show-current" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="High" IgnoreExitCode="true">
+    <Exec Condition="'$(AscentGitExe)' != ''" Command="&quot;$(AscentGitExe)&quot; branch --show-current" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" ItemName="AscentGitBranchLines" />
     </Exec>
 
     <PropertyGroup>
-      <AscentGitHash Condition="'@(AscentGitHashLines)' != ''">@(AscentGitHashLines->'%(Identity)')</AscentGitHash>
-      <AscentGitCount Condition="'@(AscentGitCountLines)' != ''">@(AscentGitCountLines->'%(Identity)')</AscentGitCount>
-      <AscentGitBranch Condition="'@(AscentGitBranchLines)' != ''">@(AscentGitBranchLines->'%(Identity)')</AscentGitBranch>
+      <AscentGitHash Condition="'@(AscentGitHashLines)' != ''">$([System.String]::Copy('%(AscentGitHashLines.Identity)').Trim())</AscentGitHash>
+      <AscentGitCount Condition="'@(AscentGitCountLines)' != ''">$([System.String]::Copy('%(AscentGitCountLines.Identity)').Trim())</AscentGitCount>
+      <AscentGitBranch Condition="'@(AscentGitBranchLines)' != ''">$([System.String]::Copy('%(AscentGitBranchLines.Identity)').Trim())</AscentGitBranch>
     </PropertyGroup>
 
     <WriteLinesToFile
