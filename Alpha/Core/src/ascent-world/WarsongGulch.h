@@ -18,6 +18,7 @@
  */
 
 #define BUFF_RESPAWN_TIME 90000
+#define WSG_FLAG_RESPAWN_TIME 23000
 
 class WarsongGulch : public CBattleground
 {
@@ -47,6 +48,7 @@ public:
 	LocationVector GetStartingCoords(uint32 Team);
 	void DropFlag(Player * plr);
 	void ReturnFlag(uint32 team);
+	void RespawnFlag(uint32 team);
 
 	static CBattleground * Create(MapMgr * m, uint32 i, uint32 l, uint32 t) { return new WarsongGulch(m, i, l, t); }
 

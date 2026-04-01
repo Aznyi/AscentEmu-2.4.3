@@ -144,9 +144,9 @@ void WarsongGulch::HookOnAreaTrigger(Player * plr, uint32 id)
 
 		SetWorldState( plr->GetTeam() ? WSG_ALLIANCE_FLAG_CAPTURED : WSG_HORDE_FLAG_CAPTURED, 1 );
 
-		/* respawn the home flag */
-		if( !m_homeFlags[plr->GetTeam()]->IsInWorld() )
-			m_homeFlags[plr->GetTeam()]->PushToWorld(m_mapMgr);
+		/* respawn the captured flag after the retail delay */
+		sEventMgr.RemoveEvents(this, EVENT_BATTLEGROUND_WSG_FLAG_RESPAWN + plr->GetTeam());
+		sEventMgr.AddEvent(this, &WarsongGulch::RespawnFlag, plr->GetTeam(), EVENT_BATTLEGROUND_WSG_FLAG_RESPAWN + plr->GetTeam(), WSG_FLAG_RESPAWN_TIME, 1, EVENT_FLAG_DO_NOT_EXECUTE_IN_WORLD_CONTEXT);
 
 		/* give each player on that team a bonus 82 honor - burlex: is this correct amount? */
 		for(set<Player*>::iterator itr = m_players[plr->GetTeam()].begin(); itr != m_players[plr->GetTeam()].end(); ++itr)
@@ -285,6 +285,15 @@ void WarsongGulch::ReturnFlag(uint32 team)
 		SendChatMessage( CHAT_MSG_BG_EVENT_ALLIANCE, 0, "The Alliance flag was returned to its base!" );
 	else
 		SendChatMessage( CHAT_MSG_BG_EVENT_HORDE, 0, "The Horde flag was returned to its base!" );
+}
+
+void WarsongGulch::RespawnFlag(uint32 team)
+{
+	if(m_flagHolders[team] != 0 || m_dropFlags[team]->IsInWorld())
+		return;
+
+	if(!m_homeFlags[team]->IsInWorld())
+		m_homeFlags[team]->PushToWorld(m_mapMgr);
 }
 
 void WarsongGulch::HookFlagStand(Player * plr, GameObject * obj)
