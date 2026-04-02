@@ -326,7 +326,20 @@ float TerrainMgr::GetWaterHeight(float x, float y)
 
 uint8 TerrainMgr::GetWalkableState(float x, float y)
 {
-	// This has to be implemented.
+	if(!AreCoordinatesValid(x, y))
+		return 0;
+
+	float land = GetLandHeight(x, y);
+	float water = GetWaterHeight(x, y);
+	uint8 waterType = GetWaterType(x, y);
+	uint16 area = GetAreaID(x, y);
+
+	if(land == 0.0f && waterType == 0 && area == 0)
+		return 0;
+
+	if(waterType != 0 && water > land)
+		return 2;
+
 	return 1;
 }
 

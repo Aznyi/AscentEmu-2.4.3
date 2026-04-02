@@ -29,6 +29,35 @@
 #define HACKY_CRASH_FIXES 1		// SEH stuff
 #endif
 
+static float GetMovementGroundCorrectionTolerance()
+{
+	float tolerance = sWorld.creature_ground_movement_threshold * 0.5f;
+	if(tolerance < 3.0f)
+		tolerance = 3.0f;
+	if(tolerance > 6.0f)
+		tolerance = 6.0f;
+	return tolerance;
+}
+
+static bool ShouldRecoverToValidGround(AIInterface* ai)
+{
+	if(ai == NULL || ai->GetUnit() == NULL)
+		return false;
+
+	Unit* unit = ai->GetUnit();
+	if(unit->GetPositionZ() < -500.0f)
+		return true;
+
+	if(ai->IsFlying() || unit->GetMapMgr() == NULL)
+		return false;
+
+	GroundHeightResult ground = unit->GetMapMgr()->ResolveGroundHeight(unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ(), false);
+	if(!ground.valid)
+		return false;
+
+	return (unit->GetPositionZ() + GetMovementGroundCorrectionTolerance()) < ground.z;
+}
+
 AIInterface::AIInterface()
 {
 	m_waypoints=NULL;
@@ -86,6 +115,9 @@ AIInterface::AIInterface()
 	m_lastFollowX = m_lastFollowY = 0;
 	m_FearTimer = 0;
 	m_WanderTimer = 0;
+	m_lastValidX = m_lastValidY = m_lastValidZ = 0.0f;
+	m_invalidMoveCount = 0;
+	m_lastMoveRejectTime = 0;
 	m_totemspelltime = 0;
 	m_totemspelltimer = 0;
 	m_formationFollowAngle = 0.0f;
@@ -148,6 +180,36 @@ void AIInterface::Init(Unit *un, AIType at, MovementType mt)
 	m_sourceY = un->GetPositionY();
 	m_sourceZ = un->GetPositionZ();
 	m_guardTimer = getMSTime();
+	RecordLastValidPosition();
+}
+
+void AIInterface::RecordLastValidPosition()
+{
+	if(m_Unit == NULL)
+		return;
+
+	if(m_Unit->GetMapMgr() != NULL && !m_moveFly)
+	{
+		float validatedZ = m_Unit->GetPositionZ();
+		if(!m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), &validatedZ, NULL, "record_last_valid"))
+			return;
+	}
+
+	m_lastValidX = m_Unit->GetPositionX();
+	m_lastValidY = m_Unit->GetPositionY();
+	m_lastValidZ = m_Unit->GetPositionZ();
+	m_invalidMoveCount = 0;
+}
+
+bool AIInterface::RecoverToLastValidPosition()
+{
+	if(m_Unit == NULL)
+		return false;
+
+	StopMovement(0);
+	if(sWorld.CollisionDebugMovement)
+		sLog.outDebug("Recovering " I64FMT " to last valid position %0.3f %0.3f %0.3f after movement failure", m_Unit->GetGUID(), m_lastValidX, m_lastValidY, m_lastValidZ);
+	return m_Unit->SetPosition(m_lastValidX, m_lastValidY, m_lastValidZ, m_Unit->GetOrientation(), true);
 }
 
 AIInterface::~AIInterface()
@@ -1789,11 +1851,10 @@ bool AIInterface::FindFriends(float dist)
 		float x = m_Unit->GetPositionX() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
 		float y = m_Unit->GetPositionY() + (float)( (float)(rand() % 150 + 100) / 1000.0f );
 #ifdef COLLISION
-		float z = CollideInterface.GetHeight(m_Unit->GetMapId(), x, y, m_Unit->GetPositionZ() + 2.0f);
-		if( z == NO_WMO_HEIGHT )
-			z = m_Unit->GetMapMgr()->GetLandHeight(x, y);
+		float z = m_Unit->GetPositionZ();
+		m_Unit->GetMapMgr()->NormalizeGroundPosition(x, y, m_Unit->GetPositionZ(), &z, NULL, "guard_spawn");
 
-		if( fabs( z - m_Unit->GetPositionZ() ) > 10.0f )
+		if( fabsf( z - m_Unit->GetPositionZ() ) > 10.0f )
 			z = m_Unit->GetPositionZ();
 #else
 		float z = m_Unit->GetPositionZ();
@@ -1945,21 +2006,26 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		m_nextPosZ = m_Unit->GetPositionZ();
 	}
 
-#ifdef COLLISION
-	float target_land_z=0.0f;
-	if( m_Unit->GetMapMgr() != NULL )
+	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
 	{
-		if(m_moveFly != true)
+		float normalizedZ = m_nextPosZ;
+		if(m_Unit->GetMapMgr()->NormalizeGroundPosition(m_nextPosX, m_nextPosY, m_nextPosZ, &normalizedZ, NULL, "calc_destination_and_move", 8.0f))
+			m_nextPosZ = normalizedZ;
+
+		PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
+		if((pathResult.status == PATH_QUERY_STATUS_COMPLETE || pathResult.status == PATH_QUERY_STATUS_PARTIAL) && pathResult.points.size() > 1)
 		{
-			target_land_z = CollideInterface.GetHeight(m_Unit->GetMapId(), m_nextPosX, m_nextPosY, m_nextPosZ + 2.0f);
-			if( target_land_z == NO_WMO_HEIGHT )
-				target_land_z = m_Unit->GetMapMgr()->GetLandHeight(m_nextPosX, m_nextPosY);
+			const LocationVector& nextStep = pathResult.points[1];
+			m_nextPosX = nextStep.x;
+			m_nextPosY = nextStep.y;
+			m_nextPosZ = nextStep.z;
+		}
+		else if(pathResult.status == PATH_QUERY_STATUS_NOPATH)
+		{
+			StopMovement(200);
+			return;
 		}
 	}
-
-	if (m_nextPosZ > m_Unit->GetMapMgr()->GetWaterHeight(m_nextPosX, m_nextPosY) && target_land_z != 0.0f)
-		m_nextPosZ=target_land_z;
-#endif
 
 	float dx = m_nextPosX - m_Unit->GetPositionX();
 	float dy = m_nextPosY - m_Unit->GetPositionY();
@@ -2163,6 +2229,23 @@ void AIInterface::MoveTo(float x, float y, float z, float o)
 	m_nextPosY = y;
 	m_nextPosZ = z;
 
+	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
+	{
+		float validatedZ = z;
+		GroundHeightResult groundResult;
+		if(!m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, x, y, z, &validatedZ, &groundResult, "MoveTo"))
+		{
+			++m_invalidMoveCount;
+			m_lastMoveRejectTime = getMSTime();
+			if(ShouldRecoverToValidGround(this))
+				RecoverToLastValidPosition();
+			StopMovement(200);
+			return;
+		}
+
+		m_nextPosZ = validatedZ;
+	}
+
 /*	//Andy
 #ifdef COLLISION
 	float target_land_z=0.0f;
@@ -2241,6 +2324,34 @@ void AIInterface::UpdateMove()
 	m_destinationX = m_nextPosX;
 	m_destinationY = m_nextPosY;
 	m_destinationZ = m_nextPosZ;
+
+	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
+	{
+		float validatedZ = m_destinationZ;
+		if(!m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, m_destinationX, m_destinationY, m_destinationZ, &validatedZ, NULL, "UpdateMove"))
+		{
+			++m_invalidMoveCount;
+			m_lastMoveRejectTime = getMSTime();
+			if(ShouldRecoverToValidGround(this))
+				RecoverToLastValidPosition();
+			StopMovement(200);
+			return;
+		}
+		m_destinationZ = validatedZ;
+
+		DirectGroundPathResult pathResult;
+		if(!m_Unit->GetMapMgr()->ValidateDirectGroundPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_destinationX, m_destinationY, m_destinationZ, &pathResult, "UpdateMove"))
+		{
+			++m_invalidMoveCount;
+			m_lastMoveRejectTime = getMSTime();
+			if(sWorld.CollisionDebugMovement)
+				sLog.outDebug("Ground movement rejected on map %u for " I64FMT " at %0.3f %0.3f %0.3f -> %0.3f %0.3f %0.3f (%s sample=%u/%u)",
+					m_Unit->GetMapId(), m_Unit->GetGUID(), m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(),
+					m_destinationX, m_destinationY, m_destinationZ, GetDirectGroundPathStatusName(pathResult.status), pathResult.sampleIndex, pathResult.sampleCount);
+			StopMovement(200);
+			return;
+		}
+	}
 	
 	/*if(m_moveFly != true)
 	{
@@ -2298,6 +2409,7 @@ void AIInterface::UpdateMove()
 	}
 
 	m_creatureState = MOVING;
+	RecordLastValidPosition();
 }
 
 void AIInterface::SendCurrentMove(Player* plyr/*uint64 guid*/)
@@ -2710,22 +2822,30 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 				float y = m_Unit->GetPositionY() + (m_destinationY - m_Unit->GetPositionY()) * q;
 				float z = m_Unit->GetPositionZ() + (m_destinationZ - m_Unit->GetPositionZ()) * q;
 
-				//Andy
-#ifdef COLLISION
-				float target_land_z=0.0f;
-				if( m_Unit->GetMapMgr() != NULL )
+				if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
 				{
-					if(m_moveFly != true)
+					GroundHeightResult ground = m_Unit->GetMapMgr()->ResolveGroundHeight(x, y, z, false);
+					if(ground.valid)
 					{
-						target_land_z = CollideInterface.GetHeight(m_Unit->GetMapId(), x, y, z + 2.0f);
-						if( target_land_z == NO_WMO_HEIGHT )
-							target_land_z = m_Unit->GetMapMgr()->GetLandHeight(x, y);
+						const float correctionTolerance = GetMovementGroundCorrectionTolerance();
+						if(z + correctionTolerance < ground.z)
+						{
+							++m_invalidMoveCount;
+							m_lastMoveRejectTime = getMSTime();
+							if(sWorld.CollisionDebugMovement)
+								sLog.outDebug("Ground movement rejected on map %u for " I64FMT " at %0.3f %0.3f predicted=%0.3f resolved=%0.3f source=%s (movement_update_below_floor)",
+									m_Unit->GetMapId(), m_Unit->GetGUID(), x, y, z, ground.z, GetGroundHeightSourceName(ground.source));
+
+							if(ShouldRecoverToValidGround(this))
+								RecoverToLastValidPosition();
+							else
+								StopMovement(200);
+							return;
+						}
+
+						z = ground.z;
 					}
 				}
-
-				if (z > m_Unit->GetMapMgr()->GetWaterHeight(m_nextPosX, m_nextPosY) && target_land_z != 0.0f)
-					z=target_land_z;
-#endif
 
 				m_Unit->SetPosition(x, y, z, m_Unit->GetOrientation());
 				
@@ -2930,7 +3050,7 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 			{
 				m_FearTimer=getMSTime() + 500;
 			}
-			else if( CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0, Fx, Fy, Fz) )
+						else if( CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f, Fx, Fy, Fz) )
 			{
 				MoveTo(Fx, Fy, Fz, Fo);
 				m_FearTimer = m_totalMoveTime + getMSTime() + 400;

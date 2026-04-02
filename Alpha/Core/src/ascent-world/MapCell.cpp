@@ -71,6 +71,7 @@ void MapCell::SetActivity(bool state)
 #ifdef COLLISION
 		CollideInterface.ActivateTile(_mapmgr->GetMapId(), _x/8, _y/8);
 #endif
+		sMMapInterface.ActivateTile(_mapmgr->GetMapId(), _x/8, _y/8);
 
 	} else if(_active && !state)
 	{
@@ -87,6 +88,7 @@ void MapCell::SetActivity(bool state)
 #ifdef COLLISION
 		CollideInterface.DeactivateTile(_mapmgr->GetMapId(), _x/8, _y/8);
 #endif
+		sMMapInterface.DeactivateTile(_mapmgr->GetMapId(), _x/8, _y/8);
 	}
 
 	_active = state; 
@@ -185,10 +187,27 @@ void MapCell::LoadObjects(CellSpawns * sp)
 			c->SetInstanceID(_mapmgr->GetInstanceID());
 			c->m_loadedFromDB = true;
 
-            if(c->Load(*i, _mapmgr->iInstanceMode, _mapmgr->GetMapInfo()))
+			if(c->Load(*i, _mapmgr->iInstanceMode, _mapmgr->GetMapInfo()))
 			{
+				float normalizedZ = (*i)->z;
+				GroundHeightResult groundResult;
+				if(_mapmgr->NormalizeGroundPosition((*i)->x, (*i)->y, (*i)->z, &normalizedZ, &groundResult, "creature_spawn"))
+				{
+					if(fabsf(normalizedZ - (*i)->z) > 1.5f)
+						sLog.outDetail("Creature spawn %u entry %u normalized on map %u from Z %0.3f to %0.3f using %s", (*i)->id, (*i)->entry, _mapmgr->GetMapId(), (*i)->z, normalizedZ, GetGroundHeightSourceName(groundResult.source));
+					c->SetPosition((*i)->x, (*i)->y, normalizedZ, (*i)->o, true);
+				}
+				else if(sWorld.CollisionDebugGroundZ)
+				{
+					sLog.outDebug("Creature spawn %u entry %u kept DB Z %0.3f on map %u because no valid ground was resolved",
+						(*i)->id, (*i)->entry, (*i)->z, _mapmgr->GetMapId());
+				}
+
 				if(!c->CanAddToWorld())
+				{
 					delete c;
+					continue;
+				}
 
 				c->PushToWorld(_mapmgr);
 			}

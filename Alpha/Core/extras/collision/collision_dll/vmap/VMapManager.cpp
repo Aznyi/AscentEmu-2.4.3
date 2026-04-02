@@ -480,7 +480,7 @@ namespace VMAP
     MapTree::MapTree(const char* pBaseDir)
     {
         iBasePath = std::string(pBaseDir);
-        if(iBasePath.length() > 0 && (iBasePath[iBasePath.length()-1] != '/' || iBasePath[iBasePath.length()-1] != '\\'))
+        if(iBasePath.length() > 0 && (iBasePath[iBasePath.length()-1] != '/' && iBasePath[iBasePath.length()-1] != '\\'))
         {
             iBasePath.append("/");
         }

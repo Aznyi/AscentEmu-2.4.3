@@ -235,10 +235,16 @@
 #   endif
 
 
-#   define NOMINMAX 1
+#   ifndef NOMINMAX
+#       define NOMINMAX 1
+#       define G3D_DEFINED_NOMINMAX 1
+#   endif
 #   include <windows.h>
 #   undef WIN32_LEAN_AND_MEAN
-#   undef NOMINMAX
+#   ifdef G3D_DEFINED_NOMINMAX
+#       undef G3D_DEFINED_NOMINMAX
+#       undef NOMINMAX
+#   endif
 
 #ifdef _G3D_INTERNAL_HIDE_WINSOCK_
 #   undef _G3D_INTERNAL_HIDE_WINSOCK_

@@ -85,8 +85,8 @@
       <AdditionalOptions>/Zm250 /MP %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>..\..\src\ascent-shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\src\ascent-shared;..\..\extras\mmap\runtime;..\..\extras\third_party\recastnavigation\Detour\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;COLLISION;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
@@ -126,8 +126,8 @@
       <AdditionalOptions>/Zm250 %(AdditionalOptions)</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>..\..\src\ascent-shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;X64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\src\ascent-shared;..\..\extras\mmap\runtime;..\..\extras\third_party\recastnavigation\Detour\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;COLLISION;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;X64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <MinimalRebuild>false</MinimalRebuild>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
@@ -169,8 +169,8 @@
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <OmitFramePointers>true</OmitFramePointers>
       <WholeProgramOptimization>true</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\..\src\ascent-shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;WIN32;NDEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\src\ascent-shared;..\..\extras\mmap\runtime;..\..\extras\third_party\recastnavigation\Detour\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;WIN32;NDEBUG;_LIB;COLLISION;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <MinimalRebuild>false</MinimalRebuild>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -213,8 +213,8 @@
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
       <WholeProgramOptimization>false</WholeProgramOptimization>
-      <AdditionalIncludeDirectories>..\..\src\ascent-shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;WIN32;NDEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE;X64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\..\src\ascent-shared;..\..\extras\mmap\runtime;..\..\extras\third_party\recastnavigation\Detour\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;WIN32;NDEBUG;_LIB;COLLISION;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_WARNINGS;_CRT_SECURE_NO_DEPRECATE;X64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <MinimalRebuild>false</MinimalRebuild>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -319,6 +319,49 @@
     <ClCompile Include="..\..\src\ascent-world\Map.cpp" />
     <ClCompile Include="..\..\src\ascent-world\MapCell.cpp" />
     <ClCompile Include="..\..\src\ascent-world\MapMgr.cpp" />
+    <ClCompile Include="..\..\src\ascent-world\MMapInterface.cpp" />
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourAlloc.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourAssert.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourCommon.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourNavMesh.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourNavMeshBuilder.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourNavMeshQuery.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\..\extras\third_party\recastnavigation\Detour\Source\DetourNode.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"></PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'"></PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\..\src\ascent-world\MapScriptInterface.cpp" />
     <ClCompile Include="..\..\src\ascent-world\Master.cpp" />
     <ClCompile Include="..\..\src\ascent-world\MiscHandler.cpp" />
@@ -425,6 +468,8 @@
     <ClInclude Include="..\..\src\ascent-world\Map.h" />
     <ClInclude Include="..\..\src\ascent-world\MapCell.h" />
     <ClInclude Include="..\..\src\ascent-world\MapMgr.h" />
+    <ClInclude Include="..\..\src\ascent-world\MMapInterface.h" />
+    <ClInclude Include="..\..\extras\mmap\runtime\MoveMapSharedDefines.h" />
     <ClInclude Include="..\..\src\ascent-world\MapScriptInterface.h" />
     <ClInclude Include="..\..\src\ascent-world\Master.h" />
     <ClInclude Include="..\..\src\ascent-world\NameTables.h" />
@@ -471,6 +516,11 @@
     <ProjectReference Include="ascent-shared.vcxproj">
       <Project>{90297c34-f231-4df4-848e-a74bcc0e40ed}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\..\extras\collision\collision_dll\collision.vcxproj">
+      <Project>{e9e4204c-5d24-4de4-ae5d-b3134f5c5c5a}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <AdditionalProperties>Configuration=$(Configuration);Platform=$(Platform)</AdditionalProperties>
     </ProjectReference>
     <ProjectReference Include="..\..\extras\Sources\VC90-pcre.vcxproj">
       <Project>{311f016d-f785-47ef-b032-5350397f16b6}</Project>

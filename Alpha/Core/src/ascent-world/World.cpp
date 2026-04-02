@@ -155,7 +155,14 @@ World::World()
 	map_unload_time=0;
 	SocketSendBufSize = WORLDSOCKET_SENDBUF_SIZE;
 	SocketRecvBufSize = WORLDSOCKET_RECVBUF_SIZE;
-	m_levelCap=70;
+        CollisionStartupProbe = false;
+        MMapPathingEnabled = true;
+        MMapLogTileLoads = true;
+        MMapDebugPathing = false;
+        mmap_nearest_poly_extent_horizontal = 5.0f;
+        mmap_nearest_poly_extent_vertical = 15.0f;
+        mmap_inspect_radius = 12.0f;
+        m_levelCap=70;
 	m_genLevelCap=70;
 	start_level=1;
 	m_limitedNames=false;
@@ -569,6 +576,7 @@ bool World::SetInitialWorldSettings()
 #ifdef COLLISION
 	CollideInterface.Init();
 #endif
+	sMMapInterface.Init();
 
 	// calling this puts all maps into our task list.
 	sInstanceMgr.Load(&tl);
@@ -1421,7 +1429,25 @@ void World::Rehash(bool load)
 	channelmgr.seperatechannels = Config.MainConfig.GetBoolDefault("Server", "SeperateChatChannels", false);
 	MapPath = Config.MainConfig.GetStringDefault("Terrain", "MapPath", "maps");
 	vMapPath = Config.MainConfig.GetStringDefault("Terrain", "vMapPath", "vmaps");
+	MMapPath = Config.MainConfig.GetStringDefault("Terrain", "MMapPath", "mmaps");
 	UnloadMapFiles = Config.MainConfig.GetBoolDefault("Terrain", "UnloadMapFiles", true);
+	if(!Config.MainConfig.GetBool("Terrain", "UnloadMapFiles", &UnloadMapFiles))
+		UnloadMapFiles = Config.MainConfig.GetBoolDefault("Terrain", "UnloadMaps", true);
+	CollisionLogTileLoads = Config.MainConfig.GetBoolDefault("Terrain", "CollisionLogTileLoads", true);
+	CollisionStartupProbe = Config.MainConfig.GetBoolDefault("Terrain", "CollisionStartupProbe", false);
+	CollisionDebugGroundZ = Config.MainConfig.GetBoolDefault("Terrain", "CollisionDebugGroundZ", false);
+	CollisionDebugMovement = Config.MainConfig.GetBoolDefault("Terrain", "CollisionDebugMovement", false);
+	CollisionDebugDirectPath = Config.MainConfig.GetBoolDefault("Terrain", "CollisionDebugDirectPath", false);
+        MMapPathingEnabled = Config.MainConfig.GetBoolDefault("Terrain", "MMapPathingEnabled", true);
+        MMapLogTileLoads = Config.MainConfig.GetBoolDefault("Terrain", "MMapLogTileLoads", true);
+        MMapDebugPathing = Config.MainConfig.GetBoolDefault("Terrain", "MMapDebugPathing", false);
+        mmap_nearest_poly_extent_horizontal = Config.MainConfig.GetFloatDefault("Terrain", "MMapNearestPolyExtentHorizontal", 5.0f);
+        mmap_nearest_poly_extent_vertical = Config.MainConfig.GetFloatDefault("Terrain", "MMapNearestPolyExtentVertical", 15.0f);
+        mmap_inspect_radius = Config.MainConfig.GetFloatDefault("Terrain", "MMapInspectRadius", 12.0f);
+        creature_ground_movement_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureGroundMovementThreshold", 10.0f);
+	creature_direct_path_probe_spacing = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathProbeSpacing", 2.5f);
+	creature_direct_path_step_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathStepThreshold", 4.0f);
+	creature_direct_path_drop_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathDropThreshold", 6.0f);
 	BreathingEnabled = Config.MainConfig.GetBoolDefault("Server", "EnableBreathing", true);
 	SendStatsOnJoin = Config.MainConfig.GetBoolDefault("Server", "SendStatsOnJoin", true);
 	compression_threshold = Config.MainConfig.GetIntDefault("Server", "CompressionThreshold", 1000);

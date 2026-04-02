@@ -465,8 +465,20 @@ public:
 
 	string MapPath;
 	string vMapPath;
+	string MMapPath;
 	bool UnloadMapFiles;
-	bool BreathingEnabled;
+	bool CollisionLogTileLoads;
+	bool CollisionStartupProbe;
+	bool CollisionDebugGroundZ;
+	bool CollisionDebugMovement;
+	bool CollisionDebugDirectPath;
+        bool MMapPathingEnabled;
+        bool MMapLogTileLoads;
+        bool MMapDebugPathing;
+        float mmap_nearest_poly_extent_horizontal;
+        float mmap_nearest_poly_extent_vertical;
+        float mmap_inspect_radius;
+        bool BreathingEnabled;
 	bool SpeedhackProtection;
 	uint32 mInWorldPlayerCount;
 	uint32 mAcceptedConnections;
@@ -527,6 +539,10 @@ public:
 	bool antihack_flight;
 	uint32 flyhack_threshold;
 	bool no_antihack_on_gm;
+	float creature_ground_movement_threshold;
+	float creature_direct_path_probe_spacing;
+	float creature_direct_path_step_threshold;
+	float creature_direct_path_drop_threshold;
 
 	void CharacterEnumProc(QueryResultVector& results, uint32 AccountId);
 	void LoadAccountDataProc(QueryResultVector& results, uint32 AccountId);

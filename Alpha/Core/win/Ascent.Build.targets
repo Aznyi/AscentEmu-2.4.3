@@ -7,15 +7,12 @@
       <AscentGitHash>unknown</AscentGitHash>
       <AscentGitCount>0</AscentGitCount>
       <AscentGitBranch>detached</AscentGitBranch>
-      <AscentGitExe />
+      <AscentGitExe>C:\Program Files\Git\cmd\git.exe</AscentGitExe>
     </PropertyGroup>
 
-    <Exec Command="where git" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">
-      <Output TaskParameter="ConsoleOutput" ItemName="AscentGitExeLines" />
-    </Exec>
-
     <PropertyGroup>
-      <AscentGitExe Condition="'@(AscentGitExeLines)' != ''">%(AscentGitExeLines.Identity)</AscentGitExe>
+      <AscentGitExe Condition="!Exists('$(AscentGitExe)')">C:\Program Files\Git\bin\git.exe</AscentGitExe>
+      <AscentGitExe Condition="!Exists('$(AscentGitExe)')"></AscentGitExe>
     </PropertyGroup>
 
     <Exec Condition="'$(AscentGitExe)' != ''" Command="&quot;$(AscentGitExe)&quot; rev-parse --short=12 HEAD" WorkingDirectory="$(AscentRepoRoot)" ConsoleToMSBuild="true" StandardOutputImportance="Low" StandardErrorImportance="Low" IgnoreExitCode="true">

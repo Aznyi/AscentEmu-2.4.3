@@ -25,6 +25,11 @@
 #include "ModelContainer.h"
 
 #include <string.h>
+#ifdef WIN32
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#endif
 
 #ifdef _ASSEMBLER_DEBUG
 FILE *g_df = NULL;
@@ -32,6 +37,15 @@ FILE *g_df = NULL;
 
 namespace VMAP
 {
+	static void CreateDirectoryIfNeeded(const std::string& path)
+	{
+#ifdef WIN32
+		_mkdir(path.c_str());
+#else
+		mkdir(path.c_str(), 0755);
+#endif
+	}
+
     //=================================================================
 
     Vector3 ModelPosition::transform(const Vector3& pIn) const
@@ -52,7 +66,7 @@ namespace VMAP
         iFilterMethod = NULL;
         iSrcDir = pSrcDirName;
         iDestDir = pDestDirName;
-        //mkdir(iDestDir);
+        CreateDirectoryIfNeeded(iDestDir);
         init();
     }
 

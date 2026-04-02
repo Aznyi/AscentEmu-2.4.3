@@ -18,6 +18,12 @@
  */
 
 #include "StdAfx.h"
+#include <sys/stat.h>
+#include <stdio.h>
+
+#ifdef WIN32
+#include <io.h>
+#endif
 
 #ifdef COLLISION
 
@@ -57,6 +63,74 @@ uint32 c_GetNanoSeconds(uint64 t1, uint64 t2)
 #pragma comment(lib, "collision.lib")
 #endif
 
+namespace
+{
+	struct VMapProbeTile
+	{
+		VMapProbeTile() : found(false), mapId(0), tileX(0), tileY(0) {}
+
+		bool found;
+		uint32 mapId;
+		uint32 tileX;
+		uint32 tileY;
+		std::string manifestFile;
+	};
+
+	bool CollisionFileExists(const std::string& path)
+	{
+		struct _stat fileInfo;
+		return (_stat(path.c_str(), &fileInfo) == 0);
+	}
+
+	std::string BuildVMapPath(const std::string& root, const std::string& relativeName)
+	{
+		std::string fullPath(root);
+		if(!fullPath.empty() && fullPath[fullPath.length() - 1] != '/' && fullPath[fullPath.length() - 1] != '\\')
+			fullPath += "/";
+
+		fullPath += relativeName;
+		return fullPath;
+	}
+
+	bool FindStartupProbeTile(const std::string& root, VMapProbeTile& probe)
+	{
+#ifdef WIN32
+		const std::string searchPattern = BuildVMapPath(root, "*.vmdir");
+		struct _finddata_t fileInfo;
+		intptr_t handle = _findfirst(searchPattern.c_str(), &fileInfo);
+		if(handle == -1)
+			return false;
+
+		do
+		{
+			if((fileInfo.attrib & _A_SUBDIR) != 0)
+				continue;
+
+			unsigned int mapId = 0;
+			unsigned int tileY = 0;
+			unsigned int tileX = 0;
+			if(sscanf(fileInfo.name, "%u_%u_%u.vmdir", &mapId, &tileY, &tileX) == 3)
+			{
+				probe.found = true;
+				probe.mapId = mapId;
+				probe.tileX = tileX;
+				probe.tileY = tileY;
+				probe.manifestFile = fileInfo.name;
+				_findclose(handle);
+				return true;
+			}
+		}
+		while(_findnext(handle, &fileInfo) == 0);
+
+		_findclose(handle);
+#else
+		(void)root;
+		(void)probe;
+#endif
+		return false;
+	}
+}
+
 // Debug functions
 #ifdef COLLISION_DEBUG
 
@@ -65,6 +139,34 @@ void CCollideInterface::Init()
 	Log.Notice("CollideInterface", "Init");
 	COLLISION_BEGINTIMER;
 	CollisionMgr = ((IVMapManager*)collision_init());
+	Log.Notice("CollideInterface", "Using vmap path: %s", sWorld.vMapPath.c_str());
+	if(!HasVMapDirectory())
+		Log.Error("CollideInterface", "vmap root directory does not exist or is not accessible: %s", sWorld.vMapPath.c_str());
+	else if(sWorld.CollisionStartupProbe)
+	{
+		VMapProbeTile probe;
+		if(!FindStartupProbeTile(sWorld.vMapPath, probe))
+		{
+			Log.Error("CollideInterface", "CollisionStartupProbe could not find a tiled .vmdir manifest under %s", sWorld.vMapPath.c_str());
+		}
+		else
+		{
+			const int result = CollisionMgr->loadMap(sWorld.vMapPath.c_str(), probe.mapId, probe.tileY, probe.tileX);
+			if(result)
+			{
+				Log.Notice("CollideInterface", "CollisionStartupProbe loaded map=%u tile=%u,%u result=%d file=%s",
+					probe.mapId, probe.tileX, probe.tileY, result, probe.manifestFile.c_str());
+				CollisionMgr->unloadMap(probe.mapId, probe.tileY, probe.tileX);
+				Log.Notice("CollideInterface", "CollisionStartupProbe unloaded map=%u tile=%u,%u file=%s",
+					probe.mapId, probe.tileX, probe.tileY, probe.manifestFile.c_str());
+			}
+			else
+			{
+				Log.Error("CollideInterface", "CollisionStartupProbe failed for map=%u tile=%u,%u file=%s root=%s",
+					probe.mapId, probe.tileX, probe.tileY, probe.manifestFile.c_str(), sWorld.vMapPath.c_str());
+			}
+		}
+	}
 	printf("[%u ns] collision_init\n", c_GetNanoSeconds(c_GetTimerValue(), v1));
 }
 
@@ -74,7 +176,22 @@ void CCollideInterface::ActivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 	if(m_tilesLoaded[mapId][tileX][tileY] == 0)
 	{
 		COLLISION_BEGINTIMER;
-		CollisionMgr->loadMap(sWorld.vMapPath.c_str, mapId, tileY, tileX);
+		int result = CollisionMgr->loadMap(sWorld.vMapPath.c_str(), mapId, tileY, tileX);
+		if(sWorld.CollisionLogTileLoads)
+		{
+			if(result)
+				Log.Notice("CollideInterface", "loadMap map=%u tile=%u,%u result=%d file=%s", mapId, tileX, tileY, result, CollisionMgr->getDirFileName(mapId, tileY, tileX).c_str());
+			else
+			{
+				const std::string tileFile = CollisionMgr->getDirFileName(mapId, tileY, tileX);
+				if(!HasVMapDirectory())
+					Log.Error("CollideInterface", "loadMap failed for map=%u tile=%u,%u because vmap root is missing: %s", mapId, tileX, tileY, sWorld.vMapPath.c_str());
+				else if(!HasVMapTile(mapId, tileX, tileY))
+					Log.Error("CollideInterface", "loadMap missing manifest for map=%u tile=%u,%u file=%s root=%s", mapId, tileX, tileY, tileFile.c_str(), sWorld.vMapPath.c_str());
+				else
+					Log.Error("CollideInterface", "loadMap failed for map=%u tile=%u,%u file=%s root=%s (manifest exists, data may be malformed or incomplete)", mapId, tileX, tileY, tileFile.c_str(), sWorld.vMapPath.c_str());
+			}
+		}
 		printf("[%u ns] collision_activate_cell %u %u %u\n", c_GetNanoSeconds(c_GetTimerValue(), v1), mapId, tileX, tileY);
 	}
 
@@ -85,6 +202,13 @@ void CCollideInterface::ActivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 void CCollideInterface::DeactivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 {
 	m_loadLock.Acquire();
+	if(m_tilesLoaded[mapId][tileX][tileY] == 0)
+	{
+		Log.Error("CollideInterface", "DeactivateTile underflow for map %u tile %u,%u", mapId, tileX, tileY);
+		m_loadLock.Release();
+		return;
+	}
+
 	if(!(--m_tilesLoaded[mapId][tileX][tileY]))
 	{
 		COLLISION_BEGINTIMER;
@@ -93,6 +217,13 @@ void CCollideInterface::DeactivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 	}
 
 	m_loadLock.Release();
+}
+
+uint32 CCollideInterface::GetTileLoadRefCount(uint32 mapId, uint32 tileX, uint32 tileY) const
+{
+	if(mapId >= MAX_MAP || tileX >= 64 || tileY >= 64)
+		return 0;
+	return m_tilesLoaded[mapId][tileX][tileY];
 }
 
 void CCollideInterface::DeInit()
@@ -197,13 +328,58 @@ void CCollideInterface::Init()
 {
 	Log.Notice("CollideInterface", "Init");
 	CollisionMgr = ((IVMapManager*)collision_init());
+	Log.Notice("CollideInterface", "Using vmap path: %s", sWorld.vMapPath.c_str());
+	if(!HasVMapDirectory())
+		Log.Error("CollideInterface", "vmap root directory does not exist or is not accessible: %s", sWorld.vMapPath.c_str());
+	else if(sWorld.CollisionStartupProbe)
+	{
+		VMapProbeTile probe;
+		if(!FindStartupProbeTile(sWorld.vMapPath, probe))
+		{
+			Log.Error("CollideInterface", "CollisionStartupProbe could not find a tiled .vmdir manifest under %s", sWorld.vMapPath.c_str());
+		}
+		else
+		{
+			const int result = CollisionMgr->loadMap(sWorld.vMapPath.c_str(), probe.mapId, probe.tileY, probe.tileX);
+			if(result)
+			{
+				Log.Notice("CollideInterface", "CollisionStartupProbe loaded map=%u tile=%u,%u result=%d file=%s",
+					probe.mapId, probe.tileX, probe.tileY, result, probe.manifestFile.c_str());
+				CollisionMgr->unloadMap(probe.mapId, probe.tileY, probe.tileX);
+				Log.Notice("CollideInterface", "CollisionStartupProbe unloaded map=%u tile=%u,%u file=%s",
+					probe.mapId, probe.tileX, probe.tileY, probe.manifestFile.c_str());
+			}
+			else
+			{
+				Log.Error("CollideInterface", "CollisionStartupProbe failed for map=%u tile=%u,%u file=%s root=%s",
+					probe.mapId, probe.tileX, probe.tileY, probe.manifestFile.c_str(), sWorld.vMapPath.c_str());
+			}
+		}
+	}
 }
 
 void CCollideInterface::ActivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 {
 	m_loadLock.Acquire();
 	if(m_tilesLoaded[mapId][tileX][tileY] == 0)
-		CollisionMgr->loadMap(sWorld.vMapPath.c_str(), mapId, tileY, tileX);
+	{
+		int result = CollisionMgr->loadMap(sWorld.vMapPath.c_str(), mapId, tileY, tileX);
+		if(sWorld.CollisionLogTileLoads)
+		{
+			if(result)
+				Log.Notice("CollideInterface", "loadMap map=%u tile=%u,%u result=%d file=%s", mapId, tileX, tileY, result, CollisionMgr->getDirFileName(mapId, tileY, tileX).c_str());
+			else
+			{
+				const std::string tileFile = CollisionMgr->getDirFileName(mapId, tileY, tileX);
+				if(!HasVMapDirectory())
+					Log.Error("CollideInterface", "loadMap failed for map=%u tile=%u,%u because vmap root is missing: %s", mapId, tileX, tileY, sWorld.vMapPath.c_str());
+				else if(!HasVMapTile(mapId, tileX, tileY))
+					Log.Error("CollideInterface", "loadMap missing manifest for map=%u tile=%u,%u file=%s root=%s", mapId, tileX, tileY, tileFile.c_str(), sWorld.vMapPath.c_str());
+				else
+					Log.Error("CollideInterface", "loadMap failed for map=%u tile=%u,%u file=%s root=%s (manifest exists, data may be malformed or incomplete)", mapId, tileX, tileY, tileFile.c_str(), sWorld.vMapPath.c_str());
+			}
+		}
+	}
 
 	++m_tilesLoaded[mapId][tileX][tileY];
 	m_loadLock.Release();
@@ -212,10 +388,37 @@ void CCollideInterface::ActivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 void CCollideInterface::DeactivateTile(uint32 mapId, uint32 tileX, uint32 tileY)
 {
 	m_loadLock.Acquire();
+	if(m_tilesLoaded[mapId][tileX][tileY] == 0)
+	{
+		Log.Error("CollideInterface", "DeactivateTile underflow for map %u tile %u,%u", mapId, tileX, tileY);
+		m_loadLock.Release();
+		return;
+	}
+
 	if(!(--m_tilesLoaded[mapId][tileX][tileY]))
 		CollisionMgr->unloadMap(mapId, tileY, tileX);
 
 	m_loadLock.Release();
+}
+
+uint32 CCollideInterface::GetTileLoadRefCount(uint32 mapId, uint32 tileX, uint32 tileY) const
+{
+	if(mapId >= MAX_MAP || tileX >= 64 || tileY >= 64)
+		return 0;
+	return m_tilesLoaded[mapId][tileX][tileY];
+}
+
+bool CCollideInterface::HasVMapDirectory() const
+{
+	return CollisionFileExists(sWorld.vMapPath);
+}
+
+bool CCollideInterface::HasVMapTile(uint32 mapId, uint32 tileX, uint32 tileY) const
+{
+	if(CollisionMgr == NULL)
+		return false;
+
+	return CollisionFileExists(BuildVMapPath(sWorld.vMapPath, CollisionMgr->getDirFileName(mapId, tileY, tileX)));
 }
 
 void CCollideInterface::DeInit()

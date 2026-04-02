@@ -24,6 +24,8 @@
 #ifndef __MAPMGR_H
 #define __MAPMGR_H
 
+#include "MMapInterface.h"
+
 class MapCell;
 class Map;
 class Object;
@@ -66,6 +68,78 @@ typedef set<Creature*> CreatureSet;
 typedef set<GameObject*> GameObjectSet;
 typedef unordered_map<uint32, Creature*> CreatureSqlIdMap;
 typedef unordered_map<uint32, GameObject*> GameObjectSqlIdMap;
+
+enum GroundHeightSource
+{
+	GROUND_HEIGHT_SOURCE_NONE = 0,
+	GROUND_HEIGHT_SOURCE_TERRAIN = 1,
+	GROUND_HEIGHT_SOURCE_VMAP = 2,
+	GROUND_HEIGHT_SOURCE_WATER = 3
+};
+
+ASCENT_INLINE const char* GetGroundHeightSourceName(GroundHeightSource source)
+{
+	switch(source)
+	{
+	case GROUND_HEIGHT_SOURCE_TERRAIN: return "terrain";
+	case GROUND_HEIGHT_SOURCE_VMAP: return "vmap";
+	case GROUND_HEIGHT_SOURCE_WATER: return "water";
+	default: return "none";
+	}
+}
+
+enum DirectGroundPathStatus
+{
+	DIRECT_GROUND_PATH_OK = 0,
+	DIRECT_GROUND_PATH_INVALID_START = 1,
+	DIRECT_GROUND_PATH_INVALID_SAMPLE = 2,
+	DIRECT_GROUND_PATH_INVALID_DESTINATION = 3,
+	DIRECT_GROUND_PATH_EXCESSIVE_CLIMB = 4,
+	DIRECT_GROUND_PATH_EXCESSIVE_DROP = 5
+};
+
+ASCENT_INLINE const char* GetDirectGroundPathStatusName(DirectGroundPathStatus status)
+{
+	switch(status)
+	{
+	case DIRECT_GROUND_PATH_INVALID_START: return "invalid_start";
+	case DIRECT_GROUND_PATH_INVALID_SAMPLE: return "invalid_sample";
+	case DIRECT_GROUND_PATH_INVALID_DESTINATION: return "invalid_destination";
+	case DIRECT_GROUND_PATH_EXCESSIVE_CLIMB: return "excessive_climb";
+	case DIRECT_GROUND_PATH_EXCESSIVE_DROP: return "unsafe_drop";
+	default: return "ok";
+	}
+}
+
+struct GroundHeightResult
+{
+	float z;
+	float terrainZ;
+	float vmapZ;
+	float waterZ;
+	uint8 waterType;
+	bool valid;
+	bool usedHint;
+	bool indoors;
+	bool outdoors;
+	GroundHeightSource source;
+
+	GroundHeightResult() : z(0.0f), terrainZ(0.0f), vmapZ(-100000.0f), waterZ(0.0f), waterType(0), valid(false), usedHint(false), indoors(false), outdoors(false), source(GROUND_HEIGHT_SOURCE_NONE) {}
+};
+
+struct DirectGroundPathResult
+{
+	DirectGroundPathStatus status;
+	uint32 sampleIndex;
+	uint32 sampleCount;
+	float sampleX;
+	float sampleY;
+	float previousZ;
+	float sampleZ;
+	GroundHeightSource source;
+
+	DirectGroundPathResult() : status(DIRECT_GROUND_PATH_OK), sampleIndex(0), sampleCount(0), sampleX(0.0f), sampleY(0.0f), previousZ(0.0f), sampleZ(0.0f), source(GROUND_HEIGHT_SOURCE_NONE) {}
+};
 
 #define MAX_TRANSPORTERS_PER_MAP 25
 
@@ -196,6 +270,11 @@ public:
 	ASCENT_INLINE uint8  GetWaterType(float x, float y) { return GetBaseMap()->GetWaterType(x, y); }
 	ASCENT_INLINE uint8  GetWalkableState(float x, float y) { return GetBaseMap()->GetWalkableState(x, y); }
 	ASCENT_INLINE uint16 GetAreaID(float x, float y) { return GetBaseMap()->GetAreaID(x, y); }
+	GroundHeightResult ResolveGroundHeight(float x, float y, float zHint, bool allowWater = false);
+	bool ValidateGroundMovement(Unit* mover, float x, float y, float zHint, float* outZ = NULL, GroundHeightResult* outResult = NULL, const char* reason = NULL);
+	bool ValidateDirectGroundPath(Unit* mover, float startX, float startY, float startZ, float destX, float destY, float destZ, DirectGroundPathResult* outResult = NULL, const char* reason = NULL);
+	bool NormalizeGroundPosition(float x, float y, float zHint, float* outZ, GroundHeightResult* outResult = NULL, const char* reason = NULL, float maxTerrainDelta = 5.0f);
+	PathQueryResult BuildPath(Unit* mover, float startX, float startY, float startZ, float destX, float destY, float destZ);
 
 	ASCENT_INLINE uint32 GetMapId() { return _mapId; }
 

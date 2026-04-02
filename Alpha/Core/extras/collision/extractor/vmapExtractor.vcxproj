@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6A4F8133-25F4-4A93-8D7C-E2AF0EC76511}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>vmapExtractor</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>bin\Win32\ReleaseAS\</OutDir>
+    <IntDir>bin\Win32\ReleaseAS\obj\</IntDir>
+    <TargetName>vmapextract_v2</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>bin\Win32\DebugAS\</OutDir>
+    <IntDir>bin\Win32\DebugAS\obj\</IntDir>
+    <TargetName>vmapextract_v2</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.\stormlib;.\vmapextract;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <CompileAs>Default</CompileAs>
+      <ConformanceMode>false</ConformanceMode>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>Winmm.lib;Advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.\stormlib;.\vmapextract;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <CompileAs>Default</CompileAs>
+      <ConformanceMode>false</ConformanceMode>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>Winmm.lib;Advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="stormlib\SCommon.cpp" />
+    <ClCompile Include="stormlib\SCompression.cpp" />
+    <ClCompile Include="stormlib\SFileCompactArchive.cpp" />
+    <ClCompile Include="stormlib\SFileCreateArchiveEx.cpp" />
+    <ClCompile Include="stormlib\SFileExtractFile.cpp" />
+    <ClCompile Include="stormlib\SFileFindFile.cpp" />
+    <ClCompile Include="stormlib\SFileOpenArchive.cpp" />
+    <ClCompile Include="stormlib\SFileOpenFileEx.cpp" />
+    <ClCompile Include="stormlib\SFileReadFile.cpp" />
+    <ClCompile Include="stormlib\SListFile.cpp" />
+    <ClCompile Include="stormlib\huffman\huff.cpp" />
+    <ClCompile Include="stormlib\wave\wave.cpp" />
+
+    <ClCompile Include="stormlib\pklib\crc32.c">
+      <ObjectFileName>$(IntDir)pklib_crc32.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="stormlib\pklib\explode.c" />
+    <ClCompile Include="stormlib\pklib\implode.c" />
+
+    <ClCompile Include="stormlib\zlib\adler32.c" />
+    <ClCompile Include="stormlib\zlib\compress.c">
+      <ObjectFileName>$(IntDir)zlib_compress.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="stormlib\zlib\crc32.c">
+      <ObjectFileName>$(IntDir)zlib_crc32.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="stormlib\zlib\deflate.c" />
+    <ClCompile Include="stormlib\zlib\infblock.c" />
+    <ClCompile Include="stormlib\zlib\infcodes.c" />
+    <ClCompile Include="stormlib\zlib\inffast.c" />
+    <ClCompile Include="stormlib\zlib\inflate.c" />
+    <ClCompile Include="stormlib\zlib\inftrees.c" />
+    <ClCompile Include="stormlib\zlib\infutil.c" />
+    <ClCompile Include="stormlib\zlib\trees.c" />
+    <ClCompile Include="stormlib\zlib\zmemory.c" />
+
+    <ClCompile Include="stormlib\bzip2\blocksort.c" />
+    <ClCompile Include="stormlib\bzip2\bzlib.c" />
+    <ClCompile Include="stormlib\bzip2\compress.c">
+      <ObjectFileName>$(IntDir)bzip2_compress.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="stormlib\bzip2\crctable.c" />
+    <ClCompile Include="stormlib\bzip2\decompress.c" />
+    <ClCompile Include="stormlib\bzip2\huffman.c" />
+    <ClCompile Include="stormlib\bzip2\randtable.c" />
+
+    <ClCompile Include="vmapextract\adtfile.cpp" />
+    <ClCompile Include="vmapextract\dbcfile.cpp" />
+    <ClCompile Include="vmapextract\model.cpp" />
+    <ClCompile Include="vmapextract\mpq.cpp" />
+    <ClCompile Include="vmapextract\vmapexport.cpp" />
+    <ClCompile Include="vmapextract\wdtfile.cpp" />
+    <ClCompile Include="vmapextract\wmo.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

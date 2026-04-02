@@ -293,6 +293,8 @@ public:
 	void UpdateMove();
 	void SendCurrentMove(Player* plyr/*uint64 guid*/);
 	bool StopMovement(uint32 time);
+	void RecordLastValidPosition();
+	bool RecoverToLastValidPosition();
 	uint32 getCurrentWaypoint() { return m_currentWaypoint; }
 	void changeWayPointID(uint32 oldwpid, uint32 newwpid);
 	bool addWayPoint(WayPoint* wp);
@@ -496,6 +498,11 @@ protected:
 	uint32 m_moveTimer;
 	uint32 m_FearTimer;
 	uint32 m_WanderTimer;
+	float m_lastValidX;
+	float m_lastValidY;
+	float m_lastValidZ;
+	uint32 m_invalidMoveCount;
+	uint32 m_lastMoveRejectTime;
 
 	MovementType m_MovementType;
 	MovementState m_MovementState;

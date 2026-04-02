@@ -12,6 +12,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pcre", "..\extras\Sources\V
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zlib", "..\extras\Sources\VC90-zlib.vcxproj", "{8F1DEA42-6A5B-4B62-839D-C141A7BFACF2}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "collision", "..\extras\collision\collision_dll\collision.vcxproj", "{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GossipScripts", "..\src\scripts\projects\GossipScripts2008.vcxproj", "{25B8B9AE-2401-4F71-B946-26F6D3237443}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "InstanceScripts", "..\src\scripts\projects\InstanceScripts2008.vcxproj", "{EE39B48B-C598-4AAF-9EF0-199402933EE5}"
@@ -68,6 +70,14 @@ Global
 		{8F1DEA42-6A5B-4B62-839D-C141A7BFACF2}.Release|Win32.Build.0 = Release|Win32
 		{8F1DEA42-6A5B-4B62-839D-C141A7BFACF2}.Release|x64.ActiveCfg = Release|x64
 		{8F1DEA42-6A5B-4B62-839D-C141A7BFACF2}.Release|x64.Build.0 = Release|x64
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Debug|Win32.Build.0 = Debug|Win32
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Debug|x64.ActiveCfg = Debug|x64
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Debug|x64.Build.0 = Debug|x64
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Release|Win32.ActiveCfg = Release|Win32
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Release|Win32.Build.0 = Release|Win32
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Release|x64.ActiveCfg = Release|x64
+		{E9E4204C-5D24-4DE4-AE5D-B3134F5C5C5A}.Release|x64.Build.0 = Release|x64
 		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|Win32.ActiveCfg = Debug|Win32
 		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|Win32.Build.0 = Debug|Win32
 		{25B8B9AE-2401-4F71-B946-26F6D3237443}.Debug|x64.ActiveCfg = Debug|x64

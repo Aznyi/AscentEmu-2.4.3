@@ -27,6 +27,22 @@
 #include <math.h>
 extern bool bServerShutdown;
 
+static bool IsReasonableGroundHeight(float z)
+{
+	return z > -5000.0f && z < 5000.0f;
+}
+
+static float ClampGroundPathThreshold(float value, float minimumValue, float maximumValue)
+{
+	if(value < minimumValue)
+		return minimumValue;
+	if(value > maximumValue)
+		return maximumValue;
+	return value;
+}
+
+static const float VMAP_INVALID_HEIGHT = -100000.0f;
+
 MapMgr::MapMgr(Map *map, uint32 mapId, uint32 instanceid) : CellHandler<MapCell>(map), _mapId(mapId), eventHolder(instanceid)
 {
 	_shutdown = false;
@@ -123,6 +139,382 @@ MapMgr::~MapMgr()
 	}
 
 	Log.Notice("MapMgr", "Instance %u shut down. (%s)" , m_instanceID, GetBaseMap()->GetName());
+}
+
+PathQueryResult MapMgr::BuildPath(Unit* mover, float startX, float startY, float startZ, float destX, float destY, float destZ)
+{
+	PathQueryRequest request;
+	request.mapId = GetMapId();
+	request.instanceId = GetInstanceID();
+	request.mover = mover;
+	request.startX = startX;
+	request.startY = startY;
+	request.startZ = startZ;
+	request.endX = destX;
+	request.endY = destY;
+	request.endZ = destZ;
+	request.allowPartial = true;
+	request.allowFallback = true;
+	request.reason = "path_query";
+
+	PathQueryResult result = sMMapInterface.BuildPath(this, request);
+	const PathQueryStatus navmeshStatus = result.status;
+	const string navmeshDetail = result.detail;
+	if(result.status == PATH_QUERY_STATUS_COMPLETE || result.status == PATH_QUERY_STATUS_PARTIAL)
+		return result;
+
+	result.points.clear();
+	result.points.push_back(LocationVector(startX, startY, startZ));
+	result.points.push_back(LocationVector(destX, destY, destZ));
+
+	if(ValidateGroundMovement(mover, destX, destY, destZ, NULL, NULL, "path_query_destination"))
+	{
+		if(ValidateDirectGroundPath(mover, startX, startY, startZ, destX, destY, destZ, NULL, "path_query"))
+		{
+			result.status = PATH_QUERY_STATUS_DIRECT;
+			result.usedFallback = true;
+		}
+		else
+		{
+			result.status = PATH_QUERY_STATUS_NOPATH;
+		}
+	}
+	else
+	{
+		result.status = PATH_QUERY_STATUS_NOPATH;
+	}
+
+	if((sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement) && result.usedFallback)
+	{
+		sLog.outDebug("Path query fallback map=%u start=%0.3f,%0.3f,%0.3f dest=%0.3f,%0.3f,%0.3f navmeshStatus=%s navmeshDetail=%s final=%s",
+			GetMapId(), startX, startY, startZ, destX, destY, destZ, GetPathQueryStatusName(navmeshStatus), navmeshDetail.c_str(), GetPathQueryStatusName(result.status));
+	}
+
+	return result;
+}
+
+GroundHeightResult MapMgr::ResolveGroundHeight(float x, float y, float zHint, bool allowWater /* = false */)
+{
+	GroundHeightResult result;
+	result.terrainZ = GetLandHeight(x, y);
+	result.waterZ = GetWaterHeight(x, y);
+	result.waterType = GetWaterType(x, y);
+
+#ifdef COLLISION
+	if(CollisionMgr != NULL)
+	{
+		result.vmapZ = CollideInterface.GetHeight(GetMapId(), x, y, zHint + 2.0f);
+		if(result.vmapZ != VMAP_INVALID_HEIGHT)
+		{
+			result.usedHint = true;
+			result.indoors = CollideInterface.IsIndoor(GetMapId(), x, y, zHint + 2.0f);
+			result.outdoors = CollideInterface.IsOutdoor(GetMapId(), x, y, zHint + 2.0f);
+		}
+	}
+#endif
+
+	const bool hasVMap = (result.vmapZ != VMAP_INVALID_HEIGHT && IsReasonableGroundHeight(result.vmapZ));
+	const bool terrainHasData = (result.terrainZ != 0.0f || result.waterType != 0 || GetAreaID(x, y) != 0);
+	const bool hasTerrain = (terrainHasData && IsReasonableGroundHeight(result.terrainZ));
+	const bool hasWater = (allowWater && result.waterType != 0 && IsReasonableGroundHeight(result.waterZ));
+
+	if(hasVMap)
+	{
+		result.valid = true;
+		result.z = result.vmapZ;
+		result.source = GROUND_HEIGHT_SOURCE_VMAP;
+	}
+	else if(hasTerrain)
+	{
+		result.valid = true;
+		result.z = result.terrainZ;
+		result.source = GROUND_HEIGHT_SOURCE_TERRAIN;
+	}
+	else if(hasWater)
+	{
+		result.valid = true;
+		result.z = result.waterZ;
+		result.source = GROUND_HEIGHT_SOURCE_WATER;
+	}
+
+	if(result.valid && sWorld.CollisionDebugGroundZ)
+	{
+		sLog.outDebug("GroundHeight map=%u x=%0.3f y=%0.3f hint=%0.3f terrain=%0.3f vmap=%0.3f water=%0.3f source=%s indoor=%u outdoor=%u",
+			GetMapId(), x, y, zHint, result.terrainZ, result.vmapZ, result.waterZ, GetGroundHeightSourceName(result.source), result.indoors ? 1 : 0, result.outdoors ? 1 : 0);
+	}
+	else if(!result.valid && sWorld.CollisionDebugGroundZ)
+	{
+		sLog.outDebug("GroundHeight map=%u x=%0.3f y=%0.3f hint=%0.3f terrain=%0.3f vmap=%0.3f water=%0.3f source=none indoor=%u outdoor=%u",
+			GetMapId(), x, y, zHint, result.terrainZ, result.vmapZ, result.waterZ, result.indoors ? 1 : 0, result.outdoors ? 1 : 0);
+	}
+
+	return result;
+}
+
+bool MapMgr::ValidateGroundMovement(Unit* mover, float x, float y, float zHint, float* outZ /* = NULL */, GroundHeightResult* outResult /* = NULL */, const char* reason /* = NULL */)
+{
+	const float waterZ = GetWaterHeight(x, y);
+	const uint8 waterType = GetWaterType(x, y);
+	GroundHeightResult result = ResolveGroundHeight(x, y, zHint, waterType != 0 && zHint <= (waterZ + 1.0f));
+	if(outResult != NULL)
+		*outResult = result;
+
+	if(!result.valid)
+	{
+		if(sWorld.CollisionDebugMovement)
+			sLog.outDebug("Ground movement rejected on map %u at %0.3f %0.3f %0.3f (%s): no valid ground source", GetMapId(), x, y, zHint, reason ? reason : "unknown");
+		return false;
+	}
+
+	if(outZ != NULL)
+		*outZ = result.z;
+
+	if(mover == NULL || mover->IsPlayer())
+		return true;
+
+	if(mover->GetAIInterface() && mover->GetAIInterface()->IsFlying())
+		return true;
+
+	if(waterType != 0 && result.z <= (waterZ + 0.5f))
+		return true;
+
+	const float currentZ = mover->GetPositionZ();
+	const float delta = fabsf(result.z - currentZ);
+	float allowedDelta = sWorld.creature_ground_movement_threshold;
+	if(result.source == GROUND_HEIGHT_SOURCE_VMAP)
+	{
+		const float dx = x - mover->GetPositionX();
+		const float dy = y - mover->GetPositionY();
+		const float horizontalDistance = sqrtf((dx * dx) + (dy * dy));
+		const float slopeDeltaAllowance = horizontalDistance * 0.75f;
+		if(slopeDeltaAllowance > allowedDelta)
+			allowedDelta = slopeDeltaAllowance;
+
+		const float maxVMapDelta = sWorld.creature_ground_movement_threshold * 3.0f;
+		if(allowedDelta > maxVMapDelta)
+			allowedDelta = maxVMapDelta;
+	}
+
+	if(delta > allowedDelta)
+	{
+		if(result.source == GROUND_HEIGHT_SOURCE_TERRAIN && result.vmapZ != VMAP_INVALID_HEIGHT && fabsf(result.vmapZ - currentZ) < delta)
+		{
+			if(outZ != NULL)
+				*outZ = result.vmapZ;
+			if(outResult != NULL)
+			{
+				outResult->z = result.vmapZ;
+				outResult->source = GROUND_HEIGHT_SOURCE_VMAP;
+				outResult->valid = true;
+			}
+			return true;
+		}
+
+		if(sWorld.CollisionDebugMovement)
+			sLog.outDebug("Ground movement rejected on map %u at %0.3f %0.3f hint=%0.3f resolved=%0.3f delta=%0.3f allowed=%0.3f source=%s (%s)",
+				GetMapId(), x, y, zHint, result.z, delta, allowedDelta, GetGroundHeightSourceName(result.source), reason ? reason : "unknown");
+		return false;
+	}
+
+	return true;
+}
+
+bool MapMgr::ValidateDirectGroundPath(Unit* mover, float startX, float startY, float startZ, float destX, float destY, float destZ, DirectGroundPathResult* outResult /* = NULL */, const char* reason /* = NULL */)
+{
+	DirectGroundPathResult result;
+
+	if(outResult != NULL)
+		*outResult = result;
+
+	if(mover == NULL || mover->IsPlayer())
+		return true;
+
+	if(mover->GetAIInterface() != NULL && mover->GetAIInterface()->IsFlying())
+		return true;
+
+	const float waterZ = GetWaterHeight(destX, destY);
+	const uint8 waterType = GetWaterType(destX, destY);
+	if(waterType != 0 && destZ <= (waterZ + 0.5f))
+		return true;
+
+	GroundHeightResult startGround = ResolveGroundHeight(startX, startY, startZ, false);
+	if(!startGround.valid)
+	{
+		result.status = DIRECT_GROUND_PATH_INVALID_START;
+		result.sampleX = startX;
+		result.sampleY = startY;
+		result.sampleZ = startZ;
+		if(outResult != NULL)
+			*outResult = result;
+
+		if(sWorld.CollisionDebugMovement || sWorld.CollisionDebugDirectPath)
+			sLog.outDebug("Direct ground path rejected on map %u for " I64FMT " (%s): status=%s start=%0.3f,%0.3f,%0.3f dest=%0.3f,%0.3f,%0.3f",
+				GetMapId(), mover->GetGUID(), reason ? reason : "unknown", GetDirectGroundPathStatusName(result.status), startX, startY, startZ, destX, destY, destZ);
+		return false;
+	}
+
+	float resolvedDestZ = destZ;
+	GroundHeightResult destGround;
+	if(!ValidateGroundMovement(mover, destX, destY, destZ, &resolvedDestZ, &destGround, reason ? reason : "direct_path_destination"))
+	{
+		result.status = DIRECT_GROUND_PATH_INVALID_DESTINATION;
+		result.sampleX = destX;
+		result.sampleY = destY;
+		result.previousZ = startGround.z;
+		result.sampleZ = destZ;
+		result.source = destGround.source;
+		if(outResult != NULL)
+			*outResult = result;
+
+		if(sWorld.CollisionDebugMovement || sWorld.CollisionDebugDirectPath)
+			sLog.outDebug("Direct ground path rejected on map %u for " I64FMT " (%s): status=%s start=%0.3f,%0.3f,%0.3f dest=%0.3f,%0.3f,%0.3f",
+				GetMapId(), mover->GetGUID(), reason ? reason : "unknown", GetDirectGroundPathStatusName(result.status), startX, startY, startZ, destX, destY, destZ);
+		return false;
+	}
+
+	const float dx = destX - startX;
+	const float dy = destY - startY;
+	const float horizontalDistance = sqrtf((dx * dx) + (dy * dy));
+	if(horizontalDistance < 1.5f)
+		return true;
+
+	const float probeSpacing = ClampGroundPathThreshold(sWorld.creature_direct_path_probe_spacing, 1.5f, 6.0f);
+	const float climbThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_step_threshold, 2.5f, 10.0f);
+	const float dropThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_drop_threshold, 3.0f, 15.0f);
+	uint32 sampleCount = (uint32)ceilf(horizontalDistance / probeSpacing);
+	if(sampleCount < 2)
+		sampleCount = 2;
+	if(sampleCount > 24)
+		sampleCount = 24;
+
+	float previousZ = startGround.z;
+	float previousX = startX;
+	float previousY = startY;
+	result.sampleCount = sampleCount;
+
+	for(uint32 i = 1; i <= sampleCount; ++i)
+	{
+		const float t = ((float)i / (float)sampleCount);
+		const float sampleX = startX + (dx * t);
+		const float sampleY = startY + (dy * t);
+		const float sampleHint = (i == sampleCount) ? resolvedDestZ : previousZ;
+		GroundHeightResult sampleGround = ResolveGroundHeight(sampleX, sampleY, sampleHint, false);
+		result.sampleIndex = i;
+		result.sampleX = sampleX;
+		result.sampleY = sampleY;
+		result.previousZ = previousZ;
+		result.sampleZ = sampleGround.valid ? sampleGround.z : sampleHint;
+		result.source = sampleGround.source;
+
+		if(!sampleGround.valid)
+		{
+			result.status = DIRECT_GROUND_PATH_INVALID_SAMPLE;
+			if(outResult != NULL)
+				*outResult = result;
+
+			if(sWorld.CollisionDebugMovement || sWorld.CollisionDebugDirectPath)
+				sLog.outDebug("Direct ground path rejected on map %u for " I64FMT " (%s): status=%s sample=%u/%u point=%0.3f,%0.3f previous=%0.3f",
+					GetMapId(), mover->GetGUID(), reason ? reason : "unknown", GetDirectGroundPathStatusName(result.status), i, sampleCount, sampleX, sampleY, previousZ);
+			return false;
+		}
+
+		const float segmentDx = sampleX - previousX;
+		const float segmentDy = sampleY - previousY;
+		const float segmentDistance = sqrtf((segmentDx * segmentDx) + (segmentDy * segmentDy));
+		float allowedClimb = climbThreshold;
+		float allowedDrop = dropThreshold;
+		if(sampleGround.source == GROUND_HEIGHT_SOURCE_VMAP || startGround.source == GROUND_HEIGHT_SOURCE_VMAP)
+		{
+			const float slopeAllowance = segmentDistance * 0.85f;
+			if(slopeAllowance > allowedClimb)
+				allowedClimb = slopeAllowance;
+			if(slopeAllowance > allowedDrop)
+				allowedDrop = slopeAllowance;
+		}
+
+		const float delta = sampleGround.z - previousZ;
+		if(delta > allowedClimb)
+		{
+			result.status = DIRECT_GROUND_PATH_EXCESSIVE_CLIMB;
+			result.sampleZ = sampleGround.z;
+			if(outResult != NULL)
+				*outResult = result;
+
+			if(sWorld.CollisionDebugMovement || sWorld.CollisionDebugDirectPath)
+				sLog.outDebug("Direct ground path rejected on map %u for " I64FMT " (%s): status=%s sample=%u/%u point=%0.3f,%0.3f previous=%0.3f current=%0.3f delta=%0.3f allowed=%0.3f source=%s",
+					GetMapId(), mover->GetGUID(), reason ? reason : "unknown", GetDirectGroundPathStatusName(result.status), i, sampleCount, sampleX, sampleY, previousZ, sampleGround.z, delta, allowedClimb, GetGroundHeightSourceName(sampleGround.source));
+			return false;
+		}
+
+		if((-delta) > allowedDrop)
+		{
+			result.status = DIRECT_GROUND_PATH_EXCESSIVE_DROP;
+			result.sampleZ = sampleGround.z;
+			if(outResult != NULL)
+				*outResult = result;
+
+			if(sWorld.CollisionDebugMovement || sWorld.CollisionDebugDirectPath)
+				sLog.outDebug("Direct ground path rejected on map %u for " I64FMT " (%s): status=%s sample=%u/%u point=%0.3f,%0.3f previous=%0.3f current=%0.3f drop=%0.3f allowed=%0.3f source=%s",
+					GetMapId(), mover->GetGUID(), reason ? reason : "unknown", GetDirectGroundPathStatusName(result.status), i, sampleCount, sampleX, sampleY, previousZ, sampleGround.z, -delta, allowedDrop, GetGroundHeightSourceName(sampleGround.source));
+			return false;
+		}
+
+		if(sWorld.CollisionDebugDirectPath)
+		{
+			sLog.outDebug("Direct ground path sample map=%u for " I64FMT " (%s): sample=%u/%u point=%0.3f,%0.3f z=%0.3f previous=%0.3f delta=%0.3f source=%s",
+				GetMapId(), mover->GetGUID(), reason ? reason : "unknown", i, sampleCount, sampleX, sampleY, sampleGround.z, previousZ, delta, GetGroundHeightSourceName(sampleGround.source));
+		}
+
+		previousX = sampleX;
+		previousY = sampleY;
+		previousZ = sampleGround.z;
+	}
+
+	if(sWorld.CollisionDebugDirectPath)
+	{
+		sLog.outDebug("Direct ground path accepted on map %u for " I64FMT " (%s): start=%0.3f,%0.3f,%0.3f dest=%0.3f,%0.3f,%0.3f samples=%u",
+			GetMapId(), mover->GetGUID(), reason ? reason : "unknown", startX, startY, startZ, destX, destY, resolvedDestZ, sampleCount);
+	}
+
+	return true;
+}
+
+bool MapMgr::NormalizeGroundPosition(float x, float y, float zHint, float* outZ, GroundHeightResult* outResult /* = NULL */, const char* reason /* = NULL */, float maxTerrainDelta /* = 5.0f */)
+{
+	GroundHeightResult result = ResolveGroundHeight(x, y, zHint, false);
+	if(outResult != NULL)
+		*outResult = result;
+
+	if(!result.valid)
+	{
+		if(sWorld.CollisionDebugGroundZ || sWorld.CollisionDebugMovement)
+			sLog.outDebug("Ground normalization failed on map %u at %0.3f %0.3f hint=%0.3f (%s): no valid ground source", GetMapId(), x, y, zHint, reason ? reason : "unknown");
+		return false;
+	}
+
+	if(result.source == GROUND_HEIGHT_SOURCE_TERRAIN)
+	{
+		const float terrainDelta = fabsf(result.z - zHint);
+		if(terrainDelta > maxTerrainDelta && zHint > -500.0f)
+		{
+			if(outZ != NULL)
+				*outZ = zHint;
+			if(sWorld.CollisionDebugGroundZ)
+				sLog.outDebug("Ground normalization kept hint on map %u at %0.3f %0.3f hint=%0.3f terrain=%0.3f delta=%0.3f (%s)",
+					GetMapId(), x, y, zHint, result.z, terrainDelta, reason ? reason : "unknown");
+			return true;
+		}
+	}
+
+	if(outZ != NULL)
+		*outZ = result.z;
+
+	if(sWorld.CollisionDebugGroundZ && fabsf(result.z - zHint) > 1.5f)
+	{
+		sLog.outDebug("Ground normalization adjusted map=%u x=%0.3f y=%0.3f hint=%0.3f resolved=%0.3f delta=%0.3f source=%s (%s)",
+			GetMapId(), x, y, zHint, result.z, fabsf(result.z - zHint), GetGroundHeightSourceName(result.source), reason ? reason : "unknown");
+	}
+	return true;
 }
 
 WorldPacket* MapMgr::BuildInitialWorldState()
@@ -1515,6 +1907,19 @@ bool MapMgr::Do()
 	{
 		Creature * obj = CreateCreature((*itr)->entry);
 		obj->Load(*itr, 0, pMapInfo);
+		float normalizedZ = (*itr)->z;
+		GroundHeightResult groundResult;
+		if(NormalizeGroundPosition((*itr)->x, (*itr)->y, (*itr)->z, &normalizedZ, &groundResult, "static_creature_spawn"))
+		{
+			if(fabsf(normalizedZ - (*itr)->z) > 1.5f)
+				sLog.outDetail("Static creature spawn %u entry %u normalized on map %u from Z %0.3f to %0.3f using %s", (*itr)->id, (*itr)->entry, GetMapId(), (*itr)->z, normalizedZ, GetGroundHeightSourceName(groundResult.source));
+			obj->SetPosition((*itr)->x, (*itr)->y, normalizedZ, (*itr)->o, true);
+		}
+		else if(sWorld.CollisionDebugGroundZ)
+		{
+			sLog.outDebug("Static creature spawn %u entry %u kept DB Z %0.3f on map %u because no valid ground was resolved",
+				(*itr)->id, (*itr)->entry, (*itr)->z, GetMapId());
+		}
 		_mapWideStaticObjects.insert(obj);
 	}
 

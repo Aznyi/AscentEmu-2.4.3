@@ -937,7 +937,7 @@ bool Creature::Load(CreatureSpawn *spawn, uint32 mode, MapInfo *info)
 	SetFloatValue(UNIT_FIELD_BOUNDINGRADIUS, proto->BoundingRadius);
 	SetFloatValue(UNIT_FIELD_COMBATREACH, proto->CombatReach);
 	original_emotestate = spawn->emote_state;
-	// set position
+	// set position (spawn Z is later normalized by the map manager once the creature is attached to a map)
 	m_position.ChangeCoords( spawn->x, spawn->y, spawn->z, spawn->o );
 	m_spawnLocation.ChangeCoords(spawn->x, spawn->y, spawn->z, spawn->o);
 	m_aiInterface->setMoveType(spawn->movetype);	
@@ -1146,8 +1146,13 @@ void Creature::Load(CreatureProto * proto_, float x, float y, float z)
 	original_emotestate = 0;
 	// set position
 
-	m_position.ChangeCoords( x, y, z, 0 );
-	m_spawnLocation.ChangeCoords(x, y, z, 0);
+	float spawnZ = z;
+	if(m_mapMgr != NULL)
+	{
+		m_mapMgr->NormalizeGroundPosition(x, y, z, &spawnZ, NULL, "dynamic_creature_load");
+	}
+	m_position.ChangeCoords( x, y, spawnZ, 0 );
+	m_spawnLocation.ChangeCoords(x, y, spawnZ, 0);
 	m_faction = dbcFactionTemplate.LookupEntry(proto->Faction);
 
 	if(m_faction)
@@ -1530,9 +1535,7 @@ void Creature::SetGuardWaypoints()
 		wp->x = GetSpawnX()+ran*sin(ang);
 		wp->y = GetSpawnY()+ran*cos(ang);
 #ifdef COLLISION
-		wp->z = CollideInterface.GetHeight(m_mapId, wp->x, wp->y, m_spawnLocation.z + 2.0f);
-		if( wp->z == NO_WMO_HEIGHT )
-			wp->z = m_mapMgr->GetLandHeight(wp->x, wp->y);
+		m_mapMgr->NormalizeGroundPosition(wp->x, wp->y, m_spawnLocation.z, &wp->z, NULL, "guard_waypoint");
 
 		if( fabs( wp->z - m_spawnLocation.z ) > 10.0f )
 			wp->z = m_spawnLocation.z;

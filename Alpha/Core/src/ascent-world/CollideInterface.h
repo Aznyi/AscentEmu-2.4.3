@@ -81,6 +81,9 @@ public:
 
 	void ActivateTile(uint32 mapId, uint32 tileX, uint32 tileY);
 	void DeactivateTile(uint32 mapId, uint32 tileX, uint32 tileY);
+	uint32 GetTileLoadRefCount(uint32 mapId, uint32 tileX, uint32 tileY) const;
+	bool HasVMapDirectory() const;
+	bool HasVMapTile(uint32 mapId, uint32 tileX, uint32 tileY) const;
 
 #ifdef COLLISION_DEBUG
 

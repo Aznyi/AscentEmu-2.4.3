@@ -2965,11 +2965,31 @@ bool ChatHandler::HandleCollisionGetHeight(const char * args, WorldSession * m_s
 {
 #ifdef COLLISION
 	Player * plr = m_session->GetPlayer();
-	float z = CollideInterface.GetHeight(plr->GetMapId(), plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ() + 2.0f);
-	float z2 = CollideInterface.GetHeight(plr->GetMapId(), plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ() + 5.0f);
-	float z3 = CollideInterface.GetHeight(plr->GetMapId(), plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ());
-
-	SystemMessage(m_session, "Results were: %f %f %f", z, z2, z3);
+	GroundHeightResult result = plr->GetMapMgr()->ResolveGroundHeight(plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ(), true);
+	uint32 tileX = CellHandler<MapMgr>::GetPosX(plr->GetPositionX()) / 8;
+	uint32 tileY = CellHandler<MapMgr>::GetPosY(plr->GetPositionY()) / 8;
+	SystemMessage(m_session, "terrain=%0.3f vmap=%0.3f water=%0.3f final=%0.3f source=%s indoor=%u outdoor=%u vmapRefs=%u mmapEnabled=%u mmapBackend=%u mmapMap=%u mmapTile=%u mmapRefs=%u",
+		result.terrainZ, result.vmapZ, result.waterZ, result.z, GetGroundHeightSourceName(result.source), result.indoors ? 1 : 0, result.outdoors ? 1 : 0,
+		CollideInterface.GetTileLoadRefCount(plr->GetMapId(), tileX, tileY),
+		sMMapInterface.IsPathingEnabled() ? 1 : 0,
+		sMMapInterface.HasRuntimeBackend() ? 1 : 0,
+		sMMapInterface.HasMapData(plr->GetMapId()) ? 1 : 0,
+		sMMapInterface.HasTileData(plr->GetMapId(), tileX, tileY) ? 1 : 0,
+		sMMapInterface.GetTileLoadRefCount(plr->GetMapId(), tileX, tileY));
+	NavMeshInspectionResult inspect = sMMapInterface.InspectPoint(plr->GetMapMgr(), plr->GetMapId(), plr->GetInstanceID(), plr->GetPositionX(), plr->GetPositionY(), plr->GetPositionZ(), sWorld.mmap_inspect_radius);
+	SystemMessage(m_session, "mmapInspect tile=%u,%u mapData=%u tileData=%u tileLoaded=%u tileHeader=%u,%u,%u tilePolys=%u nearest=%u nearby=%u polyRef=" I64FMT " detail=%s closest=%0.3f,%0.3f,%0.3f radius=%0.3f",
+		inspect.tileX, inspect.tileY,
+		inspect.hasMapData ? 1 : 0,
+		inspect.hasTileData ? 1 : 0,
+		inspect.tileLoaded ? 1 : 0,
+		inspect.tileHeaderX, inspect.tileHeaderY, inspect.tileHeaderLayer,
+		inspect.tilePolyCount,
+		inspect.nearestPolyFound ? 1 : 0,
+		inspect.nearbyPolyCount,
+		inspect.nearestPolyRef,
+		inspect.detail.c_str(),
+		inspect.closestWorld.x, inspect.closestWorld.y, inspect.closestWorld.z,
+		inspect.radius);
 	return true;
 #else
 	SystemMessage(m_session, "Ascent was not compiled with collision support.");
