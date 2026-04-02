@@ -35,17 +35,20 @@ void GameEventMgr::LoadFromDB()
 	m_activeEvents.clear();
 	m_creatureEvents.clear();
 	m_gameObjectEvents.clear();
+	m_questEvents.clear();
 
 	LoadEventDefinitions();
 	LoadCreatureBindings();
 	LoadGameObjectBindings();
+	LoadQuestBindings();
 	RebuildActiveEvents();
 
-	Log.Notice("GameEventMgr", "Loaded %u definitions, %u active events, %u creature bindings, %u gameobject bindings.",
+	Log.Notice("GameEventMgr", "Loaded %u definitions, %u active events, %u creature bindings, %u gameobject bindings, %u quest bindings.",
 		static_cast<uint32>(m_events.size()),
 		static_cast<uint32>(m_activeEvents.size()),
 		static_cast<uint32>(m_creatureEvents.size()),
-		static_cast<uint32>(m_gameObjectEvents.size()));
+		static_cast<uint32>(m_gameObjectEvents.size()),
+		static_cast<uint32>(m_questEvents.size()));
 }
 
 bool GameEventMgr::IsCreatureSpawnEnabled(uint32 spawn_id) const
@@ -56,6 +59,11 @@ bool GameEventMgr::IsCreatureSpawnEnabled(uint32 spawn_id) const
 bool GameEventMgr::IsGameObjectSpawnEnabled(uint32 spawn_id) const
 {
 	return IsSpawnEnabled(m_gameObjectEvents, spawn_id);
+}
+
+bool GameEventMgr::IsQuestEnabled(uint32 quest_id) const
+{
+	return IsBoundEntryEnabled(m_questEvents, quest_id);
 }
 
 time_t GameEventMgr::ParseDateTime(const char* value)
@@ -143,6 +151,22 @@ void GameEventMgr::LoadGameObjectBindings()
 	delete result;
 }
 
+void GameEventMgr::LoadQuestBindings()
+{
+	QueryResult* result = WorldDatabase.Query("SELECT quest, event FROM game_event_quest");
+	if(result == NULL)
+		return;
+
+	do
+	{
+		Field* fields = result->Fetch();
+		m_questEvents[fields[0].GetUInt32()].push_back(static_cast<int16>(fields[1].GetInt32()));
+	}
+	while(result->NextRow());
+
+	delete result;
+}
+
 void GameEventMgr::RebuildActiveEvents()
 {
 	const time_t now = UNIXTIME;
@@ -192,7 +216,12 @@ bool GameEventMgr::EvaluateEventWindow(const GameEventDefinition& def, time_t no
 
 bool GameEventMgr::IsSpawnEnabled(const SpawnEventMap& bindings, uint32 spawn_id) const
 {
-	SpawnEventMap::const_iterator itr = bindings.find(spawn_id);
+	return IsBoundEntryEnabled(bindings, spawn_id);
+}
+
+bool GameEventMgr::IsBoundEntryEnabled(const SpawnEventMap& bindings, uint32 entry_id) const
+{
+	SpawnEventMap::const_iterator itr = bindings.find(entry_id);
 	if(itr == bindings.end())
 		return true;
 

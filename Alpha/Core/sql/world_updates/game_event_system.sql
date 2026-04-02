@@ -30109,6 +30109,18 @@ INSERT INTO `game_event_gameobject` (`guid`, `event`) VALUES
 	(5800022, 316);
 /*!40000 ALTER TABLE `game_event_gameobject` ENABLE KEYS */;
 
+-- Dumping structure for table ascent_world.game_event_quest
+CREATE TABLE IF NOT EXISTS `game_event_quest` (
+  `quest` int(10) unsigned NOT NULL,
+  `event` smallint(6) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`quest`,`event`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci COMMENT='Game event system';
+
+-- Dumping data for table ascent_world.game_event_quest: 0 rows
+DELETE FROM `game_event_quest`;
+/*!40000 ALTER TABLE `game_event_quest` DISABLE KEYS */;
+/*!40000 ALTER TABLE `game_event_quest` ENABLE KEYS */;
+
 -- Dumping structure for table ascent_world.game_event_time
 CREATE TABLE IF NOT EXISTS `game_event_time` (
   `entry` mediumint(8) unsigned NOT NULL,

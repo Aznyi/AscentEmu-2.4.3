@@ -47,6 +47,9 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 	std::list<uint32>::iterator itr;
 	uint32 status;
 
+	if(sGameEventMgr.HasData() && !sGameEventMgr.IsQuestEnabled(qst->id))
+		return QMGR_QUEST_NOT_AVAILABLE;
+
 	if (!sQuestMgr.IsQuestRepeatable(qst))
 		status = QMGR_QUEST_AVAILABLE;
 	else

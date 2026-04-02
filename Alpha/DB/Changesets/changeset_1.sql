@@ -295,3 +295,60 @@ INSERT INTO `creature_spawns` (`id`, `entry`, `map`, `position_x`, `position_y`,
 DELETE FROM `creature_spawns` WHERE `id`=3600077;
 DELETE FROM `creature_spawns` WHERE `id`=3600078;
 DELETE FROM `creature_spawns` WHERE `id`=3600079;
+
+-- Ascent's event gating is quest-level, not giver-level, so the giver `id`
+-- column is intentionally discarded and duplicate (quest, event) pairs are collapsed.
+
+CREATE TABLE IF NOT EXISTS `game_event_quest` (
+  `quest` int(10) unsigned NOT NULL,
+  `event` smallint(6) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`quest`,`event`)
+) ENGINE=MyISAM DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci COMMENT='Game event system';
+
+DELETE FROM `game_event_quest`;
+
+INSERT INTO `game_event_quest` (`quest`, `event`) VALUES
+	(8353, 12),
+	(8354, 12),
+	(8355, 12),
+	(8356, 12),
+	(8357, 12),
+	(8358, 12),
+	(8359, 12),
+	(8360, 12),
+	(8980, 8),
+	(8983, 8),
+	(9025, 8),
+	(9027, 8),
+	(11356, 12),
+	(11357, 12),
+	(11441, 26),
+	(11446, 26),
+	(11496, 35),
+	(11513, 39),
+	(11514, 40),
+	(11517, 39),
+	(11520, 45),
+	(11521, 46),
+	(11523, 36),
+	(11524, 35),
+	(11525, 36),
+	(11532, 37),
+	(11533, 38),
+	(11534, 40),
+	(11535, 43),
+	(11536, 44),
+	(11537, 38),
+	(11538, 37),
+	(11539, 41),
+	(11540, 42),
+	(11541, 42),
+	(11542, 41),
+	(11543, 42),
+	(11544, 44),
+	(11545, 47),
+	(11546, 46),
+	(11547, 40),
+	(11548, 48),
+	(11549, 47),
+	(11549, 48);

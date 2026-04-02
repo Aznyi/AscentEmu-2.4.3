@@ -45,6 +45,7 @@ public:
 	void LoadFromDB();
 	bool IsCreatureSpawnEnabled(uint32 spawn_id) const;
 	bool IsGameObjectSpawnEnabled(uint32 spawn_id) const;
+	bool IsQuestEnabled(uint32 quest_id) const;
 	bool HasData() const { return !m_events.empty(); }
 
 private:
@@ -57,14 +58,17 @@ private:
 	void LoadEventDefinitions();
 	void LoadCreatureBindings();
 	void LoadGameObjectBindings();
+	void LoadQuestBindings();
 	void RebuildActiveEvents();
 	bool EvaluateEventWindow(const GameEventDefinition& def, time_t now) const;
 	bool IsSpawnEnabled(const SpawnEventMap& bindings, uint32 spawn_id) const;
+	bool IsBoundEntryEnabled(const SpawnEventMap& bindings, uint32 entry_id) const;
 
 	EventDefinitionMap m_events;
 	ActiveEventSet m_activeEvents;
 	SpawnEventMap m_creatureEvents;
 	SpawnEventMap m_gameObjectEvents;
+	SpawnEventMap m_questEvents;
 };
 
 #define sGameEventMgr GameEventMgr::getSingleton()
