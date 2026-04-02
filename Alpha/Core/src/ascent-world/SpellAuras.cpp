@@ -712,7 +712,11 @@ void Aura::AddAuraVisual()
 
 void Aura::RemoveAuraVisual()
 {
-	m_target->RemoveAuraVisual(m_spellProto->Id, 1);
+	uint32 stackCount = 1;
+	if(m_visualSlot < MAX_AURAS)
+		stackCount = std::max<uint32>(1, m_target->GetAuraStackCount(m_visualSlot));
+
+	m_target->RemoveAuraVisual(m_spellProto->Id, stackCount);
 }
 
 void Aura::EventUpdateAA(float r)
