@@ -118,6 +118,7 @@ AIInterface::AIInterface()
 	m_lastValidX = m_lastValidY = m_lastValidZ = 0.0f;
 	m_invalidMoveCount = 0;
 	m_lastMoveRejectTime = 0;
+	m_skipDirectPathValidation = false;
 	m_totemspelltime = 0;
 	m_totemspelltimer = 0;
 	m_formationFollowAngle = 0.0f;
@@ -2012,14 +2013,24 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		if(m_Unit->GetMapMgr()->NormalizeGroundPosition(m_nextPosX, m_nextPosY, m_nextPosZ, &normalizedZ, NULL, "calc_destination_and_move", 8.0f))
 			m_nextPosZ = normalizedZ;
 
-		PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
-		if((pathResult.status == PATH_QUERY_STATUS_COMPLETE || pathResult.status == PATH_QUERY_STATUS_PARTIAL) && pathResult.points.size() > 1)
-		{
-			const LocationVector& nextStep = pathResult.points[1];
-			m_nextPosX = nextStep.x;
-			m_nextPosY = nextStep.y;
-			m_nextPosZ = nextStep.z;
-		}
+				PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
+				if((pathResult.status == PATH_QUERY_STATUS_COMPLETE || pathResult.status == PATH_QUERY_STATUS_PARTIAL) && pathResult.points.size() > 1)
+				{
+						size_t nextPointIndex = 1;
+						const float currentX = m_Unit->GetPositionX();
+						const float currentY = m_Unit->GetPositionY();
+						const float currentZ = m_Unit->GetPositionZ();
+						while(nextPointIndex + 1 < pathResult.points.size() &&
+								m_Unit->CalcDistance(currentX, currentY, currentZ,
+								pathResult.points[nextPointIndex].x, pathResult.points[nextPointIndex].y, pathResult.points[nextPointIndex].z) < DISTANCE_TO_SMALL_TO_WALK)
+								++nextPointIndex;
+
+						const LocationVector& nextStep = pathResult.points[nextPointIndex];
+						m_nextPosX = nextStep.x;
+						m_nextPosY = nextStep.y;
+						m_nextPosZ = nextStep.z;
+						m_skipDirectPathValidation = true;
+				}
 		else if(pathResult.status == PATH_QUERY_STATUS_NOPATH)
 		{
 			StopMovement(200);
@@ -2195,6 +2206,7 @@ bool AIInterface::StopMovement(uint32 time)
 {
 	m_moveTimer = time; //set pause after stopping
 	m_creatureState = STOPPED;
+	m_skipDirectPathValidation = false;
 
 	m_destinationX = m_destinationY = m_destinationZ = 0;
 	m_nextPosX = m_nextPosY = m_nextPosZ = 0;
@@ -2217,6 +2229,7 @@ void AIInterface::MoveTo(float x, float y, float z, float o)
 	m_sourceX = m_Unit->GetPositionX();
 	m_sourceY = m_Unit->GetPositionY();
 	m_sourceZ = m_Unit->GetPositionZ();
+	m_skipDirectPathValidation = false;
 
 	if(!m_canMove || m_Unit->IsStunned())
 	{
@@ -2318,6 +2331,8 @@ void AIInterface::UpdateMove()
 	//this should NEVER be called directly !!!!!!
 	//use MoveTo()
 	float distance = m_Unit->CalcDistance(m_nextPosX,m_nextPosY,m_nextPosZ);
+	const bool skipDirectPathValidation = m_skipDirectPathValidation;
+	m_skipDirectPathValidation = false;
 	
 	if(distance < DISTANCE_TO_SMALL_TO_WALK) return; //we don't want little movements here and there
 
@@ -2339,9 +2354,9 @@ void AIInterface::UpdateMove()
 		}
 		m_destinationZ = validatedZ;
 
-		DirectGroundPathResult pathResult;
-		if(!m_Unit->GetMapMgr()->ValidateDirectGroundPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_destinationX, m_destinationY, m_destinationZ, &pathResult, "UpdateMove"))
-		{
+				DirectGroundPathResult pathResult;
+				if(!skipDirectPathValidation && !m_Unit->GetMapMgr()->ValidateDirectGroundPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_destinationX, m_destinationY, m_destinationZ, &pathResult, "UpdateMove"))
+				{
 			++m_invalidMoveCount;
 			m_lastMoveRejectTime = getMSTime();
 			if(sWorld.CollisionDebugMovement)

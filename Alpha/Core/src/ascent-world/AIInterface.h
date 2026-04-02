@@ -498,14 +498,15 @@ protected:
 	uint32 m_moveTimer;
 	uint32 m_FearTimer;
 	uint32 m_WanderTimer;
-	float m_lastValidX;
-	float m_lastValidY;
-	float m_lastValidZ;
-	uint32 m_invalidMoveCount;
-	uint32 m_lastMoveRejectTime;
+        float m_lastValidX;
+        float m_lastValidY;
+        float m_lastValidZ;
+        uint32 m_invalidMoveCount;
+        uint32 m_lastMoveRejectTime;
+        bool m_skipDirectPathValidation;
 
-	MovementType m_MovementType;
-	MovementState m_MovementState;
+        MovementType m_MovementType;
+        MovementState m_MovementState;
 	uint32 m_guardTimer;
 	int32 m_currentHighestThreat;
 	std::list<spawn_timed_emotes*>::iterator	next_timed_emote;
