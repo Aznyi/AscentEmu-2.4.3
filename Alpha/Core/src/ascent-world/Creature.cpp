@@ -188,8 +188,6 @@ void Creature::OnRemoveCorpse()
 		
 	   
 		setDeathState(DEAD);
-
-		m_position = m_spawnLocation;
 	}
 	else
 	{
@@ -200,6 +198,7 @@ void Creature::OnRemoveCorpse()
 void Creature::OnRespawn(MapMgr * m)
 {
 	sLog.outDetail("Respawning " I64FMT "...", GetGUID());
+	m_position = m_spawnLocation;
 	SetUInt32Value(UNIT_FIELD_HEALTH, GetUInt32Value(UNIT_FIELD_MAXHEALTH));
 	SetUInt32Value(UNIT_DYNAMIC_FLAGS, 0); // not tagging shiat
 	if(proto && m_spawn)
@@ -1473,7 +1472,6 @@ void Creature::Despawn(uint32 delay, uint32 respawntime)
 		sEventMgr.RemoveEvents(this);
 		sEventMgr.AddEvent(m_mapMgr, &MapMgr::EventRespawnCreature, this, pCell, EVENT_CREATURE_RESPAWN, respawntime, 1, 0);
 		Unit::RemoveFromWorld(false);
-		m_position = m_spawnLocation;
 		m_respawnCell=pCell;
 	}
 	else
