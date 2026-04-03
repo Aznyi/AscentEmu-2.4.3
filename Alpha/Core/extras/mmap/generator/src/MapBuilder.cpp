@@ -702,10 +702,25 @@ namespace MMAP
         getGridBounds(mapID, fullMinX, fullMinY, fullMaxX, fullMaxY);
 
         const bool hasFullBounds = fullMinX <= 63 && fullMinY <= 63 && fullMaxX <= 63 && fullMaxY <= 63 && fullMinX <= fullMaxX && fullMinY <= fullMaxY;
-        int maxTiles = tiles.size();
-        if (hasFullBounds)
-            maxTiles = int((fullMaxX - fullMinX + 1) * (fullMaxY - fullMinY + 1));
-        int maxPolysPerTile = 1 << 14;
+        // Detour's 32-bit poly refs require at least 10 salt bits, so large maps
+        // cannot always keep the default 14 poly bits. Size the root navmesh by the
+        // number of tiles we will actually load and reduce poly bits only when
+        // necessary to keep the root valid for continent-scale maps.
+        int maxTiles = int(tiles.size());
+        if (maxTiles < 1)
+            maxTiles = 1;
+
+        int tileBits = dtIlog2(dtNextPow2((unsigned int)maxTiles));
+        if (tileBits < 1)
+            tileBits = 1;
+
+        int polyBits = 22 - tileBits;
+        if (polyBits > 14)
+            polyBits = 14;
+        if (polyBits < 1)
+            polyBits = 1;
+
+        int maxPolysPerTile = 1 << polyBits;
 
         /***          calculate bounds of map         ***/
 
@@ -735,6 +750,8 @@ namespace MMAP
             mapID, uint32(tiles.size()), tileXMin, tileYMin, tileXMax, tileYMax,
             hasFullBounds ? fullMinX : tileXMin, hasFullBounds ? fullMinY : tileYMin,
             hasFullBounds ? fullMaxX : tileXMax, hasFullBounds ? fullMaxY : tileYMax);
+        printf("[Map %03i] Navmesh root params: maxTiles=%d tileBits=%d maxPolysPerTile=%d polyBits=%d\n",
+            mapID, maxTiles, tileBits, maxPolysPerTile, polyBits);
 
         /***       now create the navmesh       ***/
 
