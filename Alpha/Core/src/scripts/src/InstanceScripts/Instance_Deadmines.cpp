@@ -182,6 +182,14 @@ namespace
 		return s_deadminesStates[instanceId];
 	}
 
+	void ClearDeadminesState(MapMgr* mapMgr)
+	{
+		if(mapMgr == NULL)
+			return;
+
+		s_deadminesStates.erase(mapMgr->GetInstanceID());
+	}
+
 	GameObject* FindDoor(MapMgr* mapMgr, uint32 entry, float x, float y, float z)
 	{
 		if(mapMgr == NULL)
@@ -193,6 +201,11 @@ namespace
 	GameObject* GetFactoryDoor(MapMgr* mapMgr)
 	{
 		return FindDoor(mapMgr, GO_FACTORY_DOOR, -190.860092f, -456.332184f, 54.496822f);
+	}
+
+	GameObject* GetFactoryDoorLever(MapMgr* mapMgr)
+	{
+		return FindDoor(mapMgr, GO_FACTORY_DOOR_LEVER, -188.136f, -460.313f, 54.5591f);
 	}
 
 	GameObject* GetIronCladDoor(MapMgr* mapMgr)
@@ -210,9 +223,24 @@ namespace
 		return FindDoor(mapMgr, GO_MAST_ROOM_DOOR, -289.691650f, -535.988953f, 49.440678f);
 	}
 
+	GameObject* GetMastRoomLever(MapMgr* mapMgr)
+	{
+		return FindDoor(mapMgr, GO_MAST_ROOM_LEVER, -287.282f, -539.877f, 49.4321f);
+	}
+
 	GameObject* GetFoundryDoor(MapMgr* mapMgr)
 	{
 		return FindDoor(mapMgr, GO_FOUNDRY_DOOR, -176.569000f, -577.640991f, 19.311600f);
+	}
+
+	GameObject* GetFoundryLever(MapMgr* mapMgr)
+	{
+		return FindDoor(mapMgr, GO_FOUNDRY_LEVER, -165.404f, -576.924f, 19.3064f);
+	}
+
+	GameObject* GetMrSmiteChest(MapMgr* mapMgr)
+	{
+		return FindDoor(mapMgr, GO_MR_SMITE_CHEST, kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z);
 	}
 
 	void SetGameObjectUnclickable(GameObject* go, bool unclickable)
@@ -251,6 +279,14 @@ namespace
 		go->SetUInt32Value(GAMEOBJECT_STATE, GO_STATE_READY);
 		SetGameObjectUnclickable(go, false);
 		SetGameObjectClickable(go, true);
+	}
+
+	void SetGameObjectAnimProgress(GameObject* go, uint32 animProgress)
+	{
+		if(go == NULL)
+			return;
+
+		go->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, animProgress);
 	}
 
 	void ApplyDoorStateToAllNearby(MapMgr* mapMgr, uint32 entry, float x, float y, float z, uint32 flags, uint32 state)
@@ -326,6 +362,23 @@ namespace
 		door->SetUInt32Value(GAMEOBJECT_STATE, state);
 	}
 
+	void SetDoorLockedClosed(GameObject* door)
+	{
+		SetDoorState(door, DOOR_FLAG_LOCKED, DOOR_STATE_CLOSED);
+		SetGameObjectAnimProgress(door, 0);
+	}
+
+	void SetDoorOpen(GameObject* door)
+	{
+		SetDoorState(door, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
+	}
+
+	void SetDoorOpenAnimated(GameObject* door, uint32 animProgress)
+	{
+		SetDoorOpen(door);
+		SetGameObjectAnimProgress(door, animProgress);
+	}
+
 	void SetGameObjectReady(GameObject* go)
 	{
 		if(go == NULL)
@@ -334,67 +387,113 @@ namespace
 		go->SetUInt32Value(GAMEOBJECT_STATE, GO_STATE_READY);
 	}
 
-	void ResetInteractiveGameObject(GameObject* go)
+	void SetInteractiveReady(GameObject* go)
 	{
 		if(go == NULL)
 			return;
 
 		go->SetUInt32Value(GAMEOBJECT_STATE, GO_STATE_READY);
-		go->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 100);
+		SetGameObjectAnimProgress(go, 100);
 		SetGameObjectUnclickable(go, false);
 		SetGameObjectClickable(go, true);
 	}
 
+	void SetLeverReady(GameObject* go)
+	{
+		SetInteractiveReady(go);
+	}
+
+	void SetInteractiveDisabled(GameObject* go)
+	{
+		if(go == NULL)
+			return;
+
+		go->SetUInt32Value(GAMEOBJECT_STATE, DOOR_STATE_OPEN);
+		SetGameObjectAnimProgress(go, 100);
+		SetGameObjectUnclickable(go, true);
+		SetGameObjectClickable(go, false);
+	}
+
+	void SetLeverDisabled(GameObject* go)
+	{
+		SetInteractiveDisabled(go);
+	}
+
+	void SetLeverDisabledToAllNearby(MapMgr* mapMgr, uint32 entry, float x, float y, float z)
+	{
+		if(mapMgr == NULL)
+			return;
+
+		MapCell* pCell = mapMgr->GetCell(mapMgr->GetPosX(x), mapMgr->GetPosY(y));
+		if(pCell == NULL)
+			return;
+
+		ObjectSet::const_iterator iter = pCell->Begin();
+		for(; iter != pCell->End(); ++iter)
+		{
+			Object* obj = *iter;
+			if(obj == NULL || obj->GetTypeId() != TYPEID_GAMEOBJECT || obj->GetEntry() != entry)
+				continue;
+
+			if(obj->CalcDistance(x, y, z) > 8.0f)
+				continue;
+
+			SetLeverDisabled(static_cast<GameObject*>(obj));
+		}
+	}
+
+	void SetChestReady(GameObject* go)
+	{
+		SetInteractiveReady(go);
+	}
+
+	void ResetInteractiveGameObject(GameObject* go)
+	{
+		SetInteractiveReady(go);
+	}
+
+	void ApplyResolvedDoorState(MapMgr* mapMgr, GameObject* door, uint32 entry, float x, float y, float z, bool open, int32 animProgress = -1)
+	{
+		if(open)
+		{
+			if(animProgress >= 0)
+				SetDoorOpenAnimated(door, static_cast<uint32>(animProgress));
+			else
+				SetDoorOpen(door);
+
+			ApplyDoorStateToAllNearby(mapMgr, entry, x, y, z, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
+		}
+		else
+		{
+			SetDoorLockedClosed(door);
+			ApplyDoorStateToAllNearby(mapMgr, entry, x, y, z, DOOR_FLAG_LOCKED, DOOR_STATE_CLOSED);
+		}
+	}
+
+	void ApplyInteractiveStateToResolvedAndNearby(MapMgr* mapMgr, GameObject* go, uint32 entry, float x, float y, float z)
+	{
+		SetInteractiveReady(go);
+		SetInteractiveStateToAllNearby(mapMgr, entry, x, y, z);
+	}
+
 	void ApplyFactoryDoorState(MapMgr* mapMgr, const DeadminesState& state)
 	{
-		if(state.factoryDoorOpen)
-			ApplyDoorStateToAllNearby(mapMgr, GO_FACTORY_DOOR, -190.860092f, -456.332184f, 54.496822f, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
-		else
-			ApplyDoorStateToAllNearby(mapMgr, GO_FACTORY_DOOR, -190.860092f, -456.332184f, 54.496822f, DOOR_FLAG_LOCKED, DOOR_STATE_CLOSED);
+		ApplyResolvedDoorState(mapMgr, GetFactoryDoor(mapMgr), GO_FACTORY_DOOR, -190.860092f, -456.332184f, 54.496822f, state.factoryDoorOpen);
 	}
 
 	void ApplyIronCladDoorState(MapMgr* mapMgr, const DeadminesState& state)
 	{
-		if(state.ironCladDoorBlasted)
-		{
-			ApplyDoorStateToAllNearby(mapMgr, GO_IRON_CLAD_DOOR, kIronCladDoorPosition.x, kIronCladDoorPosition.y, kIronCladDoorPosition.z, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
-			GameObject* door = GetIronCladDoor(mapMgr);
-			if(door != NULL)
-				door->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 255);
-		}
+		ApplyResolvedDoorState(mapMgr, GetIronCladDoor(mapMgr), GO_IRON_CLAD_DOOR, kIronCladDoorPosition.x, kIronCladDoorPosition.y, kIronCladDoorPosition.z, state.ironCladDoorBlasted, state.ironCladDoorBlasted ? 255 : 0);
 	}
 
 	void ApplyMastDoorState(MapMgr* mapMgr, const DeadminesState& state)
 	{
-		GameObject* door = GetMastRoomDoor(mapMgr);
-		if(door != NULL)
-		{
-			if(state.mastDoorOpen)
-			{
-				door->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 255);
-				door->SetUInt32Value(GAMEOBJECT_FLAGS, DOOR_FLAG_OPEN);
-				door->SetUInt32Value(GAMEOBJECT_STATE, DOOR_STATE_OPEN);
-			}
-			else
-			{
-				door->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 0);
-				door->SetUInt32Value(GAMEOBJECT_FLAGS, DOOR_FLAG_LOCKED);
-				door->SetUInt32Value(GAMEOBJECT_STATE, DOOR_STATE_CLOSED);
-			}
-		}
-
-		if(state.mastDoorOpen)
-			ApplyDoorStateToAllNearby(mapMgr, GO_MAST_ROOM_DOOR, -290.294f, -536.960f, 49.4353f, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
-		else
-			ApplyDoorStateToAllNearby(mapMgr, GO_MAST_ROOM_DOOR, -290.294f, -536.960f, 49.4353f, DOOR_FLAG_LOCKED, DOOR_STATE_CLOSED);
+		ApplyResolvedDoorState(mapMgr, GetMastRoomDoor(mapMgr), GO_MAST_ROOM_DOOR, -290.294f, -536.960f, 49.4353f, state.mastDoorOpen, state.mastDoorOpen ? 255 : 0);
 	}
 
 	void ApplyFoundryDoorState(MapMgr* mapMgr, const DeadminesState& state)
 	{
-		if(state.foundryDoorOpen)
-			ApplyDoorStateToAllNearby(mapMgr, GO_FOUNDRY_DOOR, -176.569000f, -577.640991f, 19.311600f, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
-		else
-			ApplyDoorStateToAllNearby(mapMgr, GO_FOUNDRY_DOOR, -176.569000f, -577.640991f, 19.311600f, DOOR_FLAG_LOCKED, DOOR_STATE_CLOSED);
+		ApplyResolvedDoorState(mapMgr, GetFoundryDoor(mapMgr), GO_FOUNDRY_DOOR, -176.569000f, -577.640991f, 19.311600f, state.foundryDoorOpen);
 	}
 
 	Creature* FindCreature(MapMgr* mapMgr, uint32 entry, float x, float y, float z)
@@ -582,22 +681,15 @@ namespace
 			return;
 
 		GameObject* door = GetIronCladDoor(mapMgr);
-		if(door == NULL)
-			return;
-
-		door->SetUInt32Value(GAMEOBJECT_ANIMPROGRESS, 255);
-		ApplyDoorStateToAllNearby(mapMgr, GO_IRON_CLAD_DOOR, kIronCladDoorPosition.x, kIronCladDoorPosition.y, kIronCladDoorPosition.z, DOOR_FLAG_OPEN, DOOR_STATE_OPEN);
+		ApplyResolvedDoorState(mapMgr, door, GO_IRON_CLAD_DOOR, kIronCladDoorPosition.x, kIronCladDoorPosition.y, kIronCladDoorPosition.z, true, 255);
 		SetGameObjectUnclickable(door, true);
 	}
 
 	void LockCannonDoorLever(MapMgr* mapMgr)
 	{
 		GameObject* lever = GetCannonDoorLever(mapMgr);
-		if(lever == NULL)
-			return;
-
-		SetGameObjectUnclickable(lever, true);
-		lever->SetUInt32Value(GAMEOBJECT_STATE, DOOR_STATE_OPEN);
+		SetLeverDisabled(lever);
+		SetLeverDisabledToAllNearby(mapMgr, GO_DOOR_LEVER, kCannonDoorLeverPosition.x, kCannonDoorLeverPosition.y, kCannonDoorLeverPosition.z);
 	}
 
 	void MarkCannonBlasted(MapMgr* mapMgr)
@@ -624,7 +716,8 @@ namespace
 			if(defender == NULL || !defender->isAlive())
 				continue;
 
-			MoveIfPossible(defender, kIronCladBlastPosition.x, kIronCladBlastPosition.y, kIronCladBlastPosition.z, 0.0f);
+			if(defender->CalcDistance(kIronCladBlastPosition.x, kIronCladBlastPosition.y, kIronCladBlastPosition.z) > 3.0f)
+				MoveIfPossible(defender, kIronCladBlastPosition.x, kIronCladBlastPosition.y, kIronCladBlastPosition.z, 0.0f);
 			AttackIfPossible(defender, target);
 		}
 	}
@@ -833,6 +926,18 @@ namespace
 		IronCladDoorAI(GameObject* go) : GameObjectAIScript(go)
 		{
 		}
+
+		static GameObjectAIScript* Create(GameObject* go) { return new IronCladDoorAI(go); }
+
+		void OnCreate()
+		{
+			ApplyIronCladDoorState(_gameobject->GetMapMgr(), GetDeadminesState(_gameobject->GetMapMgr()));
+		}
+
+		void OnSpawn()
+		{
+			ApplyIronCladDoorState(_gameobject->GetMapMgr(), GetDeadminesState(_gameobject->GetMapMgr()));
+		}
 	};
 
 	class MastDoorAI : public GameObjectAIScript
@@ -886,12 +991,12 @@ namespace
 
 		void OnCreate()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnSpawn()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnActivate(Player* player)
@@ -899,7 +1004,7 @@ namespace
 			(void)player;
 
 			ToggleFactoryDoor(_gameobject->GetMapMgr());
-			SetInteractiveStateToAllNearby(_gameobject->GetMapMgr(), GO_FACTORY_DOOR_LEVER, -188.136f, -460.313f, 54.5591f);
+			ApplyInteractiveStateToResolvedAndNearby(_gameobject->GetMapMgr(), GetFactoryDoorLever(_gameobject->GetMapMgr()), GO_FACTORY_DOOR_LEVER, -188.136f, -460.313f, 54.5591f);
 		}
 	};
 
@@ -914,12 +1019,12 @@ namespace
 
 		void OnCreate()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnSpawn()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnActivate(Player* player)
@@ -929,7 +1034,7 @@ namespace
 			MapMgr* mapMgr = _gameobject->GetMapMgr();
 
 			ToggleMastDoor(mapMgr);
-			SetInteractiveStateToAllNearby(mapMgr, GO_MAST_ROOM_LEVER, -287.282f, -539.877f, 49.4321f);
+			ApplyInteractiveStateToResolvedAndNearby(mapMgr, GetMastRoomLever(mapMgr), GO_MAST_ROOM_LEVER, -287.282f, -539.877f, 49.4321f);
 		}
 	};
 
@@ -944,12 +1049,12 @@ namespace
 
 		void OnCreate()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnSpawn()
 		{
-			SetGameObjectInteractive(_gameobject);
+			SetLeverReady(_gameobject);
 		}
 
 		void OnActivate(Player* player)
@@ -959,7 +1064,7 @@ namespace
 			MapMgr* mapMgr = _gameobject->GetMapMgr();
 
 			ToggleFoundryDoor(mapMgr);
-			SetInteractiveStateToAllNearby(mapMgr, GO_FOUNDRY_LEVER, -165.404f, -576.924f, 19.3064f);
+			ApplyInteractiveStateToResolvedAndNearby(mapMgr, GetFoundryLever(mapMgr), GO_FOUNDRY_LEVER, -165.404f, -576.924f, 19.3064f);
 		}
 	};
 
@@ -976,12 +1081,11 @@ namespace
 		{
 			if(GetDeadminesState(_gameobject->GetMapMgr()).ironCladDoorBlasted)
 			{
-				SetGameObjectUnclickable(_gameobject, true);
-				_gameobject->SetUInt32Value(GAMEOBJECT_STATE, DOOR_STATE_OPEN);
+				SetLeverDisabled(_gameobject);
 			}
 			else
 			{
-				ResetInteractiveGameObject(_gameobject);
+				SetLeverReady(_gameobject);
 			}
 		}
 
@@ -1002,20 +1106,27 @@ namespace
 
 		void OnCreate()
 		{
-			SetGameObjectInteractive(_gameobject);
-			if(GetDeadminesState(_gameobject->GetMapMgr()).ironCladDoorBlasted)
-				SetGameObjectUnclickable(_gameobject, true);
+			DeadminesState& state = GetDeadminesState(_gameobject->GetMapMgr());
+			if(state.ironCladDoorBlasted)
+			{
+				state.cannonEventInProgress = false;
+				SetInteractiveDisabled(_gameobject);
+			}
 			else
-				SetGameObjectInteractive(_gameobject);
+			{
+				if(state.cannonEventInProgress)
+				{
+					state.cannonEventInProgress = false;
+					state.cannonDefendersSummoned = false;
+				}
+
+				SetInteractiveReady(_gameobject);
+			}
 		}
 
 		void OnSpawn()
 		{
-			SetGameObjectInteractive(_gameobject);
-			if(GetDeadminesState(_gameobject->GetMapMgr()).ironCladDoorBlasted)
-				SetGameObjectUnclickable(_gameobject, true);
-			else
-				SetGameObjectInteractive(_gameobject);
+			OnCreate();
 		}
 
 		void OnActivate(Player* player)
@@ -1040,7 +1151,7 @@ namespace
 			m_phase = CANNON_PHASE_FUSE;
 			m_phaseTimer = CANNON_FUSE_MS;
 			m_activatorGuid = player->GetGUID();
-			SetGameObjectUnclickable(_gameobject, true);
+			SetInteractiveDisabled(_gameobject);
 			RegisterAIUpdateEvent(CANNON_EVENT_TICK_MS);
 		}
 
@@ -1097,6 +1208,8 @@ namespace
 				break;
 
 			default:
+				if(mapMgr != NULL)
+					GetDeadminesState(mapMgr).cannonEventInProgress = false;
 				m_phase = CANNON_PHASE_IDLE;
 				m_phaseTimer = 0;
 				m_activatorGuid = 0;
@@ -1142,12 +1255,12 @@ namespace
 
 		void OnCreate()
 		{
-			ResetInteractiveGameObject(_gameobject);
+			SetChestReady(_gameobject);
 		}
 
 		void OnSpawn()
 		{
-			ResetInteractiveGameObject(_gameobject);
+			SetChestReady(_gameobject);
 		}
 	};
 
@@ -1442,6 +1555,7 @@ namespace
 			m_transitionTimer = 0;
 			m_transitionTargetGuid = 0;
 			m_announcedAggro = false;
+			m_transitionMoveRetries = 0;
 			EquipWeaponSet(0);
 			_unit->SetStandState(STANDSTATE_STAND);
 		}
@@ -1489,16 +1603,19 @@ namespace
 
 			m_transitioning = true;
 			m_transitionStep = 0;
-			m_transitionTimer = 2500;
+			m_transitionTimer = 1200;
 			m_transitionTargetGuid = (target != NULL) ? target->GetGUID() : 0;
+			m_transitionMoveRetries = 0;
 			_unit->GetAIInterface()->StopMovement(0);
 			_unit->GetAIInterface()->setCurrentAgent(AGENT_NULL);
 			_unit->GetAIInterface()->setMoveType(MOVEMENTTYPE_FORWARDTHANSTOP);
 			_unit->GetAIInterface()->SetAllowedToEnterCombat(false);
 			_unit->GetAIInterface()->SetAIState(STATE_SCRIPTMOVE);
+			_unit->SetStandState(STANDSTATE_STAND);
 			if(target != NULL)
 				_unit->smsg_AttackStop(target);
-			_unit->setAttackTimer(2500, false);
+			_unit->setAttackTimer(9000, false);
+			_unit->setAttackTimer(9000, true);
 		}
 
 		void UpdateTransition(uint32 diff)
@@ -1509,28 +1626,50 @@ namespace
 			switch(m_transitionStep)
 			{
 			case 0:
-				_unit->GetAIInterface()->MoveTo(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z, kMrSmiteChestPosition.o);
-				m_transitionStep = 1;
-				m_transitionTimer = 3500;
-				break;
-			case 1:
-				if(_unit->CalcDistance(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z) > 2.0f)
+				if(_unit->CalcDistance(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z) <= 1.5f)
 				{
-					m_transitionTimer = 500;
-					return;
+					_unit->GetAIInterface()->StopMovement(0);
+					_unit->SetFacing(kMrSmiteChestPosition.o);
+					_unit->SetStandState(STANDSTATE_KNEEL);
+					m_transitionStep = 2;
+					m_transitionTimer = 1800;
+					break;
 				}
 
 				_unit->SetFacing(kMrSmiteChestPosition.o);
-				_unit->SetStandState(STANDSTATE_KNEEL);
+				_unit->GetAIInterface()->MoveTo(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z, kMrSmiteChestPosition.o);
+				m_transitionStep = 1;
+				m_transitionTimer = 250;
+				break;
+			case 1:
+				if (_unit->CalcDistance(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z) > 1.5f)
+				{
+					if (m_transitionMoveRetries < 10)
+					{
+						if((m_transitionMoveRetries % 2) == 0)
+							_unit->GetAIInterface()->MoveTo(kMrSmiteChestPosition.x, kMrSmiteChestPosition.y, kMrSmiteChestPosition.z, kMrSmiteChestPosition.o);
+
+						++m_transitionMoveRetries;
+						m_transitionTimer = 250;
+						return;
+					}
+				}
+
 				_unit->GetAIInterface()->StopMovement(0);
+				_unit->SetFacing(kMrSmiteChestPosition.o);
+				_unit->SetStandState(STANDSTATE_KNEEL);
 				m_transitionStep = 2;
-				m_transitionTimer = 3000;
+				m_transitionTimer = 1800;
 				break;
 			case 2:
 				EquipWeaponSet(m_phase);
-				_unit->SetStandState(STANDSTATE_STAND);
 				m_transitionStep = 3;
-				m_transitionTimer = 750;
+				m_transitionTimer = 900;
+				break;
+			case 3:
+				_unit->SetStandState(STANDSTATE_STAND);
+				m_transitionStep = 4;
+				m_transitionTimer = 300;
 				break;
 			default:
 				_unit->GetAIInterface()->SetAllowedToEnterCombat(true);
@@ -1553,6 +1692,7 @@ namespace
 		uint32 m_transitionTimer;
 		uint32 m_phase;
 		uint32 m_transitionStep;
+		uint32 m_transitionMoveRetries;
 		uint64 m_transitionTargetGuid;
 		bool m_announcedAggro;
 		bool m_transitioning;
@@ -1666,6 +1806,12 @@ namespace
 				m_thrashTimer = 10000 + RandomUInt(5000);
 		}
 
+		void OnDied(Unit* mKiller)
+		{
+			ClearDeadminesState(_unit->GetMapMgr());
+			DeadminesCombatAI::OnDied(mKiller);
+		}
+
 	protected:
 		void Reset()
 		{
@@ -1720,6 +1866,7 @@ void SetupDeadmines(ScriptMgr* mgr)
 	mgr->register_creature_script(CN_EDWIN_VANCLEEF, &VanCleefAI::Create);
 
 	mgr->register_gameobject_script(GO_FACTORY_DOOR, &FactoryDoorAI::Create);
+	mgr->register_gameobject_script(GO_IRON_CLAD_DOOR, &IronCladDoorAI::Create);
 	mgr->register_gameobject_script(GO_MAST_ROOM_DOOR, &MastDoorAI::Create);
 	mgr->register_gameobject_script(GO_FOUNDRY_DOOR, &FoundryDoorAI::Create);
 	mgr->register_gameobject_script(GO_FACTORY_DOOR_LEVER, &FactoryLeverAI::Create);
