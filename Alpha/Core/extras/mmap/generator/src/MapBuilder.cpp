@@ -85,6 +85,62 @@ namespace MMAP
         {
             return fileName.length() >= 4 && fileName.compare(fileName.length() - 4, 4, ".map") == 0;
         }
+
+        inline bool IsAscentTileMap(uint32 mapID)
+        {
+            switch (mapID)
+            {
+                case 0:
+                case 1:
+                case 30:
+                case 33:
+                case 37:
+                case 189:
+                case 209:
+                case 309:
+                case 469:
+                case 509:
+                case 530:
+                case 532:
+                case 533:
+                case 534:
+                case 543:
+                case 560:
+                case 564:
+                case 568:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        inline void SeedAllMapTiles(std::set<uint32>& tiles, uint32& count)
+        {
+            for (uint32 tileX = 0; tileX < 64; ++tileX)
+                for (uint32 tileY = 0; tileY < 64; ++tileY)
+                    if (tiles.insert(PackAscentTileID(tileX, tileY)).second)
+                        ++count;
+        }
+
+        inline bool ParseAscentPackedMapName(const std::string& fileName, uint32& mapID)
+        {
+            if (fileName.length() < 9 || fileName.compare(0, 4, "Map_") != 0)
+                return false;
+
+            const std::string digits = fileName.substr(4, fileName.length() - 8);
+            if (digits.empty())
+                return false;
+
+            for (size_t i = 0; i < digits.length(); ++i)
+                if (digits[i] < '0' || digits[i] > '9')
+                    return false;
+
+            if (fileName.compare(fileName.length() - 4, 4, ".bin") != 0)
+                return false;
+
+            mapID = uint32(atoi(digits.c_str()));
+            return true;
+        }
     }
 
     inline char const* GetDTErrorReason(dtStatus status) {
@@ -125,7 +181,6 @@ namespace MMAP
             m_config = json::parse(jsonConfig);
 
         m_terrainBuilder = new TerrainBuilder(skipLiquid, workdir);
-        m_rcContext = new rcContext(false);
 
         printf("Using %d thread(s) for processing.\n", threads);
         discoverTiles();
@@ -135,7 +190,6 @@ namespace MMAP
     MapBuilder::~MapBuilder()
     {
         delete m_terrainBuilder;
-        delete m_rcContext;
     }
 
     /**************************************************************************/
@@ -180,6 +234,16 @@ namespace MMAP
         getDirContents(files, maps_dir);
         for (uint32 i = 0; i < files.size(); ++i)
         {
+            if (ParseAscentPackedMapName(files[i], mapID))
+            {
+                if (m_tiles.find(mapID) == m_tiles.end())
+                {
+                    m_tiles.emplace(mapID, std::set<uint32>{});
+                    count++;
+                }
+                continue;
+            }
+
             mapID = uint32(atoi(files[i].substr(0, 3).c_str()));
             if (m_tiles.find(mapID) == m_tiles.end())
             {
@@ -213,6 +277,7 @@ namespace MMAP
         {
             std::set<uint32>& tiles = (*itr).second;
             mapID = (*itr).first;
+            bool hasGlobalVMapManifest = false;
 
             files.clear();
             getDirContents(files, vmaps_dir, "*.vmdir");
@@ -220,8 +285,14 @@ namespace MMAP
             {
                 uint32 manifestMapId = 0;
                 bool tiledManifest = false;
-                if(!ParseAscentVMapManifestName(files[i], manifestMapId, tileX, tileY, tiledManifest) || manifestMapId != mapID || !tiledManifest)
+                if(!ParseAscentVMapManifestName(files[i], manifestMapId, tileX, tileY, tiledManifest) || manifestMapId != mapID)
                     continue;
+
+                if (!tiledManifest)
+                {
+                    hasGlobalVMapManifest = true;
+                    continue;
+                }
 
                 tileID = PackAscentTileID(tileX, tileY);
                 if (tiles.insert(tileID).second)
@@ -232,6 +303,19 @@ namespace MMAP
             getDirContents(files, maps_dir);
             for (uint32 i = 0; i < files.size(); ++i)
             {
+                uint32 packedMapId = 0;
+                if (ParseAscentPackedMapName(files[i], packedMapId))
+                {
+                    if (packedMapId == mapID)
+                    {
+                        const size_t before = tiles.size();
+                        TerrainBuilder::discoverMapTiles(m_workdir, mapID, tiles);
+                        count += uint32(tiles.size() - before);
+                    }
+
+                    continue;
+                }
+
                 if(!HasMapFileExtension(files[i]) || files[i].length() < 7 || uint32(atoi(files[i].substr(0, 3).c_str())) != mapID)
                     continue;
 
@@ -242,6 +326,13 @@ namespace MMAP
                 if (tiles.insert(tileID).second)
                     count++;
             }
+
+            // Some Ascent/TBC datasets keep continent and city collision in a single
+            // global manifest like 000.vmdir instead of tile manifests. Seed the full
+            // tile grid so those tiles are scheduled and can use the global-manifest
+            // fallback during vmap loading.
+            if (hasGlobalVMapManifest && IsAscentTileMap(mapID))
+                SeedAllMapTiles(tiles, count);
         }
         printf("found %u.\n\n", count);
     }
@@ -633,6 +724,8 @@ namespace MMAP
     /**************************************************************************/
     void MapBuilder::buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount)
     {
+        std::lock_guard<std::mutex> buildGuard(m_buildMutex);
+
         printf("[Map %03i] Building tile [%02u,%02u] (%02u / %02u)    \n", mapID, tileX, tileY, curTile, tileCount);
 
         MeshData meshData;
@@ -702,21 +795,31 @@ namespace MMAP
         getGridBounds(mapID, fullMinX, fullMinY, fullMaxX, fullMaxY);
 
         const bool hasFullBounds = fullMinX <= 63 && fullMinY <= 63 && fullMaxX <= 63 && fullMaxY <= 63 && fullMinX <= fullMaxX && fullMinY <= fullMaxY;
-        // Detour's 32-bit poly refs require at least 10 salt bits, so large maps
-        // cannot always keep the default 14 poly bits. Size the root navmesh by the
-        // number of tiles we will actually load and reduce poly bits only when
-        // necessary to keep the root valid for continent-scale maps.
-        int maxTiles = int(tiles.size());
-        if (maxTiles < 1)
-            maxTiles = 1;
+        // Detour's 32-bit poly refs require at least 10 salt bits in
+        // dtNavMesh::init(), so large maps cannot always keep the default
+        // 14 poly bits. Size the root navmesh by the number of tiles we will
+        // actually load and reduce poly bits only when necessary to keep the
+        // root valid for continent-scale maps.
+        int tileCount = int(tiles.size());
+        if (tileCount < 1)
+            tileCount = 1;
 
-        int tileBits = dtIlog2(dtNextPow2((unsigned int)maxTiles));
+        int maxTiles = int(dtNextPow2((unsigned int)tileCount));
+        int tileBits = dtIlog2((unsigned int)maxTiles);
         if (tileBits < 1)
             tileBits = 1;
 
-        int polyBits = 22 - tileBits;
-        if (polyBits > 14)
-            polyBits = 14;
+        // Keep enough poly-ref space for dense continent city tiles. The legacy
+        // 22-bit budget was too small for Stormwind-class tiles and caused
+        // addTile() to reject otherwise valid navmesh data once a tile exceeded
+        // 4096 polys.
+        int polyBits = 14;
+        int saltBits = int(sizeof(dtPolyRef) * 8) - tileBits - polyBits;
+        if (saltBits < 10)
+        {
+            polyBits = int(sizeof(dtPolyRef) * 8) - tileBits - 10;
+            saltBits = 10;
+        }
         if (polyBits < 1)
             polyBits = 1;
 
@@ -750,8 +853,8 @@ namespace MMAP
             mapID, uint32(tiles.size()), tileXMin, tileYMin, tileXMax, tileYMax,
             hasFullBounds ? fullMinX : tileXMin, hasFullBounds ? fullMinY : tileYMin,
             hasFullBounds ? fullMaxX : tileXMax, hasFullBounds ? fullMaxY : tileYMax);
-        printf("[Map %03i] Navmesh root params: maxTiles=%d tileBits=%d maxPolysPerTile=%d polyBits=%d\n",
-            mapID, maxTiles, tileBits, maxPolysPerTile, polyBits);
+        printf("[Map %03i] Navmesh root params: tileCount=%d maxTiles=%d tileBits=%d maxPolysPerTile=%d polyBits=%d\n",
+            mapID, tileCount, maxTiles, tileBits, maxPolysPerTile, polyBits);
 
         /***       now create the navmesh       ***/
 
@@ -900,7 +1003,8 @@ namespace MMAP
             delete[] tiles;
             return;
         }
-        rcMergePolyMeshes(m_rcContext, pmmerge, nmerge, *iv.polyMesh);
+        rcContext mergeContext(false);
+        rcMergePolyMeshes(&mergeContext, pmmerge, nmerge, *iv.polyMesh);
 
         iv.polyMeshDetail = rcAllocPolyMeshDetail();
         if (!iv.polyMeshDetail)
@@ -911,7 +1015,7 @@ namespace MMAP
             delete[] tiles;
             return;
         }
-        rcMergePolyMeshDetails(m_rcContext, dmmerge, nmerge, *iv.polyMeshDetail);
+        rcMergePolyMeshDetails(&mergeContext, dmmerge, nmerge, *iv.polyMeshDetail);
 
         // free things up
         delete [] pmmerge;
@@ -1096,12 +1200,13 @@ namespace MMAP
     bool MapBuilder::buildCommonTile(const char* tileString, Tile& tile, rcConfig& tileCfg, float* tVerts, int tVertCount, int* tTris, int tTriCount, float* lVerts, int lVertCount,
                                      int* lTris, int lTriCount, uint8* lTriFlags)
     {
+        rcContext buildContext(false);
         float inspectNav[3] = { 0.0f, 0.0f, 0.0f };
         const bool inspectThisSubTile = m_inspectPoint.enabled && (ToNavMeshCoords(m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav), TileBoundsContainInspectPoint(tileCfg.bmin, tileCfg.bmax, inspectNav));
 
         // Build heightfield for walkable area
         tile.solid = rcAllocHeightfield();
-        if (!tile.solid || !rcCreateHeightfield(m_rcContext, *tile.solid, tileCfg.width, tileCfg.height, tileCfg.bmin, tileCfg.bmax, tileCfg.cs, tileCfg.ch))
+        if (!tile.solid || !rcCreateHeightfield(&buildContext, *tile.solid, tileCfg.width, tileCfg.height, tileCfg.bmin, tileCfg.bmax, tileCfg.cs, tileCfg.ch))
         {
             printf("%s Failed building heightfield!                       \n", tileString);
             return false;
@@ -1110,10 +1215,10 @@ namespace MMAP
         // mark all walkable tiles, both liquids and solids
         unsigned char* triFlags = new unsigned char[tTriCount];
         memset(triFlags, NAV_AREA_GROUND, tTriCount * sizeof(unsigned char));
-        rcClearUnwalkableTriangles(m_rcContext, tileCfg.walkableSlopeAngle, tVerts, tVertCount, tTris, tTriCount, triFlags);
+        rcClearUnwalkableTriangles(&buildContext, tileCfg.walkableSlopeAngle, tVerts, tVertCount, tTris, tTriCount, triFlags);
 
         // mark almost unwalkable triangles with steep flag
-        rcModAlmostUnwalkableTriangles(m_rcContext, 50.0f, tVerts, tVertCount, tTris, tTriCount, triFlags);
+        rcModAlmostUnwalkableTriangles(&buildContext, 50.0f, tVerts, tVertCount, tTris, tTriCount, triFlags);
 
         if (inspectThisSubTile)
         {
@@ -1137,50 +1242,50 @@ namespace MMAP
                 tileCfg.bmin[0], tileCfg.bmin[1], tileCfg.bmin[2], tileCfg.bmax[0], tileCfg.bmax[1], tileCfg.bmax[2]);
         }
 
-        rcRasterizeTriangles(m_rcContext, tVerts, tVertCount, tTris, triFlags, tTriCount, *tile.solid, tileCfg.walkableClimb);
+        rcRasterizeTriangles(&buildContext, tVerts, tVertCount, tTris, triFlags, tTriCount, *tile.solid, tileCfg.walkableClimb);
         delete[] triFlags;
 
-        rcFilterLowHangingWalkableObstacles(m_rcContext, tileCfg.walkableClimb, *tile.solid);
-        rcFilterLedgeSpans(m_rcContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid);
-        rcFilterWalkableLowHeightSpans(m_rcContext, tileCfg.walkableHeight, *tile.solid);
+        rcFilterLowHangingWalkableObstacles(&buildContext, tileCfg.walkableClimb, *tile.solid);
+        rcFilterLedgeSpans(&buildContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid);
+        rcFilterWalkableLowHeightSpans(&buildContext, tileCfg.walkableHeight, *tile.solid);
         if (lVerts)
-            rcRasterizeTriangles(m_rcContext, lVerts, lVertCount, lTris, lTriFlags, lTriCount, *tile.solid, tileCfg.walkableClimb);
+            rcRasterizeTriangles(&buildContext, lVerts, lVertCount, lTris, lTriFlags, lTriCount, *tile.solid, tileCfg.walkableClimb);
 
         // compact heightfield spans
         tile.chf = rcAllocCompactHeightfield();
-        if (!tile.chf || !rcBuildCompactHeightfield(m_rcContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid, *tile.chf))
+        if (!tile.chf || !rcBuildCompactHeightfield(&buildContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid, *tile.chf))
         {
             printf("%s Failed compacting heightfield!                     \n", tileString);
             return false;
         }
 
         // build polymesh intermediates
-        if (!rcErodeWalkableArea(m_rcContext, tileCfg.walkableRadius, *tile.chf))
+        if (!rcErodeWalkableArea(&buildContext, tileCfg.walkableRadius, *tile.chf))
         {
             printf("%s Failed eroding area!                               \n", tileString);
             return false;
         }
 
-        if (!rcMedianFilterWalkableArea(m_rcContext, *tile.chf))
+        if (!rcMedianFilterWalkableArea(&buildContext, *tile.chf))
         {
             printf("%s Failed filtering area!                             \n", tileString);
             return false;
         }
 
-        if (!rcBuildDistanceField(m_rcContext, *tile.chf))
+        if (!rcBuildDistanceField(&buildContext, *tile.chf))
         {
             printf("%s Failed building distance field!                    \n", tileString);
             return false;
         }
 
-        if (!rcBuildRegions(m_rcContext, *tile.chf, tileCfg.borderSize, tileCfg.minRegionArea, tileCfg.mergeRegionArea))
+        if (!rcBuildRegions(&buildContext, *tile.chf, tileCfg.borderSize, tileCfg.minRegionArea, tileCfg.mergeRegionArea))
         {
             printf("%s Failed building regions!                           \n", tileString);
             return false;
         }
 
         tile.cset = rcAllocContourSet();
-        if (!tile.cset || !rcBuildContours(m_rcContext, *tile.chf, tileCfg.maxSimplificationError, tileCfg.maxEdgeLen, *tile.cset))
+        if (!tile.cset || !rcBuildContours(&buildContext, *tile.chf, tileCfg.maxSimplificationError, tileCfg.maxEdgeLen, *tile.cset))
         {
             printf("%s Failed building contours!                          \n", tileString);
             return false;
@@ -1188,14 +1293,14 @@ namespace MMAP
 
         // build polymesh
         tile.pmesh = rcAllocPolyMesh();
-        if (!tile.pmesh || !rcBuildPolyMesh(m_rcContext, *tile.cset, tileCfg.maxVertsPerPoly, *tile.pmesh))
+        if (!tile.pmesh || !rcBuildPolyMesh(&buildContext, *tile.cset, tileCfg.maxVertsPerPoly, *tile.pmesh))
         {
             printf("%s Failed building polymesh!                          \n", tileString);
             return false;
         }
 
         tile.dmesh = rcAllocPolyMeshDetail();
-        if (!tile.dmesh || !rcBuildPolyMeshDetail(m_rcContext, *tile.pmesh, *tile.chf, tileCfg.detailSampleDist, tileCfg.detailSampleMaxError, *tile.dmesh))
+        if (!tile.dmesh || !rcBuildPolyMeshDetail(&buildContext, *tile.pmesh, *tile.chf, tileCfg.detailSampleDist, tileCfg.detailSampleMaxError, *tile.dmesh))
         {
             printf("%s Failed building polymesh detail!                   \n", tileString);
             return false;

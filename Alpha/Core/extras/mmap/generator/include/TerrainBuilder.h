@@ -29,6 +29,8 @@
 #include "G3D/Vector3.h"
 #include "G3D/Matrix3.h"
 
+#include <set>
+
 namespace MMAP
 {
     enum Spot
@@ -86,6 +88,7 @@ namespace MMAP
             TerrainBuilder(bool skipLiquid, const char* workdir = "./");
             ~TerrainBuilder();
 
+            static bool discoverMapTiles(const char* workdir, uint32 mapID, std::set<uint32>& tiles);
             void loadMap(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData);
             bool loadVMap(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData);
             void loadOffMeshConnections(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData, const char* offMeshFilePath);

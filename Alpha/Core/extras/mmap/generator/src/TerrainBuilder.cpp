@@ -22,11 +22,86 @@
 #include "MapBuilder.h"
 #include "AscentVMapBridge.h"
 
+#include <vector>
 
 namespace MMAP
 {
+    namespace
+    {
+        bool ReadAscentTerrainOffsets(const char* workdir, uint32 mapID, std::vector<uint32>& offsets)
+        {
+            char mapFileName[255];
+            sprintf(mapFileName, "%s/maps/Map_%u.bin", workdir, mapID);
+
+            FILE* mapFile = fopen(mapFileName, "rb");
+            if (!mapFile)
+                return false;
+
+            fseek(mapFile, 0, SEEK_END);
+            const long fileSize = ftell(mapFile);
+            fseek(mapFile, 0, SEEK_SET);
+            if (fileSize <= long(ASCENT_TERRAIN_HEADER_SIZE))
+            {
+                fclose(mapFile);
+                return false;
+            }
+
+            offsets.resize(ASCENT_TERRAIN_GRID_SIZE * ASCENT_TERRAIN_GRID_SIZE);
+            const size_t readCount = fread(&offsets[0], sizeof(uint32), offsets.size(), mapFile);
+            fclose(mapFile);
+            return readCount == offsets.size();
+        }
+
+        bool LoadAscentTerrainCell(FILE* mapFile, const std::vector<uint32>& offsets, uint32 cellX, uint32 cellY, AscentTerrainCell& cell)
+        {
+            if (cellX >= ASCENT_TERRAIN_GRID_SIZE || cellY >= ASCENT_TERRAIN_GRID_SIZE)
+                return false;
+
+            const uint32 offset = offsets[cellX * ASCENT_TERRAIN_GRID_SIZE + cellY];
+            if (offset == 0)
+                return false;
+
+            if (fseek(mapFile, offset, SEEK_SET) != 0)
+                return false;
+
+            return fread(&cell, sizeof(AscentTerrainCell), 1, mapFile) == 1;
+        }
+
+        bool HasAnyAscentTerrainCellsInTile(const std::vector<uint32>& offsets, uint32 tileX, uint32 tileY)
+        {
+            const uint32 startCellX = tileX * ASCENT_TERRAIN_CELLS_PER_TILE;
+            const uint32 startCellY = tileY * ASCENT_TERRAIN_CELLS_PER_TILE;
+            for (uint32 cellX = startCellX; cellX < startCellX + ASCENT_TERRAIN_CELLS_PER_TILE; ++cellX)
+                for (uint32 cellY = startCellY; cellY < startCellY + ASCENT_TERRAIN_CELLS_PER_TILE; ++cellY)
+                    if (offsets[cellX * ASCENT_TERRAIN_GRID_SIZE + cellY] != 0)
+                        return true;
+
+            return false;
+        }
+    }
+
     TerrainBuilder::TerrainBuilder(bool skipLiquid, const char* workdir /*= "./"*/) : m_skipLiquid(skipLiquid), m_workdir(workdir) { }
     TerrainBuilder::~TerrainBuilder() { }
+
+    bool TerrainBuilder::discoverMapTiles(const char* workdir, uint32 mapID, std::set<uint32>& tiles)
+    {
+        std::vector<uint32> offsets;
+        if (!ReadAscentTerrainOffsets(workdir, mapID, offsets))
+            return false;
+
+        for (uint32 cellX = 0; cellX < ASCENT_TERRAIN_GRID_SIZE; ++cellX)
+        {
+            for (uint32 cellY = 0; cellY < ASCENT_TERRAIN_GRID_SIZE; ++cellY)
+            {
+                if (offsets[cellX * ASCENT_TERRAIN_GRID_SIZE + cellY] == 0)
+                    continue;
+
+                tiles.insert(PackAscentTileID(cellX / ASCENT_TERRAIN_CELLS_PER_TILE, cellY / ASCENT_TERRAIN_CELLS_PER_TILE));
+            }
+        }
+
+        return true;
+    }
 
     /**************************************************************************/
     void TerrainBuilder::getLoopVars(Spot portion, int& loopStart, int& loopEnd, int& loopInc)
@@ -76,6 +151,130 @@ namespace MMAP
     /**************************************************************************/
     bool TerrainBuilder::loadMap(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData, Spot portion)
     {
+        if (portion == ENTIRE)
+        {
+            std::vector<uint32> offsets;
+            if (ReadAscentTerrainOffsets(m_workdir, mapID, offsets) &&
+                HasAnyAscentTerrainCellsInTile(offsets, tileX, tileY))
+            {
+                char mapFileName[255];
+                sprintf(mapFileName, "%s/maps/Map_%u.bin", m_workdir, mapID);
+
+                FILE* mapFile = fopen(mapFileName, "rb");
+                if (!mapFile)
+                    return false;
+
+                const uint32 sampleCount = ASCENT_TERRAIN_SAMPLES_PER_TILE;
+                const uint32 vertexCountPerSide = sampleCount + 1;
+                const float sampleStep = GRID_SIZE / float(sampleCount);
+                const uint32 baseIndex = meshData.solidVerts.size() / 3;
+
+                std::vector<float> heights(vertexCountPerSide * vertexCountPerSide, 0.0f);
+                std::vector<uint8> valid(vertexCountPerSide * vertexCountPerSide, 0);
+
+                for (uint32 sampleX = 0; sampleX <= sampleCount; ++sampleX)
+                {
+                    for (uint32 sampleY = 0; sampleY <= sampleCount; ++sampleY)
+                    {
+                        uint32 cellX = tileX * ASCENT_TERRAIN_CELLS_PER_TILE;
+                        uint32 cellY = tileY * ASCENT_TERRAIN_CELLS_PER_TILE;
+                        uint32 localX = 0;
+                        uint32 localY = 0;
+
+                        if (sampleX == sampleCount)
+                        {
+                            if (cellX + ASCENT_TERRAIN_CELLS_PER_TILE < ASCENT_TERRAIN_GRID_SIZE)
+                            {
+                                cellX += ASCENT_TERRAIN_CELLS_PER_TILE;
+                                localX = 0;
+                            }
+                            else
+                            {
+                                cellX += ASCENT_TERRAIN_CELLS_PER_TILE - 1;
+                                localX = ASCENT_TERRAIN_SAMPLES_PER_CELL - 1;
+                            }
+                        }
+                        else
+                        {
+                            cellX += sampleX / ASCENT_TERRAIN_SAMPLES_PER_CELL;
+                            localX = sampleX % ASCENT_TERRAIN_SAMPLES_PER_CELL;
+                        }
+
+                        if (sampleY == sampleCount)
+                        {
+                            if (cellY + ASCENT_TERRAIN_CELLS_PER_TILE < ASCENT_TERRAIN_GRID_SIZE)
+                            {
+                                cellY += ASCENT_TERRAIN_CELLS_PER_TILE;
+                                localY = 0;
+                            }
+                            else
+                            {
+                                cellY += ASCENT_TERRAIN_CELLS_PER_TILE - 1;
+                                localY = ASCENT_TERRAIN_SAMPLES_PER_CELL - 1;
+                            }
+                        }
+                        else
+                        {
+                            cellY += sampleY / ASCENT_TERRAIN_SAMPLES_PER_CELL;
+                            localY = sampleY % ASCENT_TERRAIN_SAMPLES_PER_CELL;
+                        }
+
+                        AscentTerrainCell cell;
+                        if (!LoadAscentTerrainCell(mapFile, offsets, cellX, cellY, cell))
+                            continue;
+
+                        const size_t flatIndex = sampleX * vertexCountPerSide + sampleY;
+                        heights[flatIndex] = cell.Z[localX][localY];
+                        valid[flatIndex] = 1;
+                    }
+                }
+
+                fclose(mapFile);
+
+                const float xOffset = (float(tileX) - 32.0f) * GRID_SIZE;
+                const float yOffset = (float(tileY) - 32.0f) * GRID_SIZE;
+                for (uint32 sampleX = 0; sampleX <= sampleCount; ++sampleX)
+                {
+                    for (uint32 sampleY = 0; sampleY <= sampleCount; ++sampleY)
+                    {
+                        const size_t flatIndex = sampleX * vertexCountPerSide + sampleY;
+                        const float worldX = (xOffset + sampleX * sampleStep) * -1.0f;
+                        const float worldY = (yOffset + sampleY * sampleStep) * -1.0f;
+                        meshData.solidVerts.append(worldX);
+                        meshData.solidVerts.append(heights[flatIndex]);
+                        meshData.solidVerts.append(worldY);
+                    }
+                }
+
+                for (uint32 sampleX = 0; sampleX < sampleCount; ++sampleX)
+                {
+                    for (uint32 sampleY = 0; sampleY < sampleCount; ++sampleY)
+                    {
+                        const size_t v00 = sampleX * vertexCountPerSide + sampleY;
+                        const size_t v01 = sampleX * vertexCountPerSide + (sampleY + 1);
+                        const size_t v10 = (sampleX + 1) * vertexCountPerSide + sampleY;
+                        const size_t v11 = (sampleX + 1) * vertexCountPerSide + (sampleY + 1);
+
+                        if (!valid[v00] || !valid[v01] || !valid[v10] || !valid[v11])
+                            continue;
+
+                        meshData.solidTris.append(int(baseIndex + v00));
+                        meshData.solidTris.append(int(baseIndex + v11));
+                        meshData.solidTris.append(int(baseIndex + v10));
+
+                        meshData.solidTris.append(int(baseIndex + v00));
+                        meshData.solidTris.append(int(baseIndex + v01));
+                        meshData.solidTris.append(int(baseIndex + v11));
+                    }
+                }
+
+                return meshData.solidTris.size() > 0 || meshData.liquidTris.size() > 0;
+            }
+        }
+
+        if (portion != ENTIRE)
+            return false;
+
         char mapFileName[255];
         sprintf(mapFileName, "%s/maps/%03u%02u%02u.map", m_workdir, mapID, tileY, tileX);
 

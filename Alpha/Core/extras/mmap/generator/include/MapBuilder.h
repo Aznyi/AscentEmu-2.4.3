@@ -23,6 +23,7 @@
 #include <set>
 #include <map>
 #include <future>
+#include <mutex>
 #include <sstream>
 
 #include "TerrainBuilder.h"
@@ -167,11 +168,14 @@ namespace MMAP
 
             json m_config;
 
-            // build performance - not really used for now
-            rcContext* m_rcContext;
-
             // Task queue that will handle all worker
             TaskQueueUPtr m_taskQueue;
+
+            // Some legacy generator paths still touch libraries and helpers that
+            // are not reliably thread-safe under continent-scale workloads.
+            // Keep tile builds serialized for correctness; the task queue still
+            // manages progress and can be narrowed later once lower layers are audited.
+            mutable std::mutex m_buildMutex;
 
             // used to know wich map have launched all its tile work
             MapSet m_mapDone;

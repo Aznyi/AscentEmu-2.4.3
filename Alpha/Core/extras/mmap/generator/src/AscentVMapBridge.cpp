@@ -143,21 +143,36 @@ namespace MMAP
                 const string basePath = BuildVMapBasePath(workdir);
                 VMAP::MapTree mapTree(basePath.c_str());
 
+                const uint32 packedTileID = PackAscentTileID(tileX, tileY);
+                std::string loadedManifest;
+
 		char manifestName[64];
 		if(IsAscentTileMap(mapID))
+                {
 			snprintf(manifestName, sizeof(manifestName), "%03u_%u_%u.vmdir", mapID, tileX, tileY);
+                        loadedManifest = manifestName;
+                        if(!mapTree.loadMap(loadedManifest, packedTileID))
+                        {
+                                snprintf(manifestName, sizeof(manifestName), "%03u.vmdir", mapID);
+                                loadedManifest = manifestName;
+                                if(!mapTree.loadMap(loadedManifest, packedTileID))
+                                        return false;
+                        }
+                }
 		else
+                {
 			snprintf(manifestName, sizeof(manifestName), "%03u.vmdir", mapID);
-
-		if(!mapTree.loadMap(string(manifestName), PackAscentTileID(tileX, tileY)))
-			return false;
+                        loadedManifest = manifestName;
+                        if(!mapTree.loadMap(loadedManifest, packedTileID))
+                                return false;
+                }
 
                 G3D::Array<VMAP::ModelContainer*> containers;
                 mapTree.getModelContainer(containers);
                 for(int i = 0; i < containers.size(); ++i)
                         AppendContainerGeometry(containers[i], meshData);
 
-                mapTree.unloadMap(string(manifestName), PackAscentTileID(tileX, tileY));
+                mapTree.unloadMap(loadedManifest, packedTileID);
                 return (meshData.solidVerts.size() > 0);
 	}
 

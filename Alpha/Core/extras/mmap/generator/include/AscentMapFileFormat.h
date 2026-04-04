@@ -1,6 +1,20 @@
 #ifndef ASCENT_MMAP_MAP_FILE_FORMAT_H
 #define ASCENT_MMAP_MAP_FILE_FORMAT_H
 
+static const uint32 ASCENT_TERRAIN_HEADER_SIZE = 1048576;
+static const uint32 ASCENT_TERRAIN_GRID_SIZE = 512;
+static const uint32 ASCENT_TERRAIN_CELLS_PER_TILE = 8;
+static const uint32 ASCENT_TERRAIN_SAMPLES_PER_CELL = 32;
+static const uint32 ASCENT_TERRAIN_SAMPLES_PER_TILE = ASCENT_TERRAIN_CELLS_PER_TILE * ASCENT_TERRAIN_SAMPLES_PER_CELL;
+
+struct AscentTerrainCell
+{
+	uint16 AreaID[2][2];
+	uint8 LiquidType[2][2];
+	float LiquidLevel[2][2];
+	float Z[ASCENT_TERRAIN_SAMPLES_PER_CELL][ASCENT_TERRAIN_SAMPLES_PER_CELL];
+};
+
 struct GridMapFileHeader
 {
 	uint32 mapMagic;
