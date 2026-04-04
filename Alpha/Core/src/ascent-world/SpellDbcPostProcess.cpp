@@ -325,9 +325,9 @@ static void DeriveProcFlagsIfUnset(SpellEntry* sp)
 	static const uint32 AURA_PROC_TRIGGER_SPELL  = 42u;
 	static const uint32 AURA_PROC_TRIGGER_DAMAGE = 43u;
 
-	int32 procIdx = -1;
 	uint32 procAura = 0;
 	uint32 triggerSpellId = 0;
+	bool foundProcAura = false;
 
 	for(uint32 i = 0; i < 3; ++i)
 	{
@@ -338,17 +338,13 @@ static void DeriveProcFlagsIfUnset(SpellEntry* sp)
 		if(aura != AURA_PROC_TRIGGER_SPELL && aura != AURA_PROC_TRIGGER_DAMAGE)
 			continue;
 
-		const uint32 trig = sp->EffectTriggerSpell[i];
-		if(trig == 0)
-			continue;
-
-		procIdx = (int32)i;
+		foundProcAura = true;
 		procAura = aura;
-		triggerSpellId = trig;
+		triggerSpellId = sp->EffectTriggerSpell[i];
 		break;
 	}
 
-	if(procIdx < 0)
+	if(!foundProcAura)
 		return;
 
 	SpellEntry* triggered = dbcSpell.LookupEntryForced(triggerSpellId);
@@ -367,7 +363,7 @@ static void DeriveProcFlagsIfUnset(SpellEntry* sp)
 	{
 		sp->procFlags = PROC_ON_CAST_SPELL;
 	}
-	else
+	else if(triggerSpellId != 0)
 	{
 		sp->procFlags = PROC_ON_CAST_SPELL;
 	}
