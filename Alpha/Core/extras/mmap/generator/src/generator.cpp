@@ -24,9 +24,24 @@
 
 #include "DetourNavMesh.h"
 
+#include <algorithm>
 #include <string>
+#include <thread>
 
 using namespace MMAP;
+
+namespace
+{
+    int GetDefaultThreadCount()
+    {
+        const unsigned int hardwareThreads = std::thread::hardware_concurrency();
+        if (hardwareThreads == 0)
+            return 1;
+
+        const unsigned int conservativeCap = 4;
+        return int(std::min(hardwareThreads, conservativeCap));
+    }
+}
 
 bool checkDirectories(bool debugOutput, const char* workdir)
 {
@@ -326,6 +341,12 @@ bool handleArgs(int argc, char** argv,
 
 int main(int argc, char** argv)
 {
+#if INTPTR_MAX < INT64_MAX
+    printf("movemapgen now requires an x64 build for stability on dense tiles.\n");
+    printf("Please run the x64 Release binary from extras\\\\mmap\\\\generator\\\\bin\\\\x64\\\\Release\\\\movemapgen.exe\n");
+    return -4;
+#endif
+
     std::vector<uint32> mapIds;
     int threads = -1;
     int tileX = -1, tileY = -1;
@@ -358,9 +379,8 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    if (threads == -1) {
-        threads = std::thread::hardware_concurrency();
-    }
+    if (threads == -1)
+        threads = GetDefaultThreadCount();
 
     if ((mapIds.size() == 0) && debug)
     {

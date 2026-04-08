@@ -23,10 +23,87 @@
 #include "DetourNavMeshBuilder.h"
 #include "DetourCommon.h"
 
+#include <cstdarg>
+#include <atomic>
 #include <climits>
 #include <cmath>
 #include <fstream>
 #include <future>
+#include <map>
+#include <thread>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+namespace
+{
+    std::mutex& GetLogMutex()
+    {
+        static std::mutex logMutex;
+        return logMutex;
+    }
+
+    void FlushLog(const char* fmt, ...)
+    {
+        std::lock_guard<std::mutex> logGuard(GetLogMutex());
+        va_list args;
+        va_start(args, fmt);
+        vprintf(fmt, args);
+        va_end(args);
+        fflush(stdout);
+    }
+
+#ifdef _MSC_VER
+    int LogStructuredException(const char* tileString, const char* stage, unsigned long code)
+    {
+        FlushLog("%s Structured exception during %s (code=0x%08lX)\n", tileString, stage, code);
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    bool CreateHeightfieldWithExceptionLogging(const char* tileString, rcContext* buildContext, rcHeightfield& solid,
+        int width, int height, const float* bmin, const float* bmax, float cs, float ch)
+    {
+        __try
+        {
+            return rcCreateHeightfield(buildContext, solid, width, height, bmin, bmax, cs, ch);
+        }
+        __except (LogStructuredException(tileString, "rcCreateHeightfield", GetExceptionCode()))
+        {
+            return false;
+        }
+    }
+
+    bool RasterizeSolidTrianglesWithExceptionLogging(const char* tileString, rcContext* buildContext,
+        const float* verts, int vertCount, const int* tris, const unsigned char* triFlags, int triCount,
+        rcHeightfield& solid, int walkableClimb)
+    {
+        __try
+        {
+            rcRasterizeTriangles(buildContext, verts, vertCount, tris, triFlags, triCount, solid, walkableClimb);
+            return true;
+        }
+        __except (LogStructuredException(tileString, "rcRasterizeTriangles(solid)", GetExceptionCode()))
+        {
+            return false;
+        }
+    }
+
+    bool CreateNavMeshDataWithExceptionLogging(const char* tileString, dtNavMeshCreateParams* params,
+        unsigned char** navData, int* navDataSize)
+    {
+        __try
+        {
+            return dtCreateNavMeshData(params, navData, navDataSize);
+        }
+        __except (LogStructuredException(tileString, "dtCreateNavMeshData", GetExceptionCode()))
+        {
+            return false;
+        }
+    }
+#endif
+}
 
 void rcModAlmostUnwalkableTriangles(rcContext* ctx, const float walkableSlopeAngle,
     const float* verts, int /*nv*/,
@@ -165,7 +242,7 @@ namespace MMAP
 
     MapBuilder::MapBuilder(const char* configInputPath, int threads, bool skipLiquid, bool skipContinents, bool skipJunkMaps,
                            bool skipBattlegrounds, bool debug, const char* offMeshFilePath, const char* workdir, const InspectPoint* inspectPoint) :
-        m_taskQueue(new TaskQueue(this, threads)),
+        m_threads(threads > 0 ? uint32(threads) : 1u),
         m_debug(debug),
         m_skipContinents(skipContinents),
         m_skipJunkMaps(skipJunkMaps),
@@ -182,7 +259,7 @@ namespace MMAP
 
         m_terrainBuilder = new TerrainBuilder(skipLiquid, workdir);
 
-        printf("Using %d thread(s) for processing.\n", threads);
+        FlushLog("Using %u thread(s) for processing.\n", m_threads);
         discoverTiles();
     }
 
@@ -217,8 +294,6 @@ namespace MMAP
             }
         }
 
-        // Wait all work to be done
-        m_taskQueue->WaitAll();
     }
 
     /**************************************************************************/
@@ -638,18 +713,18 @@ namespace MMAP
         buildNavMesh(mapID, navMesh);
         if (!navMesh)
         {
-            printf("[Map %03i] Failed creating navmesh!                   \n", mapID);
+            FlushLog("[Map %03i] Failed creating navmesh!\n", mapID);
             return;
         }
 
-        buildTile(mapID, tileX, tileY, navMesh, 1, 1);
+        buildTile(mapID, tileX, tileY, navMesh, 1, 1, 0);
         dtFreeNavMesh(navMesh);
     }
 
     /**************************************************************************/
     void MapBuilder::buildMap(uint32 mapID)
     {
-        printf("Building map %03u:                                    \n", mapID);
+        FlushLog("Building map %03u:\n", mapID);
 
         std::set<uint32>& tiles = getTileList(mapID);
 
@@ -674,82 +749,114 @@ namespace MMAP
         buildNavMesh(mapID, navMesh);
         if (!navMesh)
         {
-            printf("[Map %03i] Failed creating navmesh!                   \n", mapID);
+            FlushLog("[Map %03i] Failed creating navmesh!\n", mapID);
             return;
         }
 
-        // now start building mmtiles for each tile
-        printf("[Map %03i] We have %u tiles.                          \n", mapID, uint32(tiles.size()));
-
-        uint32 currentTile = 0;
+        std::vector<uint32> workTiles;
+        workTiles.reserve(tiles.size());
         for (std::set<uint32>::iterator it = tiles.begin(); it != tiles.end(); ++it)
         {
-            currentTile++;
             uint32 tileX, tileY;
-
-            // unpack tile coords
             UnpackAscentTileID((*it), tileX, tileY);
-
             if (shouldSkipTile(mapID, tileX, tileY))
                 continue;
-
-            // Make a copy of the original navMesh object to work on a separate
-            // thread since "the data should not be reused in other nav meshes"
-            // (see dtNavMesh::addTile description)
-            dtNavMesh* navMeshCopy = dtAllocNavMesh();
-            dtStatus dtResult = navMeshCopy->init(navMesh->getParams());
-            if (dtStatusFailed(dtResult))
-            {
-                printf("[Map %03i] Failed to copy navmesh!                   \n", mapID);
-                printf("%s\n", GetDTErrorReason(dtResult));
-                continue;
-            }
-
-            // passing by value
-            auto builder = [=]()
-            {
-                // build tile with copy version of the navmesh
-                buildTile(mapID, tileX, tileY, navMeshCopy, currentTile, uint32(tiles.size()));
-
-                // free this navmesh
-                dtFreeNavMesh(navMeshCopy);
-            };
-
-            m_taskQueue->PushWork(builder, mapID);
+            workTiles.push_back(*it);
         }
+
+        FlushLog("[Map %03i] We have %u tiles.\n", mapID, uint32(workTiles.size()));
+        if (workTiles.empty())
+        {
+            dtFreeNavMesh(navMesh);
+            return;
+        }
+
+        const uint32 workerCount = std::min<uint32>(m_threads, uint32(workTiles.size()));
+        FlushLog("[Map %03i] Processing tiles with %u worker(s); max in-flight tile builds=%u.\n",
+            mapID, workerCount, workerCount);
+
+        std::atomic<size_t> nextTileIndex(0);
+        std::vector<std::thread> workers;
+        workers.reserve(workerCount);
+
+        auto worker = [&](uint32 workerIndex)
+        {
+            for (;;)
+            {
+                const size_t tileIndex = nextTileIndex.fetch_add(1);
+                if (tileIndex >= workTiles.size())
+                    break;
+
+                uint32 tileX, tileY;
+                UnpackAscentTileID(workTiles[tileIndex], tileX, tileY);
+
+                dtNavMesh* navMeshCopy = dtAllocNavMesh();
+                dtStatus dtResult = navMeshCopy->init(navMesh->getParams());
+                if (dtStatusFailed(dtResult))
+                {
+                    FlushLog("[Map %03i] Worker %u failed to copy navmesh for tile [%02u,%02u]\n",
+                        mapID, workerIndex, tileX, tileY);
+                    FlushLog("%s\n", GetDTErrorReason(dtResult));
+                    continue;
+                }
+
+                try
+                {
+                    buildTile(mapID, tileX, tileY, navMeshCopy, uint32(tileIndex + 1), uint32(workTiles.size()), workerIndex);
+                }
+                catch (const std::exception& ex)
+                {
+                    FlushLog("[Map %03i] Worker %u tile [%02u,%02u] aborted with std::exception: %s\n",
+                        mapID, workerIndex, tileX, tileY, ex.what());
+                }
+                catch (...)
+                {
+                    FlushLog("[Map %03i] Worker %u tile [%02u,%02u] aborted with unknown exception\n",
+                        mapID, workerIndex, tileX, tileY);
+                }
+
+                dtFreeNavMesh(navMeshCopy);
+            }
+        };
+
+        for (uint32 workerIndex = 0; workerIndex < workerCount; ++workerIndex)
+            workers.push_back(std::thread(worker, workerIndex + 1));
+
+        for (size_t i = 0; i < workers.size(); ++i)
+            workers[i].join();
 
         dtFreeNavMesh(navMesh);
     }
 
     /**************************************************************************/
-    void MapBuilder::buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount)
+    void MapBuilder::buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount, uint32 workerIndex)
     {
-        std::lock_guard<std::mutex> buildGuard(m_buildMutex);
-
-        printf("[Map %03i] Building tile [%02u,%02u] (%02u / %02u)    \n", mapID, tileX, tileY, curTile, tileCount);
+        FlushLog("[Map %03i] Worker %u building tile [%02u,%02u] (%02u / %02u)\n",
+            mapID, workerIndex, tileX, tileY, curTile, tileCount);
 
         MeshData meshData;
 
-        // get heightmap data
-        m_terrainBuilder->loadMap(mapID, tileX, tileY, meshData);
-
-        // get model data
-        const bool loadedVMap = m_terrainBuilder->loadVMap(mapID, tileX, tileY, meshData);
-        printf("[Map %03i] Tile [%02u,%02u] geometry: vmap=%u solidVerts=%u solidTris=%u liquidVerts=%u liquidTris=%u\n",
+        bool loadedVMap = false;
+        {
+            std::lock_guard<std::mutex> terrainGuard(m_terrainMutex);
+            m_terrainBuilder->loadMap(mapID, tileX, tileY, meshData);
+            loadedVMap = m_terrainBuilder->loadVMap(mapID, tileX, tileY, meshData);
+        }
+        FlushLog("[Map %03i] Tile [%02u,%02u] geometry: vmap=%u solidVerts=%u solidTris=%u liquidVerts=%u liquidTris=%u\n",
             mapID, tileX, tileY, loadedVMap ? 1u : 0u, uint32(meshData.solidVerts.size() / 3), uint32(meshData.solidTris.size() / 3),
             uint32(meshData.liquidVerts.size() / 3), uint32(meshData.liquidTris.size() / 3));
 
         // if there is no data, give up now
         if (!meshData.solidVerts.size() && !meshData.liquidVerts.size())
         {
-            printf("[Map %03i] Tile [%02u,%02u] skipped: no source geometry\n", mapID, tileX, tileY);
+            FlushLog("[Map %03i] Tile [%02u,%02u] skipped: no source geometry\n", mapID, tileX, tileY);
             return;
         }
 
         // remove unused vertices
         TerrainBuilder::cleanVertices(meshData.solidVerts, meshData.solidTris);
         TerrainBuilder::cleanVertices(meshData.liquidVerts, meshData.liquidTris);
-        printf("[Map %03i] Tile [%02u,%02u] cleaned geometry: solidVerts=%u solidTris=%u liquidVerts=%u liquidTris=%u\n",
+        FlushLog("[Map %03i] Tile [%02u,%02u] cleaned geometry: solidVerts=%u solidTris=%u liquidVerts=%u liquidTris=%u\n",
             mapID, tileX, tileY, uint32(meshData.solidVerts.size() / 3), uint32(meshData.solidTris.size() / 3),
             uint32(meshData.liquidVerts.size() / 3), uint32(meshData.liquidTris.size() / 3));
 
@@ -760,7 +867,7 @@ namespace MMAP
 
         if (!allVerts.size())
         {
-            printf("[Map %03i] Tile [%02u,%02u] skipped: no vertices remained after cleanup\n", mapID, tileX, tileY);
+            FlushLog("[Map %03i] Tile [%02u,%02u] skipped: no vertices remained after cleanup\n", mapID, tileX, tileY);
             return;
         }
 
@@ -768,7 +875,10 @@ namespace MMAP
         float bmin[3], bmax[3];
         getTileBounds(tileX, tileY, allVerts.getCArray(), allVerts.size() / 3, bmin, bmax);
 
-        m_terrainBuilder->loadOffMeshConnections(mapID, tileX, tileY, meshData, m_offMeshFilePath);
+        {
+            std::lock_guard<std::mutex> terrainGuard(m_terrainMutex);
+            m_terrainBuilder->loadOffMeshConnections(mapID, tileX, tileY, meshData, m_offMeshFilePath);
+        }
 
         // build navmesh tile
         buildMoveMapTile(mapID, tileX, tileY, meshData, bmin, bmax, navMesh);
@@ -781,7 +891,7 @@ namespace MMAP
 
         if (tiles.empty())
         {
-            printf("[Map %03i] Cannot create navmesh root: no tiles were discovered or requested.\n", mapID);
+            FlushLog("[Map %03i] Cannot create navmesh root: no tiles were discovered or requested.\n", mapID);
             return;
         }
 
@@ -849,11 +959,11 @@ namespace MMAP
         else
             getTileBounds(tileXMax, tileYMax, NULL, 0, bmin, bmax);
 
-        printf("[Map %03i] Navmesh root bounds: tiles=%u requestedRange=[%u,%u]-[%u,%u] rootRange=[%u,%u]-[%u,%u]\n",
+        FlushLog("[Map %03i] Navmesh root bounds: tiles=%u requestedRange=[%u,%u]-[%u,%u] rootRange=[%u,%u]-[%u,%u]\n",
             mapID, uint32(tiles.size()), tileXMin, tileYMin, tileXMax, tileYMax,
             hasFullBounds ? fullMinX : tileXMin, hasFullBounds ? fullMinY : tileYMin,
             hasFullBounds ? fullMaxX : tileXMax, hasFullBounds ? fullMaxY : tileYMax);
-        printf("[Map %03i] Navmesh root params: tileCount=%d maxTiles=%d tileBits=%d maxPolysPerTile=%d polyBits=%d\n",
+        FlushLog("[Map %03i] Navmesh root params: tileCount=%d maxTiles=%d tileBits=%d maxPolysPerTile=%d polyBits=%d\n",
             mapID, tileCount, maxTiles, tileBits, maxPolysPerTile, polyBits);
 
         /***       now create the navmesh       ***/
@@ -868,12 +978,12 @@ namespace MMAP
         navMeshParams.maxPolys = maxPolysPerTile;
 
         navMesh = dtAllocNavMesh();
-        printf("[Map %03i] Creating navMesh...                        \r", mapID);
+        FlushLog("[Map %03i] Creating navMesh...\n", mapID);
         dtStatus dtResult = navMesh->init(&navMeshParams);
         if (dtStatusFailed(dtResult))
         {
-            printf("[Map %03i] Failed creating navmesh!                   \n", mapID);
-            printf("%s\n", GetDTErrorReason(dtResult));
+            FlushLog("[Map %03i] Failed creating navmesh!\n", mapID);
+            FlushLog("%s\n", GetDTErrorReason(dtResult));
             return;
         }
 
@@ -901,9 +1011,9 @@ namespace MMAP
                                       dtNavMesh* navMesh)
     {
         // console output
-        char tileString[20];
+        char tileString[64];
         sprintf(tileString, "[Map %03i] [%02i,%02i]: ", mapID, tileX, tileY);
-        printf("%s Building movemap tiles...                          \r", tileString);
+        FlushLog("%s Building movemap tiles...\n", tileString);
 
         IntermediateValues iv(m_workdir);
 
@@ -945,6 +1055,7 @@ namespace MMAP
         rcCalcGridSize(config.bmin, config.bmax, config.cs, &config.width, &config.height);
 
         // allocate subregions : tiles
+        FlushLog("%s Allocating subtile state...\n", tileString);
         Tile* tiles = new Tile[TILES_PER_MAP * TILES_PER_MAP];
 
         // Initialize per tile config.
@@ -953,14 +1064,140 @@ namespace MMAP
         tileCfg.width = config.tileSize + config.borderSize * 2;
         tileCfg.height = config.tileSize + config.borderSize * 2;
 
+        const int subtileCount = TILES_PER_MAP * TILES_PER_MAP;
+        std::vector<G3D::Array<int>> solidTrisBySubtile(subtileCount);
+        std::vector<G3D::Array<int>> liquidTrisBySubtile(subtileCount);
+        std::vector<G3D::Array<uint8>> liquidFlagsBySubtile(subtileCount);
+        const float subtileWorldSize = float(config.tileSize * config.cs);
+        const float subtileBorder = float(config.borderSize * config.cs);
+        FlushLog("%s Binning subtile triangles: solid=%d liquid=%d\n", tileString, tTriCount, lTriCount);
+
+        auto binTrianglesToSubtiles = [&](float* verts, int vertCount, int* tris, int triCount, uint8* triFlags, std::vector<G3D::Array<int>>& triBuckets, std::vector<G3D::Array<uint8>>* flagBuckets)
+        {
+            if (!verts || !tris || vertCount <= 0 || triCount <= 0)
+                return;
+
+            for (int i = 0; i < triCount; ++i)
+            {
+                const int* tri = &tris[i * 3];
+                float minX = FLT_MAX, minZ = FLT_MAX;
+                float maxX = -FLT_MAX, maxZ = -FLT_MAX;
+                bool validTri = true;
+
+                for (int j = 0; j < 3; ++j)
+                {
+                    if (tri[j] < 0 || tri[j] >= vertCount)
+                    {
+                        validTri = false;
+                        break;
+                    }
+
+                    const float* v = &verts[tri[j] * 3];
+                    if (v[0] < minX) minX = v[0];
+                    if (v[2] < minZ) minZ = v[2];
+                    if (v[0] > maxX) maxX = v[0];
+                    if (v[2] > maxZ) maxZ = v[2];
+                }
+
+                if (!validTri)
+                    continue;
+
+                int minTileX = int(floorf((minX - config.bmin[0] - subtileBorder) / subtileWorldSize));
+                int maxTileX = int(floorf((maxX - config.bmin[0] + subtileBorder) / subtileWorldSize));
+                int minTileY = int(floorf((minZ - config.bmin[2] - subtileBorder) / subtileWorldSize));
+                int maxTileY = int(floorf((maxZ - config.bmin[2] + subtileBorder) / subtileWorldSize));
+
+                if (maxTileX < 0 || maxTileY < 0 || minTileX >= TILES_PER_MAP || minTileY >= TILES_PER_MAP)
+                    continue;
+
+                if (minTileX < 0) minTileX = 0;
+                if (minTileY < 0) minTileY = 0;
+                if (maxTileX >= TILES_PER_MAP) maxTileX = TILES_PER_MAP - 1;
+                if (maxTileY >= TILES_PER_MAP) maxTileY = TILES_PER_MAP - 1;
+
+                for (int y = minTileY; y <= maxTileY; ++y)
+                {
+                    for (int x = minTileX; x <= maxTileX; ++x)
+                    {
+                        const int bucketIndex = x + y * TILES_PER_MAP;
+                        triBuckets[bucketIndex].append(tri[0], tri[1], tri[2]);
+                        if (flagBuckets && triFlags)
+                            (*flagBuckets)[bucketIndex].append(triFlags[i]);
+                    }
+                }
+            }
+        };
+
+        binTrianglesToSubtiles(tVerts, tVertCount, tTris, tTriCount, nullptr, solidTrisBySubtile, nullptr);
+        FlushLog("%s Binned solid subtile triangles.\n", tileString);
+        binTrianglesToSubtiles(lVerts, lVertCount, lTris, lTriCount, lTriFlags, liquidTrisBySubtile, &liquidFlagsBySubtile);
+        FlushLog("%s Binned liquid subtile triangles.\n", tileString);
+
+        auto buildLocalGeometry = [](float* sourceVerts, int sourceVertCount, G3D::Array<int>& sourceTris, G3D::Array<float>& localVerts, G3D::Array<int>& localTris)
+        {
+            if (!sourceVerts || sourceVertCount <= 0 || !sourceTris.size())
+                return;
+
+            std::map<int, int> vertexMap;
+            for (int i = 0; i < sourceTris.size() / 3; ++i)
+            {
+                const int* tri = &sourceTris[i * 3];
+                bool validTri = true;
+
+                for (int j = 0; j < 3; ++j)
+                {
+                    if (tri[j] < 0 || tri[j] >= sourceVertCount)
+                    {
+                        validTri = false;
+                        break;
+                    }
+                }
+
+                if (!validTri)
+                    continue;
+
+                for (int j = 0; j < 3; ++j)
+                {
+                    int localIndex;
+                    std::map<int, int>::iterator it = vertexMap.find(tri[j]);
+                    if (it == vertexMap.end())
+                    {
+                        localIndex = int(vertexMap.size());
+                        vertexMap.insert(std::pair<int, int>(tri[j], localIndex));
+                        const float* v = &sourceVerts[tri[j] * 3];
+                        localVerts.append(v[0], v[1], v[2]);
+                    }
+                    else
+                    {
+                        localIndex = it->second;
+                    }
+
+                    localTris.append(localIndex);
+                }
+            }
+        };
+
         // build all tiles
+        FlushLog("%s Building subtiles from binned triangles.\n", tileString);
+        int activeSubtileX = -1;
+        int activeSubtileY = -1;
+        const char* activeSubtileStage = "subtile loop init";
         for (int y = 0; y < TILES_PER_MAP; ++y)
         {
+            FlushLog("%s Entering subtile row %02d\n", tileString, y);
             for (int x = 0; x < TILES_PER_MAP; ++x)
             {
+                activeSubtileX = x;
+                activeSubtileY = y;
+                activeSubtileStage = "subtile body begin";
                 Tile& tile = tiles[x + y * TILES_PER_MAP];
+                char subTileString[96];
+                sprintf(subTileString, "%s Subtile [%02d,%02d]: ", tileString, x, y);
+                bool subtileOk = false;
+                if (m_debug)
+                    printf("%s Subtile [%02d,%02d] begin\n", tileString, x, y);
 
-                // Calculate the per tile bounding box.
+                activeSubtileStage = "subtile bounds";
                 tileCfg.bmin[0] = config.bmin[0] + x * float(config.tileSize * config.cs);
                 tileCfg.bmin[2] = config.bmin[2] + y * float(config.tileSize * config.cs);
                 tileCfg.bmax[0] = config.bmin[0] + (x + 1) * float(config.tileSize * config.cs);
@@ -971,8 +1208,49 @@ namespace MMAP
                 tileCfg.bmax[0] += tileCfg.borderSize * tileCfg.cs;
                 tileCfg.bmax[2] += tileCfg.borderSize * tileCfg.cs;
 
-                buildCommonTile(tileString, tile, tileCfg, tVerts, tVertCount, tTris, tTriCount, lVerts, lVertCount, lTris, lTriCount, lTriFlags);
+                activeSubtileStage = "subtile bucket access";
+                G3D::Array<int>& solidSubTris = solidTrisBySubtile[x + y * TILES_PER_MAP];
+                G3D::Array<int>& liquidSubTris = liquidTrisBySubtile[x + y * TILES_PER_MAP];
+                G3D::Array<uint8>& liquidSubFlags = liquidFlagsBySubtile[x + y * TILES_PER_MAP];
+                G3D::Array<float> solidSubVerts;
+                G3D::Array<int> solidLocalTris;
+                G3D::Array<float> liquidSubVerts;
+                G3D::Array<int> liquidLocalTris;
+                const int subtileIndex = x + y * TILES_PER_MAP;
+                activeSubtileStage = "subtile bucket stats";
+                FlushLog("%s Subtile [%02d,%02d] idx=%03d solidTris=%d liquidTris=%d\n",
+                    tileString, x, y, subtileIndex, solidSubTris.size() / 3, liquidSubTris.size() / 3);
+                activeSubtileStage = "buildLocalGeometry solid";
+                buildLocalGeometry(tVerts, tVertCount, solidSubTris, solidSubVerts, solidLocalTris);
+                activeSubtileStage = "buildLocalGeometry liquid";
+                buildLocalGeometry(lVerts, lVertCount, liquidSubTris, liquidSubVerts, liquidLocalTris);
+                activeSubtileStage = "subtile localVerts stats";
+                FlushLog("%s Subtile [%02d,%02d] localVerts: solid=%d liquid=%d\n",
+                    tileString, x, y, solidSubVerts.size() / 3, liquidSubVerts.size() / 3);
+                activeSubtileStage = "buildCommonTile";
+                subtileOk = buildCommonTile(subTileString, tile, tileCfg,
+                    solidSubVerts.size() ? solidSubVerts.getCArray() : nullptr, solidSubVerts.size() / 3,
+                    solidLocalTris.size() ? solidLocalTris.getCArray() : nullptr, solidLocalTris.size() / 3,
+                    liquidSubVerts.size() ? liquidSubVerts.getCArray() : nullptr, liquidSubVerts.size() / 3,
+                    liquidLocalTris.size() ? liquidLocalTris.getCArray() : nullptr, liquidLocalTris.size() / 3,
+                    liquidSubFlags.size() ? liquidSubFlags.getCArray() : nullptr);
+                if (!subtileOk)
+                {
+                    FlushLog("%s Aborting tile after subtile [%02d,%02d] failure.\n", tileString, x, y);
+                    delete[] tiles;
+                    return;
+                }
+
+                if (m_debug && (tile.pmesh || tile.dmesh))
+                {
+                    FlushLog("%s Subtile [%02d,%02d] end: pmesh=%u dmesh=%u\n",
+                        tileString, x, y,
+                        tile.pmesh ? uint32(tile.pmesh->npolys) : 0u,
+                        tile.dmesh ? uint32(tile.dmesh->ntris) : 0u);
+                }
             }
+
+            FlushLog("%s Finished subtile row %02d\n", tileString, y);
         }
 
         // merge per tile poly and detail meshes
@@ -985,7 +1263,9 @@ namespace MMAP
             for (int x = 0; x < TILES_PER_MAP; ++x)
             {
                 Tile& tile = tiles[x + y * TILES_PER_MAP];
-                if (tile.pmesh)
+                if (tile.pmesh && tile.dmesh &&
+                    tile.pmesh->npolys > 0 && tile.pmesh->nverts > 0 &&
+                    tile.dmesh->nmeshes > 0 && tile.dmesh->ntris > 0)
                 {
                     pmmerge[nmerge] = tile.pmesh;
                     dmmerge[nmerge] = tile.dmesh;
@@ -994,10 +1274,19 @@ namespace MMAP
             }
         }
 
+        if (nmerge == 0)
+        {
+            FlushLog("%s No usable subtiles to merge; skipping tile.                \n", tileString);
+            delete[] pmmerge;
+            delete[] dmmerge;
+            delete[] tiles;
+            return;
+        }
+
         iv.polyMesh = rcAllocPolyMesh();
         if (!iv.polyMesh)
         {
-            printf("%s alloc iv.polyMesh FIALED!                          \r", tileString);
+            FlushLog("%s alloc iv.polyMesh FIALED!\n", tileString);
             delete[] pmmerge;
             delete[] dmmerge;
             delete[] tiles;
@@ -1009,7 +1298,7 @@ namespace MMAP
         iv.polyMeshDetail = rcAllocPolyMeshDetail();
         if (!iv.polyMeshDetail)
         {
-            printf("%s alloc m_dmesh FIALED!                              \r", tileString);
+            FlushLog("%s alloc m_dmesh FIALED!\n", tileString);
             delete[] pmmerge;
             delete[] dmmerge;
             delete[] tiles;
@@ -1022,7 +1311,7 @@ namespace MMAP
         delete [] dmmerge;
         delete [] tiles;
 
-        printf("%s Recast merge: polys=%u detailPolys=%u detailVerts=%u\n",
+        FlushLog("%s Recast merge: polys=%u detailPolys=%u detailVerts=%u\n",
             tileString, iv.polyMesh ? uint32(iv.polyMesh->npolys) : 0u,
             iv.polyMeshDetail ? uint32(iv.polyMeshDetail->ntris) : 0u,
             iv.polyMeshDetail ? uint32(iv.polyMeshDetail->nverts) : 0u);
@@ -1086,12 +1375,12 @@ namespace MMAP
             // so we have a clear error messages
             if (params.nvp > DT_VERTS_PER_POLYGON)
             {
-                printf("%s Invalid verts-per-polygon value!                   \n", tileString);
+                FlushLog("%s Invalid verts-per-polygon value!\n", tileString);
                 continue;
             }
             if (params.vertCount >= 0xffff)
             {
-                printf("%s Too many vertices!                                 \n", tileString);
+                FlushLog("%s Too many vertices!\n", tileString);
                 continue;
             }
             if (!params.vertCount || !params.verts)
@@ -1100,7 +1389,7 @@ namespace MMAP
                 // loaded but those models don't span into this tile
 
                 // message is an annoyance
-                printf("%s No vertices to build tile!                         \n", tileString);
+                FlushLog("%s No vertices to build tile!\n", tileString);
                 continue;
             }
             if (!params.polyCount || !params.polys ||
@@ -1109,38 +1398,47 @@ namespace MMAP
                 // we have flat tiles with no actual geometry - don't build those, its useless
                 // keep in mind that we do output those into debug info
                 // drop tiles with only exact count - some tiles may have geometry while having less tiles
-                printf("%s No polygons to build on tile!                      \n", tileString);
+                FlushLog("%s No polygons to build on tile!\n", tileString);
                 continue;
             }
             if (!params.detailMeshes || !params.detailVerts || !params.detailTris)
             {
-                printf("%s No detail mesh to build tile!                      \n", tileString);
+                FlushLog("%s No detail mesh to build tile!\n", tileString);
                 continue;
             }
 
-            printf("%s Building navmesh tile...                           \r", tileString);
-            if (!dtCreateNavMeshData(&params, &navData, &navDataSize))
+            FlushLog("%s Stage begin: dtCreateNavMeshData polyCount=%u vertCount=%u detailTriCount=%u\n",
+                tileString, uint32(params.polyCount), uint32(params.vertCount), uint32(params.detailTriCount));
+            bool navDataCreated = false;
+#ifdef _MSC_VER
+            navDataCreated = CreateNavMeshDataWithExceptionLogging(tileString, &params, &navData, &navDataSize);
+#else
+            navDataCreated = dtCreateNavMeshData(&params, &navData, &navDataSize);
+#endif
+            FlushLog("%s Stage end: dtCreateNavMeshData result=%d navDataSize=%d\n",
+                tileString, navDataCreated ? 1 : 0, navDataSize);
+            if (!navDataCreated)
             {
-                printf("%s Failed building navmesh tile!                      \n", tileString);
-                continue;
+                FlushLog("%s Failed building navmesh tile!                      \n", tileString);
+                break;
             }
 
             dtTileRef tileRef = 0;
-            printf("%s Adding tile to navmesh...                          \r", tileString);
+            FlushLog("%s Adding tile to navmesh...\n", tileString);
             // DT_TILE_FREE_DATA tells detour to unallocate memory when the tile
             // is removed via removeTile()
             dtStatus dtResult = navMesh->addTile(navData, navDataSize, DT_TILE_FREE_DATA, 0, &tileRef);
             if (!tileRef || dtStatusFailed(dtResult))
             {
-                printf("%s Failed adding tile to navmesh!                     \n", tileString);
-                printf("%s\n", GetDTErrorReason(dtResult));
+                FlushLog("%s Failed adding tile to navmesh!\n", tileString);
+                FlushLog("%s\n", GetDTErrorReason(dtResult));
                 continue;
             }
 
             const dtMeshTile* addedTile = navMesh->getTileByRef(tileRef);
             if (addedTile != NULL && addedTile->header != NULL)
             {
-                printf("%s Tile header: x=%d y=%d layer=%d polys=%d verts=%d bmin=%0.3f,%0.3f,%0.3f bmax=%0.3f,%0.3f,%0.3f\n",
+                FlushLog("%s Tile header: x=%d y=%d layer=%d polys=%d verts=%d bmin=%0.3f,%0.3f,%0.3f bmax=%0.3f,%0.3f,%0.3f\n",
                     tileString,
                     addedTile->header->x, addedTile->header->y, addedTile->header->layer,
                     addedTile->header->polyCount, addedTile->header->vertCount,
@@ -1164,7 +1462,7 @@ namespace MMAP
                 continue;
             }
 
-            printf("%s Writing to file...                                 \r", tileString);
+            FlushLog("%s Writing to file...\n", tileString);
 
             // write header
             MmapTileHeader header;
@@ -1175,7 +1473,7 @@ namespace MMAP
             // write data
             fwrite(navData, sizeof(unsigned char), navDataSize, file);
             fclose(file);
-            printf("%s Wrote mmap tile %03u_%02i_%02i.mmtile size=%u\n", tileString, mapID, tileY, tileX, uint32(navDataSize));
+            FlushLog("%s Wrote mmap tile %03u_%02i_%02i.mmtile size=%u\n", tileString, mapID, tileY, tileX, uint32(navDataSize));
 
             // now that tile is written to disk, we can unload it
             navMesh->removeTile(tileRef, nullptr, nullptr);
@@ -1204,21 +1502,47 @@ namespace MMAP
         float inspectNav[3] = { 0.0f, 0.0f, 0.0f };
         const bool inspectThisSubTile = m_inspectPoint.enabled && (ToNavMeshCoords(m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav), TileBoundsContainInspectPoint(tileCfg.bmin, tileCfg.bmax, inspectNav));
 
+        if (tTriCount <= 0 && lTriCount <= 0)
+            return true;
+
         // Build heightfield for walkable area
+        FlushLog("%s Input summary: solidVerts=%d solidTris=%d liquidVerts=%d liquidTris=%d\n",
+            tileString, tVertCount, tTriCount, lVertCount, lTriCount);
+        FlushLog("%s Stage begin: rcCreateHeightfield width=%d height=%d bmin=%0.3f,%0.3f,%0.3f bmax=%0.3f,%0.3f,%0.3f\n",
+            tileString, tileCfg.width, tileCfg.height,
+            tileCfg.bmin[0], tileCfg.bmin[1], tileCfg.bmin[2],
+            tileCfg.bmax[0], tileCfg.bmax[1], tileCfg.bmax[2]);
         tile.solid = rcAllocHeightfield();
-        if (!tile.solid || !rcCreateHeightfield(&buildContext, *tile.solid, tileCfg.width, tileCfg.height, tileCfg.bmin, tileCfg.bmax, tileCfg.cs, tileCfg.ch))
+        if (!tile.solid)
         {
-            printf("%s Failed building heightfield!                       \n", tileString);
+            FlushLog("%s Stage end: rcCreateHeightfield alloc failed\n", tileString);
+            return false;
+        }
+#ifdef _MSC_VER
+        bool createdHeightfield = CreateHeightfieldWithExceptionLogging(tileString, &buildContext, *tile.solid,
+            tileCfg.width, tileCfg.height, tileCfg.bmin, tileCfg.bmax, tileCfg.cs, tileCfg.ch);
+#else
+        bool createdHeightfield = rcCreateHeightfield(&buildContext, *tile.solid, tileCfg.width, tileCfg.height, tileCfg.bmin, tileCfg.bmax, tileCfg.cs, tileCfg.ch);
+#endif
+        FlushLog("%s Stage end: rcCreateHeightfield result=%d\n", tileString, createdHeightfield ? 1 : 0);
+        if (!createdHeightfield)
+        {
             return false;
         }
 
         // mark all walkable tiles, both liquids and solids
-        unsigned char* triFlags = new unsigned char[tTriCount];
-        memset(triFlags, NAV_AREA_GROUND, tTriCount * sizeof(unsigned char));
-        rcClearUnwalkableTriangles(&buildContext, tileCfg.walkableSlopeAngle, tVerts, tVertCount, tTris, tTriCount, triFlags);
+        FlushLog("%s Stage begin: tri flag classification\n", tileString);
+        unsigned char* triFlags = nullptr;
+        if (tTriCount > 0)
+        {
+            triFlags = new unsigned char[tTriCount];
+            memset(triFlags, NAV_AREA_GROUND, tTriCount * sizeof(unsigned char));
+            rcClearUnwalkableTriangles(&buildContext, tileCfg.walkableSlopeAngle, tVerts, tVertCount, tTris, tTriCount, triFlags);
 
-        // mark almost unwalkable triangles with steep flag
-        rcModAlmostUnwalkableTriangles(&buildContext, 50.0f, tVerts, tVertCount, tTris, tTriCount, triFlags);
+            // mark almost unwalkable triangles with steep flag
+            rcModAlmostUnwalkableTriangles(&buildContext, 50.0f, tVerts, tVertCount, tTris, tTriCount, triFlags);
+        }
+        FlushLog("%s Stage end: tri flag classification\n", tileString);
 
         if (inspectThisSubTile)
         {
@@ -1237,78 +1561,129 @@ namespace MMAP
                     ++nearbySteepTris;
             }
 
-            printf("%s Inspect subtile pre-raster: nearbyInputTris=%u nearbyWalkableTris=%u nearbySteepTris=%u boundsMin=%0.3f,%0.3f,%0.3f boundsMax=%0.3f,%0.3f,%0.3f\n",
+            FlushLog("%s Inspect subtile pre-raster: nearbyInputTris=%u nearbyWalkableTris=%u nearbySteepTris=%u boundsMin=%0.3f,%0.3f,%0.3f boundsMax=%0.3f,%0.3f,%0.3f\n",
                 tileString, nearbyInputTris, nearbyWalkableTris, nearbySteepTris,
                 tileCfg.bmin[0], tileCfg.bmin[1], tileCfg.bmin[2], tileCfg.bmax[0], tileCfg.bmax[1], tileCfg.bmax[2]);
         }
 
-        rcRasterizeTriangles(&buildContext, tVerts, tVertCount, tTris, triFlags, tTriCount, *tile.solid, tileCfg.walkableClimb);
+        if (tTriCount > 0)
+        {
+            FlushLog("%s Stage begin: rasterize solid triangles\n", tileString);
+#ifdef _MSC_VER
+            if (!RasterizeSolidTrianglesWithExceptionLogging(tileString, &buildContext, tVerts, tVertCount, tTris, triFlags, tTriCount, *tile.solid, tileCfg.walkableClimb))
+            {
+                delete[] triFlags;
+                return false;
+            }
+#else
+            rcRasterizeTriangles(&buildContext, tVerts, tVertCount, tTris, triFlags, tTriCount, *tile.solid, tileCfg.walkableClimb);
+#endif
+            FlushLog("%s Stage end: rasterize solid triangles\n", tileString);
+        }
         delete[] triFlags;
 
+        FlushLog("%s Stage begin: heightfield filters\n", tileString);
         rcFilterLowHangingWalkableObstacles(&buildContext, tileCfg.walkableClimb, *tile.solid);
         rcFilterLedgeSpans(&buildContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid);
         rcFilterWalkableLowHeightSpans(&buildContext, tileCfg.walkableHeight, *tile.solid);
-        if (lVerts)
+        if (lVerts && lTris && lTriFlags && lTriCount > 0)
+        {
+            FlushLog("%s Stage begin: rasterize liquid triangles\n", tileString);
             rcRasterizeTriangles(&buildContext, lVerts, lVertCount, lTris, lTriFlags, lTriCount, *tile.solid, tileCfg.walkableClimb);
+            FlushLog("%s Stage end: rasterize liquid triangles\n", tileString);
+        }
+        FlushLog("%s Stage end: heightfield filters\n", tileString);
+
+        const uint32 hfSpanCount = CountHeightfieldSpans(tile.solid);
+        if (hfSpanCount == 0)
+        {
+            FlushLog("%s Recast stats: hfSpans=0 compactSpans=0 compactRegions=0 contours=0 polyVerts=0 polys=0 detailMeshes=0 detailTris=0\n",
+                tileString);
+            rcFreeHeightField(tile.solid);
+            tile.solid = nullptr;
+            return true;
+        }
 
         // compact heightfield spans
         tile.chf = rcAllocCompactHeightfield();
-        if (!tile.chf || !rcBuildCompactHeightfield(&buildContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid, *tile.chf))
+        FlushLog("%s Stage begin: rcBuildCompactHeightfield\n", tileString);
+        const bool compactBuilt = tile.chf && rcBuildCompactHeightfield(&buildContext, tileCfg.walkableHeight, tileCfg.walkableClimb, *tile.solid, *tile.chf);
+        FlushLog("%s Stage end: rcBuildCompactHeightfield result=%d\n", tileString, compactBuilt ? 1 : 0);
+        if (!compactBuilt)
         {
-            printf("%s Failed compacting heightfield!                     \n", tileString);
             return false;
         }
 
         // build polymesh intermediates
-        if (!rcErodeWalkableArea(&buildContext, tileCfg.walkableRadius, *tile.chf))
+        FlushLog("%s Stage begin: rcErodeWalkableArea\n", tileString);
+        const bool eroded = rcErodeWalkableArea(&buildContext, tileCfg.walkableRadius, *tile.chf);
+        FlushLog("%s Stage end: rcErodeWalkableArea result=%d\n", tileString, eroded ? 1 : 0);
+        if (!eroded)
         {
-            printf("%s Failed eroding area!                               \n", tileString);
             return false;
         }
 
-        if (!rcMedianFilterWalkableArea(&buildContext, *tile.chf))
+        FlushLog("%s Stage begin: rcMedianFilterWalkableArea\n", tileString);
+        const bool medianFiltered = rcMedianFilterWalkableArea(&buildContext, *tile.chf);
+        FlushLog("%s Stage end: rcMedianFilterWalkableArea result=%d\n", tileString, medianFiltered ? 1 : 0);
+        if (!medianFiltered)
         {
-            printf("%s Failed filtering area!                             \n", tileString);
             return false;
         }
 
-        if (!rcBuildDistanceField(&buildContext, *tile.chf))
+        FlushLog("%s Stage begin: rcBuildDistanceField\n", tileString);
+        const bool distanceBuilt = rcBuildDistanceField(&buildContext, *tile.chf);
+        FlushLog("%s Stage end: rcBuildDistanceField result=%d\n", tileString, distanceBuilt ? 1 : 0);
+        if (!distanceBuilt)
         {
-            printf("%s Failed building distance field!                    \n", tileString);
             return false;
         }
 
-        if (!rcBuildRegions(&buildContext, *tile.chf, tileCfg.borderSize, tileCfg.minRegionArea, tileCfg.mergeRegionArea))
+        FlushLog("%s Stage begin: rcBuildRegions\n", tileString);
+        const bool regionsBuilt = rcBuildRegions(&buildContext, *tile.chf, tileCfg.borderSize, tileCfg.minRegionArea, tileCfg.mergeRegionArea);
+        FlushLog("%s Stage end: rcBuildRegions result=%d\n", tileString, regionsBuilt ? 1 : 0);
+        if (!regionsBuilt)
         {
-            printf("%s Failed building regions!                           \n", tileString);
             return false;
         }
 
         tile.cset = rcAllocContourSet();
-        if (!tile.cset || !rcBuildContours(&buildContext, *tile.chf, tileCfg.maxSimplificationError, tileCfg.maxEdgeLen, *tile.cset))
+        FlushLog("%s Stage begin: rcBuildContours\n", tileString);
+        const bool contoursBuilt = tile.cset && rcBuildContours(&buildContext, *tile.chf, tileCfg.maxSimplificationError, tileCfg.maxEdgeLen, *tile.cset);
+        FlushLog("%s Stage end: rcBuildContours result=%d\n", tileString, contoursBuilt ? 1 : 0);
+        if (!contoursBuilt)
         {
-            printf("%s Failed building contours!                          \n", tileString);
             return false;
         }
 
         // build polymesh
         tile.pmesh = rcAllocPolyMesh();
-        if (!tile.pmesh || !rcBuildPolyMesh(&buildContext, *tile.cset, tileCfg.maxVertsPerPoly, *tile.pmesh))
+        FlushLog("%s Stage begin: rcBuildPolyMesh\n", tileString);
+        const bool polyMeshBuilt = tile.pmesh && rcBuildPolyMesh(&buildContext, *tile.cset, tileCfg.maxVertsPerPoly, *tile.pmesh);
+        FlushLog("%s Stage end: rcBuildPolyMesh result=%d polys=%u verts=%u\n",
+            tileString, polyMeshBuilt ? 1 : 0,
+            tile.pmesh ? uint32(tile.pmesh->npolys) : 0u,
+            tile.pmesh ? uint32(tile.pmesh->nverts) : 0u);
+        if (!polyMeshBuilt)
         {
-            printf("%s Failed building polymesh!                          \n", tileString);
             return false;
         }
 
         tile.dmesh = rcAllocPolyMeshDetail();
-        if (!tile.dmesh || !rcBuildPolyMeshDetail(&buildContext, *tile.pmesh, *tile.chf, tileCfg.detailSampleDist, tileCfg.detailSampleMaxError, *tile.dmesh))
+        FlushLog("%s Stage begin: rcBuildPolyMeshDetail\n", tileString);
+        const bool detailBuilt = tile.dmesh && rcBuildPolyMeshDetail(&buildContext, *tile.pmesh, *tile.chf, tileCfg.detailSampleDist, tileCfg.detailSampleMaxError, *tile.dmesh);
+        FlushLog("%s Stage end: rcBuildPolyMeshDetail result=%d meshes=%u tris=%u\n",
+            tileString, detailBuilt ? 1 : 0,
+            tile.dmesh ? uint32(tile.dmesh->nmeshes) : 0u,
+            tile.dmesh ? uint32(tile.dmesh->ntris) : 0u);
+        if (!detailBuilt)
         {
-            printf("%s Failed building polymesh detail!                   \n", tileString);
             return false;
         }
 
         if (inspectThisSubTile)
         {
-            printf("%s Inspect subtile final: compactSpans=%u maxRegions=%u contours=%u polys=%u detailMeshes=%u detailTris=%u\n",
+            FlushLog("%s Inspect subtile final: compactSpans=%u maxRegions=%u contours=%u polys=%u detailMeshes=%u detailTris=%u\n",
                 tileString,
                 tile.chf ? uint32(tile.chf->spanCount) : 0u,
                 tile.chf ? uint32(tile.chf->maxRegions) : 0u,
@@ -1318,9 +1693,9 @@ namespace MMAP
                 tile.dmesh ? uint32(tile.dmesh->ntris) : 0u);
         }
 
-        printf("%s Recast stats: hfSpans=%u compactSpans=%u compactRegions=%u contours=%u polyVerts=%u polys=%u detailMeshes=%u detailTris=%u\n",
+        FlushLog("%s Recast stats: hfSpans=%u compactSpans=%u compactRegions=%u contours=%u polyVerts=%u polys=%u detailMeshes=%u detailTris=%u\n",
             tileString,
-            CountHeightfieldSpans(tile.solid),
+            hfSpanCount,
             tile.chf ? uint32(tile.chf->spanCount) : 0u,
             tile.chf ? uint32(tile.chf->maxRegions) : 0u,
             tile.cset ? uint32(tile.cset->nconts) : 0u,
@@ -1582,9 +1957,9 @@ namespace MMAP
             return false;
 
         MmapTileHeader header;
-        int count = fread(&header, sizeof(MmapTileHeader), 1, file);
+        size_t count = fread(&header, sizeof(MmapTileHeader), 1, file);
         fclose(file);
-        if (count != 1)
+        if (count != 1u)
             return false;
 
         if (header.mmapMagic != MMAP_MAGIC || header.dtVersion != uint32(DT_NAVMESH_VERSION))

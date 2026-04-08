@@ -22,7 +22,6 @@
 #include <vector>
 #include <set>
 #include <map>
-#include <future>
 #include <mutex>
 #include <sstream>
 
@@ -56,8 +55,6 @@ namespace MMAP
 
     typedef std::map<uint32, std::set<uint32>> TileList;
     typedef std::set<uint32> MapSet;
-    typedef std::unique_ptr<TaskQueue> TaskQueueUPtr;
-
     struct Tile
     {
         Tile() : chf(NULL), solid(NULL), cset(NULL), pmesh(NULL), dmesh(NULL) {}
@@ -131,7 +128,7 @@ namespace MMAP
 
             void buildNavMesh(uint32 mapID, dtNavMesh*& navMesh);
 
-            void buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount);
+            void buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount, uint32 workerIndex);
             bool buildCommonTile(const char* tileString, Tile& tile, rcConfig& tileCfg, float* tVerts, int tVertCount, int* tTris, int tTriCount, float* lVerts, int lVertCount,
                                  int* lTris, int lTriCount, uint8* lTriFlags);
 
@@ -168,112 +165,13 @@ namespace MMAP
 
             json m_config;
 
-            // Task queue that will handle all worker
-            TaskQueueUPtr m_taskQueue;
-
-            // Some legacy generator paths still touch libraries and helpers that
-            // are not reliably thread-safe under continent-scale workloads.
-            // Keep tile builds serialized for correctness; the task queue still
-            // manages progress and can be narrowed later once lower layers are audited.
-            mutable std::mutex m_buildMutex;
+            uint32 m_threads;
+            mutable std::mutex m_terrainMutex;
 
             // used to know wich map have launched all its tile work
             MapSet m_mapDone;
     };
 
-    // Task queue : not thread safe (do not add worker asynchronously)
-    class TaskQueue
-    {
-        private:
-            typedef std::pair<uint32, std::future<void>> TaskType;
-            typedef std::vector<TaskType> TaskVec;
-
-        public:
-            TaskQueue(MapBuilder* mapBuilder, uint32 maxSize)
-                : m_mapBuilder(mapBuilder), m_maxSize(maxSize) {
-                m_taskList.reserve(maxSize);
-            }
-            TaskQueue() = delete;
-            TaskQueue(TaskQueue const&) = delete;
-
-            // Add worker to the queue and block until at least there is one thread free
-            template<typename T>
-            void PushWork(T&& work, uint32 mapId)
-            {
-                m_taskList.emplace_back(mapId, std::async(std::launch::async, work));
-                while (m_taskList.size() == m_maxSize)
-                {
-                    RemoveFinishedTask();
-
-                    // allow other thread to run
-                    std::this_thread::yield();
-                }
-            }
-
-            // wait all worker to finish
-            void WaitAll()
-            {
-                while (!m_taskList.empty())
-                    RemoveFinishedTask();
-            }
-
-        private:
-            // Try to remove a finished worker from the queue
-            void RemoveFinishedTask()
-            {
-                for (TaskVec::iterator fItr = m_taskList.begin(); fItr != m_taskList.end();)
-                {
-                    std::future_status status = fItr->second.wait_for(std::chrono::seconds(0));
-                    if (status == std::future_status::ready)
-                    {
-                        // take a copy of current finished job work map id before deleting this iterator
-                        uint32 justDeletedMapId = fItr->first;
-
-                        fItr->second.get();
-                        fItr = m_taskList.erase(fItr);
-
-                        // check if map is done (all tile jobs should be in the queue if any remain)
-                        if (m_mapBuilder->IsMapDone(justDeletedMapId))
-                        {
-                            MapSet onGoingMap;
-                            // search if there is remaining work to do 
-                            bool foundWork = false;
-                            for (auto& itr : m_taskList)
-                            {
-                                if (itr.first == justDeletedMapId)
-                                {
-                                    foundWork = true;
-                                    break;
-                                }
-                                onGoingMap.insert(itr.first);
-                            }
-
-                            if (!foundWork)
-                            {
-                                std::stringstream ss;
-                                ss << "Map [" << justDeletedMapId << "] is done!";
-                                if (onGoingMap.empty())
-                                    ss << "                             \n"; // should delete some remaining char in the line
-                                else
-                                {
-                                    ss << " Still ongoing:";
-                                    for (auto mId : onGoingMap)
-                                        ss << " [" << mId << "]";
-                                    ss << "                              ";
-                                }
-                                printf("%s\n", ss.str().c_str());
-                            }
-                        }
-                    }
-                    else
-                        ++fItr;
-                }
-            };
-
-            MapBuilder* m_mapBuilder;       // needed for MapNuilder::IsMapDone
-            uint32 m_maxSize;               // max thread usable
-            TaskVec m_taskList;             // task queue in a vector
-    };
 }
 
 #endif

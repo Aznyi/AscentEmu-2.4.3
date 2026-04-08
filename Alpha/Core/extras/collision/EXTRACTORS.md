@@ -47,7 +47,7 @@ For WoW TBC client `2.4.3.8606`, the verified fresh extraction path is:
 2. Build `Alpha/Core/extras/collision/assembler/vmap_assembler.vcxproj`.
    The default release output is `Alpha/Core/extras/collision/assembler/Release/vmap_assembler.exe`.
 3. Build `Alpha/Core/extras/mmap/generator/movemapgen.vcxproj`.
-   The verified release output is `Alpha/Core/extras/mmap/generator/bin/Win32/Release/movemapgen.exe`.
+   The verified release output is `Alpha/Core/extras/mmap/generator/bin/x64/Release/movemapgen.exe`.
 
 Legacy VC90 project files are still present as source-era references, but the verified build path on this branch is the `.vcxproj` wrappers above.
 
@@ -75,11 +75,11 @@ To generate mmaps after extraction:
 Examples:
 
 ```powershell
-Alpha\Core\extras\mmap\generator\bin\Win32\Release\movemapgen.exe 36 --tile 32,33 --workdir "C:\Users\colby\Downloads\WoW TBC 2.4.3.8606" --threads 1
+Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --tile 32,33 --workdir "C:\Users\user\Downloads\WoW TBC 2.4.3.8606" --threads 1
 ```
 
 ```powershell
-Alpha\Core\extras\mmap\generator\bin\Win32\Release\movemapgen.exe 36 --workdir "C:\Users\colby\Downloads\WoW TBC 2.4.3.8606" --threads 1
+Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --workdir "C:\Users\user\Downloads\WoW TBC 2.4.3.8606" --threads 1
 ```
 
 Expected mmap outputs:
@@ -127,6 +127,6 @@ Notes:
 - Future mmap data is expected under `mmaps/` named `%03u.mmap` and `%03u_%02u_%02u.mmtile`.
 - The generator-side sources for producing those files are now in-tree and build as `movemapgen.exe`.
 - Verified bake example:
-  - input workdir: `C:\Users\colby\Downloads\WoW TBC 2.4.3.8606`
+  - input workdir: `C:\Users\user\Downloads\WoW TBC 2.4.3.8606`
   - output files: `mmaps\036.mmap` and `mmaps\036_33_32.mmtile`
 - If `maps/` is missing, the generator logs that terrain/liquid input is being skipped; vmap-only indoor generation can still succeed where geometry is sufficient.
