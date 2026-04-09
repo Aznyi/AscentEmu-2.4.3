@@ -74,6 +74,24 @@ namespace MMAP
         rcPolyMeshDetail* dmesh;
     };
 
+    enum TileBuildReason
+    {
+        TILE_REASON_WRITTEN = 0,
+        TILE_REASON_SKIPPED_BY_CONFIG,
+        TILE_REASON_NO_SOURCE_GEOMETRY,
+        TILE_REASON_NO_GEOMETRY_AFTER_CLEANUP,
+        TILE_REASON_NO_WALKABLE_SPANS,
+        TILE_REASON_EMPTY_AFTER_MERGE,
+        TILE_REASON_NO_POLYGONS,
+        TILE_REASON_NO_DETAIL_MESH,
+        TILE_REASON_NAVDATA_BUILD_FAILED,
+        TILE_REASON_NAVMESH_ADD_FAILED,
+        TILE_REASON_WRITE_FILE_FAILED,
+        TILE_REASON_SUBTILE_BUILD_FAILED,
+        TILE_REASON_INTERNAL_ERROR,
+        TILE_REASON_COUNT
+    };
+
     class MapBuilder
     {
         public:
@@ -119,6 +137,20 @@ namespace MMAP
             bool IsMapDone(uint32 mapId) const;
 
         private:
+            struct BuildSummary
+            {
+                BuildSummary() : discoveredMapEntries(0), discoveredVMapEntries(0), discoveredTileCount(0), scheduledTileCount(0)
+                {
+                    memset(reasonCounts, 0, sizeof(reasonCounts));
+                }
+
+                uint32 discoveredMapEntries;
+                uint32 discoveredVMapEntries;
+                uint32 discoveredTileCount;
+                uint32 scheduledTileCount;
+                uint32 reasonCounts[TILE_REASON_COUNT];
+            };
+
             // builds all mmap tiles for the specified map id (ignores skip settings)
             void buildMap(uint32 mapID);
 
@@ -133,7 +165,7 @@ namespace MMAP
                                  int* lTris, int lTriCount, uint8* lTriFlags);
 
             // move map building
-            void buildMoveMapTile(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData, float bmin[3], float bmax[3], dtNavMesh* navMesh);
+            TileBuildReason buildMoveMapTile(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData, float bmin[3], float bmax[3], dtNavMesh* navMesh);
             void getTileBounds(uint32 tileX, uint32 tileY, float* verts, int vertCount, float* bmin, float* bmax);
             void getGridBounds(uint32 mapID, uint32& minX, uint32& minY, uint32& maxX, uint32& maxY);
             uint32 CountHeightfieldSpans(const rcHeightfield* solid) const;
@@ -150,6 +182,10 @@ namespace MMAP
             json getDefaultConfig();
             json getMapIdConfig(uint32 mapId);
             json getTileConfig(uint32 mapId, uint32 tileX, uint32 tileY);
+            static const char* GetTileBuildReasonName(TileBuildReason reason);
+            void RecordTileOutcome(TileBuildReason reason);
+            void LogTileOutcome(uint32 mapID, uint32 tileX, uint32 tileY, TileBuildReason reason, bool hadTerrainGeometry, bool hadVMapGeometry, uint32 solidTriCount, uint32 liquidTriCount);
+            void PrintBuildSummary() const;
 
             TerrainBuilder* m_terrainBuilder;
             TileList m_tiles;
@@ -167,6 +203,8 @@ namespace MMAP
 
             uint32 m_threads;
             mutable std::mutex m_terrainMutex;
+            mutable std::mutex m_summaryMutex;
+            BuildSummary m_summary;
 
             // used to know wich map have launched all its tile work
             MapSet m_mapDone;

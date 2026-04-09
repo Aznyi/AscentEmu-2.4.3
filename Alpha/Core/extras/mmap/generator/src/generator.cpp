@@ -54,7 +54,12 @@ bool checkDirectories(bool debugOutput, const char* workdir)
     sprintf(maps_dir, "%s/%s", workdir, "maps");
     const bool hasMaps = (getDirContents(dirFiles, maps_dir) != LISTFILE_DIRECTORY_NOT_FOUND && !dirFiles.empty());
     if (!hasMaps)
-        printf("'%s' directory is empty or does not exist; terrain/liquid input will be skipped where vmaps alone are sufficient\n", maps_dir);
+    {
+        printf("WARNING: '%s' directory is empty or does not exist.\n", maps_dir);
+        printf("         Expected extracted terrain input such as 'maps/Map_<id>.bin'.\n");
+        printf("         MMap generation will fall back to vmap-only geometry, which is usually incomplete for outdoor pathing.\n");
+        printf("         This commonly results in many discovered tiles but far fewer written '.mmtile' outputs.\n");
+    }
 
     dirFiles.clear();
     sprintf(vmaps_dir, "%s/%s", workdir, "vmaps");

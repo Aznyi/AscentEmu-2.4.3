@@ -68,18 +68,24 @@ powershell -ExecutionPolicy Bypass -File Alpha\Core\extras\collision\extractor\R
 
 To generate mmaps after extraction:
 
-1. Ensure the client working folder contains `vmaps/`.
-2. If you also have `maps/`, place them beside `vmaps/` so terrain/liquid can be included.
-3. Run `movemapgen.exe`.
+1. Ensure the working folder contains `vmaps/`.
+2. Ensure the same working folder also contains extracted terrain files under `maps/`, such as `maps/Map_000.bin`.
+3. Run `movemapgen.exe` against that merged asset folder.
+
+Important:
+
+- `vmaps/` alone is not a full TBC-era mmap input set.
+- Running `movemapgen.exe` against a bare client folder that only has `vmaps/` will usually discover many candidate tiles but write far fewer `.mmtile` files.
+- For broad outdoor coverage, `maps/` and `vmaps/` must be present side-by-side in the `--workdir` you pass to `movemapgen.exe`.
 
 Examples:
 
 ```powershell
-Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --tile 32,33 --workdir "C:\Users\user\Downloads\WoW TBC 2.4.3.8606" --threads 1
+Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --tile 32,33 --workdir "D:\Server\Github\Ascent-2.4.3\AscentEmu-2.4.3\Alpha\Core\bin\release_x64" --threads 1
 ```
 
 ```powershell
-Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --workdir "C:\Users\user\Downloads\WoW TBC 2.4.3.8606" --threads 1
+Alpha\Core\extras\mmap\generator\bin\x64\Release\movemapgen.exe 36 --workdir "D:\Server\Github\Ascent-2.4.3\AscentEmu-2.4.3\Alpha\Core\bin\release_x64" --threads 1
 ```
 
 Expected mmap outputs:
@@ -127,6 +133,6 @@ Notes:
 - Future mmap data is expected under `mmaps/` named `%03u.mmap` and `%03u_%02u_%02u.mmtile`.
 - The generator-side sources for producing those files are now in-tree and build as `movemapgen.exe`.
 - Verified bake example:
-  - input workdir: `C:\Users\user\Downloads\WoW TBC 2.4.3.8606`
+- input workdir: `D:\Server\Github\Ascent-2.4.3\AscentEmu-2.4.3\Alpha\Core\bin\release_x64`
   - output files: `mmaps\036.mmap` and `mmaps\036_33_32.mmtile`
-- If `maps/` is missing, the generator logs that terrain/liquid input is being skipped; vmap-only indoor generation can still succeed where geometry is sufficient.
+- If `maps/` is missing, the generator logs a warning that terrain/liquid input is absent; vmap-only indoor generation can still succeed, but outdoor coverage will be incomplete and the discovered tile count will usually be much higher than the written tile count.
