@@ -90,6 +90,9 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 	if(!repeatable && plr->HasFinishedQuest(qst->id))
 		return QMGR_QUEST_NOT_AVAILABLE;
 
+	if(HasExclusiveQuestInGroup(plr, qst))
+		return QMGR_QUEST_NOT_AVAILABLE;
+
 	// Keep linear chains locked until the previous quest has been turned in.
 	if(qst->previous_quest_id && !plr->HasFinishedQuest(qst->previous_quest_id))
 		return QMGR_QUEST_NOT_AVAILABLE;
@@ -107,6 +110,32 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 		return QMGR_QUEST_CHAT;
 
 	return status;
+}
+
+bool QuestMgr::HasExclusiveQuestInGroup(Player *plr, Quest *qst)
+{
+	if(!plr || !qst || qst->exclusive_group == 0)
+		return false;
+
+	unordered_map<int32, list<uint32> >::iterator itr = m_exclusive_quest_groups.find(qst->exclusive_group);
+	if(itr == m_exclusive_quest_groups.end())
+		return false;
+
+	for(list<uint32>::iterator qitr = itr->second.begin(); qitr != itr->second.end(); ++qitr)
+	{
+		if(*qitr == qst->id)
+			continue;
+
+		if(plr->GetQuestLogForEntry(*qitr))
+			return true;
+
+		// Positive exclusive groups are permanent choices. Negative groups only
+		// prevent multiple quests in the same set from being active together.
+		if(qst->exclusive_group > 0 && plr->HasFinishedQuest(*qitr))
+			return true;
+	}
+
+	return false;
 }
 
 uint32 QuestMgr::CalcQuestStatus(Object* quest_giver, Player* plr, Quest* qst, uint8 type, bool skiplevelcheck)
@@ -1631,11 +1660,16 @@ bool QuestMgr::CanStoreReward(Player *plyr, Quest *qst, uint32 reward_slot)
 
 void QuestMgr::LoadExtraQuestStuff()
 {
+	m_exclusive_quest_groups.clear();
+
 	StorageContainerIterator<Quest> * it = QuestStorage.MakeIterator();
 	Quest * qst;
 	while(!it->AtEnd())
 	{
 		qst = it->Get();
+
+		if(qst->exclusive_group != 0)
+			m_exclusive_quest_groups[qst->exclusive_group].push_back(qst->id);
 
 		// 0 them out
 		qst->count_required_item = 0;

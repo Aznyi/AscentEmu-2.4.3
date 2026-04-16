@@ -135,6 +135,7 @@ struct Quest
 	
 	uint32 previous_quest_id;
 	uint32 next_quest_id;
+	int32 exclusive_group;
 
 	uint32 srcitem;
 	uint32 srcitemcount;

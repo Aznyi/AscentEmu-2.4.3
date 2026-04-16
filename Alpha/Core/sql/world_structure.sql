@@ -1108,6 +1108,7 @@ CREATE TABLE `quests` (
   `SpecialFlags` int(10) unsigned NOT NULL default '0',
   `PrevQuestId` int(10) unsigned NOT NULL default '0',
   `NextQuestId` int(10) unsigned NOT NULL default '0',
+  `ExclusiveGroup` int(10) NOT NULL default '0',
   `srcItem` int(10) unsigned NOT NULL default '0',
   `SrcItemCount` int(10) unsigned NOT NULL default '0',
   `Title` char(255) NOT NULL,

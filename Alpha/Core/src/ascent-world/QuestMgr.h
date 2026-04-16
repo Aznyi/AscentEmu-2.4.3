@@ -77,6 +77,7 @@ public:
 
 	uint32 GenerateQuestXP(Player *plr, Quest *qst);
 	uint32 GenerateRewardMoney( Player * plr, Quest * qst );
+	bool HasExclusiveQuestInGroup(Player *plr, Quest *qst);
 
 	void SendQuestInvalid( INVALID_REASON reason, Player *plyr);
 	void SendQuestFailed(FAILED_REASON failed, Quest *qst, Player *plyr);
@@ -134,6 +135,7 @@ private:
 	ASCENT_INLINE unordered_map<uint32, list<QuestAssociation *>* >& GetQuestAssociationList()
 		{return m_quest_associations;}
 
+	unordered_map<int32, list<uint32> > m_exclusive_quest_groups;
 	unordered_map<uint32, uint32>		  m_ObjectLootQuestList;
 
 	template <class T> void _AddQuest(uint32 entryid, Quest *qst, uint8 type);
