@@ -758,17 +758,23 @@ bool Player::Create(WorldPacket& data )
 			item=objmgr.CreateItem((*is).protoid,this);
 			if(item)
 			{
+				bool added = false;
 				item->SetUInt32Value(ITEM_FIELD_STACK_COUNT,(*is).amount);
 				if((*is).slot<INVENTORY_SLOT_BAG_END)
 				{
-					if( !GetItemInterface()->SafeAddItem(item, INVENTORY_SLOT_NOT_SET, (*is).slot) )
+					added = GetItemInterface()->SafeAddItem(item, INVENTORY_SLOT_NOT_SET, (*is).slot) == ADD_ITEM_RESULT_OK;
+					if( !added )
 						delete item;
 				}
 				else
 				{
-					if( !GetItemInterface()->AddItemToFreeSlot(item) )
+					added = GetItemInterface()->AddItemToFreeSlot(item) == ADD_ITEM_RESULT_OK;
+					if( !added )
 						delete item;
 				}
+
+				if( added && GetUInt32Value(PLAYER_AMMO_ID) == 0 && item->GetProto()->Class == ITEM_CLASS_PROJECTILE )
+					SetUInt32Value(PLAYER_AMMO_ID, item->GetEntry());
 			}
 		}
 	}
