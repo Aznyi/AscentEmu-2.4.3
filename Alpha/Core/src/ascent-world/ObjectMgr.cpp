@@ -2947,6 +2947,8 @@ void ObjectMgr::ResetDailies()
 		Player * pPlayer = itr->second;
 		pPlayer->DailyMutex.Acquire();
 		pPlayer->m_finishedDailies.clear();
+		for(uint32 i = PLAYER_FIELD_DAILY_QUESTS_00; i <= PLAYER_FIELD_DAILY_QUESTS_24; ++i)
+			pPlayer->SetUInt32Value(i, 0);
 		pPlayer->DailyMutex.Release();
 	}
 	_playerslock.ReleaseReadLock();

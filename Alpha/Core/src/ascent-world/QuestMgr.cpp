@@ -50,12 +50,14 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 	if(sGameEventMgr.HasData() && !sGameEventMgr.IsQuestEnabled(qst->id))
 		return QMGR_QUEST_NOT_AVAILABLE;
 
-	if (!sQuestMgr.IsQuestRepeatable(qst))
+	const bool repeatable = sQuestMgr.IsQuestRepeatable(qst);
+
+	if(!repeatable)
 		status = QMGR_QUEST_AVAILABLE;
 	else
     {
 		status = QMGR_QUEST_REPEATABLE;
-		if(qst->is_repeatable == ASCENT_QUEST_REPEATABLE_DAILY && plr->HasFinishedDaily(qst->id))
+		if(sQuestMgr.IsQuestDaily(qst) && plr->HasFinishedDaily(qst->id))
 			return QMGR_QUEST_NOT_AVAILABLE;
     }
 
@@ -85,7 +87,7 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 		if(plr->GetStanding(qst->required_rep_faction) < (int32)qst->required_rep_value)
 			return QMGR_QUEST_NOT_AVAILABLE;
 
-	if (plr->HasFinishedQuest(qst->id))
+	if(!repeatable && plr->HasFinishedQuest(qst->id))
 		return QMGR_QUEST_NOT_AVAILABLE;
 
 	// Keep linear chains locked until the previous quest has been turned in.

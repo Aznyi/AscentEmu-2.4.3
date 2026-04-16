@@ -578,3 +578,42 @@ WHERE `SuggestedPlayers` = 0
     11691,11885,12062
   );
 
+-- IsRepeatable: 0 = normal, 1 = repeatable, 2 = daily.
+UPDATE `quests`
+SET `IsRepeatable` = CASE `entry`
+  WHEN 2358 THEN 1 -- OLD Horns of Nez'ra
+  WHEN 3785 THEN 1 -- Morrowgrain Research
+  WHEN 5058 THEN 1 -- Mrs. Dalson's Diary
+  WHEN 5405 THEN 1 -- Argent Dawn Commission
+  WHEN 5503 THEN 1 -- Argent Dawn Commission
+  WHEN 5517 THEN 1 -- Chromatic Mantle of the Dawn
+  WHEN 5521 THEN 1 -- Chromatic Mantle of the Dawn
+  WHEN 5524 THEN 1 -- Chromatic Mantle of the Dawn
+  WHEN 5887 THEN 1 -- Salve via Hunting
+  WHEN 5888 THEN 1 -- Salve via Mining
+  WHEN 5889 THEN 1 -- Salve via Gathering
+  WHEN 5890 THEN 1 -- Salve via Skinning
+  WHEN 5891 THEN 1 -- Salve via Disenchanting
+  WHEN 6962 THEN 1 -- Treats for Great-father Winter
+  WHEN 7164 THEN 1 -- Honored Amongst the Clan
+  WHEN 7166 THEN 1 -- Legendary Heroes
+  WHEN 7167 THEN 1 -- The Eye of Command
+  WHEN 7170 THEN 1 -- Earned Reverence
+  WHEN 7171 THEN 1 -- Legendary Heroes
+  WHEN 7172 THEN 1 -- The Eye of Command
+  WHEN 7830 THEN 1 -- Avenging the Fallen
+  WHEN 7846 THEN 1 -- Recover the Key!
+  WHEN 8314 THEN 1 -- Unraveling the Mystery
+  WHEN 8552 THEN 1 -- The Monogrammed Sash
+  WHEN 8579 THEN 1 -- Mortal Champions
+  WHEN 8763 THEN 1 -- The Hero of the Day
+  WHEN 8799 THEN 1 -- The Hero of the Day
+  ELSE `IsRepeatable`
+END
+WHERE `entry` IN (
+  2358, 3785, 5058, 5405, 5503, 5517, 5521, 5524, 5887,
+  5888, 5889, 5890, 5891, 6962, 7164, 7166, 7167, 7170,
+  7171, 7172, 7830, 7846, 8314, 8552, 8579, 8763, 8799
+)
+AND `IsRepeatable` = 0;
+

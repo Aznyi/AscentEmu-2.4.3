@@ -2998,7 +2998,9 @@ void Player::LoadFromDBProc(QueryResultVector & results)
 		end = strchr(start,',');
 		if(!end) break;
 		*end = 0;
-		m_finishedDailies.insert(atol(start));
+		uint32 quest_id = atol(start);
+		if(quest_id)
+			PushToFinishedDailies(quest_id);
 		start = end +1;
 	}
 	
@@ -4450,6 +4452,31 @@ void Player::AddToFinishedQuests(uint32 quest_id)
 		return;
 
 	m_finishedQuests.insert(quest_id);
+}
+
+void Player::PushToFinishedDailies(uint32 questid)
+{
+	DailyMutex.Acquire();
+	if(m_finishedDailies.insert(questid).second)
+	{
+		for(uint32 i = PLAYER_FIELD_DAILY_QUESTS_00; i <= PLAYER_FIELD_DAILY_QUESTS_24; ++i)
+		{
+			if(GetUInt32Value(i) == 0)
+			{
+				SetUInt32Value(i, questid);
+				break;
+			}
+		}
+	}
+	DailyMutex.Release();
+}
+
+bool Player::HasFinishedDaily(uint32 questid)
+{
+	DailyMutex.Acquire();
+	bool finished = (m_finishedDailies.find(questid) != m_finishedDailies.end());
+	DailyMutex.Release();
+	return finished;
 }
 
 bool Player::HasFinishedQuest(uint32 quest_id)

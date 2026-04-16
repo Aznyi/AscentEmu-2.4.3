@@ -815,8 +815,8 @@ public:
     void                SetQuestLogSlot(QuestLogEntry *entry, uint32 slot);
     
     ASCENT_INLINE void         PushToRemovedQuests(uint32 questid)	{ m_removequests.insert(questid);}
-	ASCENT_INLINE void			PushToFinishedDailies(uint32 questid) { DailyMutex.Acquire(); m_finishedDailies.insert(questid); DailyMutex.Release();}
-	ASCENT_INLINE bool		HasFinishedDaily(uint32 questid) { return (m_finishedDailies.find(questid) == m_finishedDailies.end() ? false : true); }
+	void						PushToFinishedDailies(uint32 questid);
+	bool						HasFinishedDaily(uint32 questid);
     void                AddToFinishedQuests(uint32 quest_id);
     void                EventTimedQuestExpire(Quest *qst, QuestLogEntry *qle, uint32 log_slot);
 	
