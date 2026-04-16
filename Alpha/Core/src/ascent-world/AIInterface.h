@@ -45,6 +45,7 @@ class Unit;
 class Player;
 class WorldSession;
 class SpellCastTargets;
+struct PathQueryResult;
 
 
 enum AIType
@@ -291,6 +292,9 @@ public:
 	void MoveTo(float x, float y, float z, float o);
 	uint32 getMoveFlags();
 	void UpdateMove();
+	bool ApplyPathResult(const PathQueryResult& pathResult);
+	void ClearMovementPath(const char* reason = NULL);
+	bool AdvanceMovementPath(const char* reason = NULL);
 	void SendCurrentMove(Player* plyr/*uint64 guid*/);
 	bool StopMovement(uint32 time);
 	void RecordLastValidPosition();
@@ -360,6 +364,14 @@ public:
 	ASCENT_INLINE Unit* GetNextTarget() { return m_nextTarget; }
 	ASCENT_INLINE void SetNextTarget (Unit *nextTarget) 
 	{ 
+		if(nextTarget == NULL)
+		{
+			if(m_creatureState == MOVING || !m_movementPath.empty())
+				ClearMovementPath("target_lost");
+		}
+		else if(m_nextTarget != NULL && m_nextTarget != nextTarget && !m_movementPath.empty())
+			ClearMovementPath("target_changed");
+
 		m_nextTarget = nextTarget; 
 		if(nextTarget)
 		{
@@ -501,9 +513,17 @@ protected:
         float m_lastValidX;
         float m_lastValidY;
         float m_lastValidZ;
-        uint32 m_invalidMoveCount;
-        uint32 m_lastMoveRejectTime;
-        bool m_skipDirectPathValidation;
+	uint32 m_invalidMoveCount;
+	uint32 m_lastMoveRejectTime;
+	bool m_skipDirectPathValidation;
+	std::vector<LocationVector> m_movementPath;
+	size_t m_movementPathIndex;
+	uint32 m_lastPathRepathTime;
+	uint32 m_lastFinalApproachLogTime;
+	float m_lastFinalApproachDistance;
+	float m_lastRepathGoalX;
+	float m_lastRepathGoalY;
+	float m_lastRepathGoalZ;
 
         MovementType m_MovementType;
         MovementState m_MovementState;

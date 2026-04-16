@@ -3351,6 +3351,28 @@ uint8 Spell::CanCast(bool tolerate)
 					return SPELL_FAILED_OUT_OF_RANGE;
 			}
 
+#ifdef COLLISION
+			if(u_caster != NULL && u_caster->GetMapId() == target->GetMapId())
+			{
+				const bool hasLos = CollideInterface.CheckLOS(u_caster->GetMapId(), u_caster->GetPositionNC(), target->GetPositionNC());
+				if(sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[LOS][CAST] map=%u spell=%u caster=" I64FMT " target=" I64FMT " source=checkcast result=%u",
+						u_caster->GetMapId(), m_spellInfo->Id, u_caster->GetGUID(), target->GetGUID(), hasLos ? 1 : 0);
+				}
+
+				if(!hasLos)
+				{
+					if(sWorld.CollisionDebugMovement)
+					{
+						sLog.outDebug("[LOS][BLOCK] map=%u spell=%u caster=" I64FMT " target=" I64FMT " reason=line_of_sight",
+							u_caster->GetMapId(), m_spellInfo->Id, u_caster->GetGUID(), target->GetGUID());
+					}
+					return SPELL_FAILED_LINE_OF_SIGHT;
+				}
+			}
+#endif
+
 			if( p_caster != NULL )
 			{
 				if( m_spellInfo->Id == SPELL_RANGED_THROW)
@@ -3359,10 +3381,6 @@ uint8 Spell::CanCast(bool tolerate)
 					if(!itm || itm->GetDurability() == 0)
 						return SPELL_FAILED_NO_AMMO;
 				}
-#ifdef COLLISION
-				if (p_caster->GetMapId() == target->GetMapId() && !CollideInterface.CheckLOS(p_caster->GetMapId(),p_caster->GetPositionNC(),target->GetPositionNC()))
-					return SPELL_FAILED_LINE_OF_SIGHT;
-#endif
 
 				// check aurastate
 				if( m_spellInfo->TargetAuraState )
@@ -3531,28 +3549,50 @@ uint8 Spell::CanCast(bool tolerate)
 				*
 				**********************************************************/
 
-				/* burlex: units are always facing the target! */
-				if(p_caster && 	m_spellInfo->in_front_status != SPELL_INFRONT_STATUS_REQUIRE_SKIPCHECK )
+				if(u_caster && m_spellInfo->in_front_status != SPELL_INFRONT_STATUS_REQUIRE_SKIPCHECK )
 				{
+					bool facingResult = true;
+					bool facingChecked = false;
+					const char* facingMode = "none";
+					uint8 facingFailure = SPELL_FAILED_UNIT_NOT_INFRONT;
+
 					if( m_spellInfo->Spell_Dmg_Type == SPELL_DMG_TYPE_RANGED )
-					{ // our spell is a ranged spell
-						if(!p_caster->isInFront(target))
-							return SPELL_FAILED_UNIT_NOT_INFRONT;
+					{
+						facingChecked = true;
+						facingMode = "ranged_in_front";
+						facingResult = u_caster->isInFront(target);
 					}
 					else
-					{ // our spell is not a ranged spell
+					{
 						if( GetType() == SPELL_DMG_TYPE_MAGIC && m_spellInfo->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INFRONT )
 						{
-							// must be in front
-							if(!u_caster->isInFront(target))
-								return SPELL_FAILED_UNIT_NOT_INFRONT;
+							facingChecked = true;
+							facingMode = "require_in_front";
+							facingResult = u_caster->isInFront(target);
 						}
 						else if( m_spellInfo->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INBACK)
 						{
-							// behind
-							if(target->isInFront(u_caster))
-								return SPELL_FAILED_NOT_BEHIND;
+							facingChecked = true;
+							facingMode = "require_behind";
+							facingFailure = SPELL_FAILED_NOT_BEHIND;
+							facingResult = target->isInBack(u_caster);
 						}
+					}
+
+					if(facingChecked && sWorld.CollisionDebugMovement)
+					{
+						sLog.outDebug("[FACING][CAST] map=%u spell=%u caster=" I64FMT " target=" I64FMT " mode=%s result=%u",
+							u_caster->GetMapId(), m_spellInfo->Id, u_caster->GetGUID(), target->GetGUID(), facingMode, facingResult ? 1 : 0);
+					}
+
+					if(facingChecked && !facingResult)
+					{
+						if(sWorld.CollisionDebugMovement)
+						{
+							sLog.outDebug("[FACING][BLOCK] map=%u spell=%u caster=" I64FMT " target=" I64FMT " reason=%s",
+								u_caster->GetMapId(), m_spellInfo->Id, u_caster->GetGUID(), target->GetGUID(), facingMode);
+						}
+						return facingFailure;
 					}
 				}
 			}

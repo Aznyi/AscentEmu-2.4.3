@@ -64,12 +64,86 @@ namespace
 		return fullPath;
 	}
 
+        string FormatPolyRefChain(const dtPolyRef* refs, int count)
+        {
+                string chain;
+                if(refs == NULL || count <= 0)
+                        return chain;
+
+                char buffer[48];
+                for(int i = 0; i < count; ++i)
+                {
+                        if(i != 0)
+                                chain += " -> ";
+                        _snprintf(buffer, sizeof(buffer), I64FMT, (uint64)refs[i]);
+                        buffer[sizeof(buffer) - 1] = 0;
+                        chain += buffer;
+                }
+
+                return chain;
+        }
+
+        string FormatPolyRefTileChain(const dtNavMesh* navMesh, const dtPolyRef* refs, int count, int* outTileTransitions)
+        {
+                string chain;
+                if(outTileTransitions != NULL)
+                        *outTileTransitions = 0;
+                if(navMesh == NULL || refs == NULL || count <= 0)
+                        return chain;
+
+                uint32 previousTileX = UINT_MAX;
+                uint32 previousTileY = UINT_MAX;
+                uint32 previousTileLayer = UINT_MAX;
+                char buffer[96];
+                for(int i = 0; i < count; ++i)
+                {
+                        const dtMeshTile* tile = NULL;
+                        const dtPoly* poly = NULL;
+                        if(dtStatusFailed(navMesh->getTileAndPolyByRef(refs[i], &tile, &poly)) || tile == NULL || tile->header == NULL)
+                        {
+                                _snprintf(buffer, sizeof(buffer), I64FMT "[invalid]", (uint64)refs[i]);
+                                buffer[sizeof(buffer) - 1] = 0;
+                        }
+                        else
+                        {
+                                if(i != 0 &&
+                                   (previousTileX != tile->header->x || previousTileY != tile->header->y || previousTileLayer != uint32(tile->header->layer)) &&
+                                   outTileTransitions != NULL)
+                                        ++(*outTileTransitions);
+
+                                _snprintf(buffer, sizeof(buffer), I64FMT "[%u,%u,%d#%u]",
+                                        (uint64)refs[i],
+                                        uint32(tile->header->x),
+                                        uint32(tile->header->y),
+                                        int(tile->header->layer),
+                                        uint32(poly - tile->polys));
+                                buffer[sizeof(buffer) - 1] = 0;
+                                previousTileX = tile->header->x;
+                                previousTileY = tile->header->y;
+                                previousTileLayer = uint32(tile->header->layer);
+                        }
+
+                        if(i != 0)
+                                chain += " -> ";
+                        chain += buffer;
+                }
+
+                return chain;
+        }
+
         bool NearlyEqualPoints(const LocationVector& left, const LocationVector& right, float tolerance)
         {
 		const float dx = left.x - right.x;
 		const float dy = left.y - right.y;
 		const float dz = left.z - right.z;
                 return ((dx * dx) + (dy * dy) + (dz * dz)) <= (tolerance * tolerance);
+        }
+
+        bool NearlyEqualHorizontalPoints(const LocationVector& left, const LocationVector& right, float tolerance)
+        {
+		const float dx = left.x - right.x;
+		const float dy = left.y - right.y;
+                return ((dx * dx) + (dy * dy)) <= (tolerance * tolerance);
         }
 
         float ClampNearestPolyExtent(float value, float minimumValue, float maximumValue)
@@ -92,6 +166,119 @@ namespace
                 const float closestWorldZ = lookup.closest[1];
                 return fabsf(closestWorldZ - referenceWorldZ) <= maxZDelta;
         }
+
+        bool IsNearestPolyProjectionCollisionSafe(uint32 mapId, Unit* mover, const ProjectedNavPoint& point, const NearestPolyLookupResult& lookup)
+        {
+#ifndef COLLISION
+                (void)mapId;
+                (void)mover;
+                (void)point;
+                (void)lookup;
+                return true;
+#else
+                if(lookup.polyRef == 0 || dtStatusFailed(lookup.status))
+                        return false;
+
+                if(mover != NULL && mover->GetAIInterface() != NULL && mover->GetAIInterface()->IsFlying())
+                        return true;
+
+                LocationVector sourceWorld = lookup.usedProjectedPoint ? point.queryWorld : point.originalWorld;
+                LocationVector closestWorld(lookup.closest[0], lookup.closest[2], lookup.closest[1]);
+                const float dx = closestWorld.x - sourceWorld.x;
+                const float dy = closestWorld.y - sourceWorld.y;
+                const float dz = closestWorld.z - sourceWorld.z;
+                const float horizontalDistanceSq = (dx * dx) + (dy * dy);
+                if(horizontalDistanceSq <= (0.35f * 0.35f) && fabsf(dz) <= 1.0f)
+                        return true;
+
+                return CollideInterface.CheckLOS(mapId, sourceWorld, closestWorld);
+#endif
+        }
+
+        bool IsNearestPolyProjectionAcceptable(uint32 mapId, Unit* mover, const ProjectedNavPoint& point, const NearestPolyLookupResult& lookup, float maxZDelta, const char** failureReason)
+        {
+                if(!IsNearestPolyHeightAcceptable(lookup, point, maxZDelta))
+                {
+                        if(failureReason != NULL)
+                                *failureReason = "height_mismatch";
+                        return false;
+                }
+
+                if(!IsNearestPolyProjectionCollisionSafe(mapId, mover, point, lookup))
+                {
+                        if(failureReason != NULL)
+                                *failureReason = "projection_blocked";
+                        return false;
+                }
+
+                if(failureReason != NULL)
+                        *failureReason = "ok";
+                return true;
+        }
+
+        bool NormalizePathPoint(MapMgr* mapMgr, const char* reason, LocationVector& point)
+        {
+                if(mapMgr == NULL)
+                        return true;
+
+                const float rawZ = point.z;
+                float normalizedZ = point.z;
+                if(!mapMgr->NormalizeGroundPosition(point.x, point.y, point.z, &normalizedZ, NULL, reason, 8.0f))
+                        return false;
+
+                point.z = normalizedZ;
+                if(sWorld.MMapDebugPathing && fabsf(point.z - rawZ) > 0.5f)
+                {
+                        sLog.outDebug("[MMAP][Z] reason=%s point=(%0.3f,%0.3f) raw=%0.3f validated=%0.3f",
+                                reason != NULL ? reason : "normalize_path_point",
+                                point.x, point.y, rawZ, point.z);
+                }
+                return true;
+        }
+
+        bool ValidatePathSegment(MapMgr* mapMgr, Unit* mover, const LocationVector& startPoint, const LocationVector& endPoint, string* detail)
+        {
+                if(mapMgr == NULL || mover == NULL || mover->IsPlayer())
+                        return true;
+
+                if(mover->GetAIInterface() != NULL && mover->GetAIInterface()->IsFlying())
+                        return true;
+
+#ifdef COLLISION
+                LocationVector collisionStart(startPoint);
+                LocationVector collisionEnd(endPoint);
+                if(!CollideInterface.CheckLOS(mapMgr->GetMapId(), collisionStart, collisionEnd))
+                {
+                        if(detail != NULL)
+                                *detail = "unsafe_segment_blocked_los";
+                        return false;
+                }
+#endif
+
+                DirectGroundPathResult directResult;
+                if(mapMgr->ValidateDirectGroundPath(mover, startPoint.x, startPoint.y, startPoint.z, endPoint.x, endPoint.y, endPoint.z, &directResult, "mmap_path_segment"))
+                        return true;
+
+                if(detail != NULL)
+                        *detail = string("unsafe_segment_") + GetDirectGroundPathStatusName(directResult.status);
+                return false;
+        }
+
+	void LogPathingCreatureLine(const char* category, uint32 mapId, Unit* mover, const PathQueryRequest& request, const char* status)
+	{
+		if(!sWorld.MMapDebugPathing)
+			return;
+
+		const uint32 creatureEntry = (mover != NULL && mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0;
+		sLog.outDebug("[MMAP][%s] map=%u creature=%u guid=" I64FMT " start=(%0.3f,%0.3f,%0.3f) end=(%0.3f,%0.3f,%0.3f) status=%s",
+			category,
+			mapId,
+			creatureEntry,
+			(mover != NULL) ? mover->GetGUID() : 0,
+			request.startX, request.startY, request.startZ,
+			request.endX, request.endY, request.endZ,
+			status ? status : "unknown");
+	}
 }
 
 struct MMapInterface::RuntimeTileInfo
@@ -233,6 +420,7 @@ PathQueryResult MMapInterface::BuildPath(MapMgr* mapMgr, const PathQueryRequest&
 
 	bool releaseStartTile = false;
 	bool releaseEndTile = false;
+	std::vector<uint32> temporaryTiles;
 
 	m_lock.Acquire();
 
@@ -262,8 +450,24 @@ PathQueryResult MMapInterface::BuildPath(MapMgr* mapMgr, const PathQueryRequest&
 		return result;
 	}
 
+	if(!EnsurePathTilesLoaded(request.mapId, startTileX, startTileY, endTileX, endTileY, &temporaryTiles, &detail))
+	{
+		ReleaseTemporaryTiles(request.mapId, temporaryTiles);
+		if(releaseStartTile)
+			ReleaseTemporaryTile(request.mapId, startTileX, startTileY);
+		if(releaseEndTile && (startTileX != endTileX || startTileY != endTileY))
+			ReleaseTemporaryTile(request.mapId, endTileX, endTileY);
+
+		m_lock.Release();
+		result.status = (detail.find("malformed") != string::npos) ? PATH_QUERY_STATUS_MALFORMED_DATA : PATH_QUERY_STATUS_MISSING_DATA;
+		result.detail = detail;
+		LogQueryResult(request, result, startTileX, startTileY, endTileX, endTileY);
+		return result;
+	}
+
         result = QueryPath(mapMgr, request.mapId, request.instanceId, request);
 
+	ReleaseTemporaryTiles(request.mapId, temporaryTiles);
 	if(releaseStartTile)
 		ReleaseTemporaryTile(request.mapId, startTileX, startTileY);
 	if(releaseEndTile && (startTileX != endTileX || startTileY != endTileY))
@@ -620,6 +824,40 @@ bool MMapInterface::EnsureTileLoaded(uint32 mapId, uint32 tileX, uint32 tileY, b
         return true;
 }
 
+bool MMapInterface::EnsurePathTilesLoaded(uint32 mapId, uint32 startTileX, uint32 startTileY, uint32 endTileX, uint32 endTileY, std::vector<uint32>* temporaryTiles, string* detail /* = NULL */)
+{
+	const uint32 minTileX = (startTileX < endTileX) ? startTileX : endTileX;
+	const uint32 maxTileX = (startTileX > endTileX) ? startTileX : endTileX;
+	const uint32 minTileY = (startTileY < endTileY) ? startTileY : endTileY;
+	const uint32 maxTileY = (startTileY > endTileY) ? startTileY : endTileY;
+
+	for(uint32 tileX = minTileX; tileX <= maxTileX; ++tileX)
+	{
+		for(uint32 tileY = minTileY; tileY <= maxTileY; ++tileY)
+		{
+			if((tileX == startTileX && tileY == startTileY) || (tileX == endTileX && tileY == endTileY))
+				continue;
+
+			const uint64 tileKey = BuildTileRefKey(mapId, tileX, tileY);
+			const bool temporaryLoad = (m_tileRefCounts.find(tileKey) == m_tileRefCounts.end());
+			string tileDetail;
+			if(!EnsureTileLoaded(mapId, tileX, tileY, temporaryLoad, &tileDetail))
+			{
+				if(detail != NULL)
+					*detail = tileDetail.empty() ? "tile_missing" : tileDetail;
+				return false;
+			}
+
+			if(temporaryLoad && temporaryTiles != NULL)
+				temporaryTiles->push_back(BuildPackedTileID(tileX, tileY));
+		}
+	}
+
+	if(detail != NULL)
+		*detail = "ok";
+	return true;
+}
+
 void MMapInterface::ReleaseTemporaryTile(uint32 mapId, uint32 tileX, uint32 tileY)
 {
 	RuntimeMapData* data = NULL;
@@ -635,6 +873,17 @@ void MMapInterface::ReleaseTemporaryTile(uint32 mapId, uint32 tileX, uint32 tile
 
 	if(m_tileRefCounts.find(BuildTileRefKey(mapId, tileX, tileY)) == m_tileRefCounts.end())
 		UnloadTile(mapId, tileX, tileY, false);
+}
+
+void MMapInterface::ReleaseTemporaryTiles(uint32 mapId, const std::vector<uint32>& temporaryTiles)
+{
+	for(size_t i = 0; i < temporaryTiles.size(); ++i)
+	{
+		const uint32 packedTile = temporaryTiles[i];
+		const uint32 tileX = (packedTile >> 16) & 0xFFFF;
+		const uint32 tileY = packedTile & 0xFFFF;
+		ReleaseTemporaryTile(mapId, tileX, tileY);
+	}
 }
 
 bool MMapInterface::UnloadTile(uint32 mapId, uint32 tileX, uint32 tileY, bool logFailure)
@@ -896,23 +1145,14 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 
         if(sWorld.MMapDebugPathing)
         {
-                sLog.outDebug("MMap projection map=%u reason=%s startWorld=%0.3f,%0.3f,%0.3f startResolved=%0.3f,%0.3f,%0.3f startSource=%s endWorld=%0.3f,%0.3f,%0.3f endResolved=%0.3f,%0.3f,%0.3f endSource=%s extents=%0.3f,%0.3f,%0.3f expanded=%0.3f,%0.3f,%0.3f",
+                LogPathingCreatureLine("MOVE", request.mapId, request.mover, request, request.reason ? request.reason : "query");
+                sLog.outDebug("[MMAP][MOVE] map=%u creature=%u start_source=%s end_source=%s extents=(%0.3f,%0.3f,%0.3f) expanded=(%0.3f,%0.3f,%0.3f)",
                         request.mapId,
-                        request.reason ? request.reason : "unknown",
-                        projectedStart.originalWorld.x, projectedStart.originalWorld.y, projectedStart.originalWorld.z,
-                        projectedStart.queryWorld.x, projectedStart.queryWorld.y, projectedStart.queryWorld.z,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
                         GetGroundHeightSourceName(projectedStart.ground.source),
-                        projectedEnd.originalWorld.x, projectedEnd.originalWorld.y, projectedEnd.originalWorld.z,
-                        projectedEnd.queryWorld.x, projectedEnd.queryWorld.y, projectedEnd.queryWorld.z,
                         GetGroundHeightSourceName(projectedEnd.ground.source),
                         baseExtents[0], baseExtents[1], baseExtents[2],
                         expandedExtents[0], expandedExtents[1], expandedExtents[2]);
-                sLog.outDebug("MMap projection nav map=%u startOriginal=%0.3f,%0.3f,%0.3f startQuery=%0.3f,%0.3f,%0.3f endOriginal=%0.3f,%0.3f,%0.3f endQuery=%0.3f,%0.3f,%0.3f",
-                        request.mapId,
-                        projectedStart.originalNav[0], projectedStart.originalNav[1], projectedStart.originalNav[2],
-                        projectedStart.queryNav[0], projectedStart.queryNav[1], projectedStart.queryNav[2],
-                        projectedEnd.originalNav[0], projectedEnd.originalNav[1], projectedEnd.originalNav[2],
-                        projectedEnd.queryNav[0], projectedEnd.queryNav[1], projectedEnd.queryNav[2]);
         }
 
         NearestPolyLookupResult startLookup;
@@ -946,7 +1186,9 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 memcpy(startLookup.extents, strictExtents, sizeof(startLookup.extents));
                 startLookup.status = query->findNearestPoly(projectedStart.queryNav, strictExtents, &filter, &startLookup.polyRef, startLookup.closest);
 
-                if((dtStatusFailed(startLookup.status) || startLookup.polyRef == 0 || !IsNearestPolyHeightAcceptable(startLookup, projectedStart, MMAP_NEAREST_POLY_MAX_Z_DELTA)) && projectedStart.usedResolvedGround)
+                if((dtStatusFailed(startLookup.status) || startLookup.polyRef == 0 ||
+                        !IsNearestPolyHeightAcceptable(startLookup, projectedStart, MMAP_NEAREST_POLY_MAX_Z_DELTA)) &&
+                        projectedStart.usedResolvedGround)
                 {
                         startLookup.usedProjectedPoint = false;
                         memcpy(startLookup.extents, strictExtents, sizeof(startLookup.extents));
@@ -960,8 +1202,10 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 result.detail = "no_start_poly";
                 if(sWorld.MMapDebugPathing)
                 {
-                        sLog.outDebug("MMap nearest-poly failed map=%u phase=start status=0x%08X usedProjected=%u expanded=%u extents=%0.3f,%0.3f,%0.3f",
-                                request.mapId, startLookup.status, startLookup.usedProjectedPoint ? 1 : 0, startLookup.usedExpandedExtents ? 1 : 0,
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_start_poly status=0x%08X projected=%u expanded=%u extents=(%0.3f,%0.3f,%0.3f)",
+                                request.mapId,
+                                (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                                startLookup.status, startLookup.usedProjectedPoint ? 1 : 0, startLookup.usedExpandedExtents ? 1 : 0,
                                 startLookup.extents[0], startLookup.extents[1], startLookup.extents[2]);
                 }
                 return result;
@@ -974,11 +1218,26 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 if(sWorld.MMapDebugPathing)
                 {
                         const float referenceZ = startLookup.usedProjectedPoint ? projectedStart.queryWorld.z : projectedStart.originalWorld.z;
-                        sLog.outDebug("MMap nearest-poly rejected map=%u phase=start closestZ=%0.3f referenceZ=%0.3f delta=%0.3f extents=%0.3f,%0.3f,%0.3f",
-                                request.mapId, startLookup.closest[1], referenceZ, fabsf(startLookup.closest[1] - referenceZ),
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_start_poly detail=height_mismatch closestZ=%0.3f referenceZ=%0.3f delta=%0.3f extents=(%0.3f,%0.3f,%0.3f)",
+                                request.mapId,
+                                (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                                startLookup.closest[1], referenceZ, fabsf(startLookup.closest[1] - referenceZ),
                                 startLookup.extents[0], startLookup.extents[1], startLookup.extents[2]);
                 }
                 return result;
+        }
+
+        if(sWorld.MMapDebugPathing)
+        {
+                const LocationVector& startReference = startLookup.usedProjectedPoint ? projectedStart.queryWorld : projectedStart.originalWorld;
+                sLog.outDebug("[MMAP][POLY] map=%u creature=%u which=start ref=" I64FMT " query=(%0.3f,%0.3f,%0.3f) closest=(%0.3f,%0.3f,%0.3f) projected=%u expanded=%u",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        (uint64)startLookup.polyRef,
+                        startReference.x, startReference.y, startReference.z,
+                        startLookup.closest[0], startLookup.closest[2], startLookup.closest[1],
+                        startLookup.usedProjectedPoint ? 1 : 0,
+                        startLookup.usedExpandedExtents ? 1 : 0);
         }
 
         NearestPolyLookupResult endLookup;
@@ -1005,18 +1264,22 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 }
         }
 
-        if(!dtStatusFailed(endLookup.status) && endLookup.polyRef != 0 && !IsNearestPolyHeightAcceptable(endLookup, projectedEnd, MMAP_NEAREST_POLY_MAX_Z_DELTA))
+        const char* endProjectionFailure = "no_poly";
+        if(!dtStatusFailed(endLookup.status) && endLookup.polyRef != 0 && !IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure))
         {
                 endLookup.usedProjectedPoint = true;
                 endLookup.usedExpandedExtents = false;
                 memcpy(endLookup.extents, strictExtents, sizeof(endLookup.extents));
                 endLookup.status = query->findNearestPoly(projectedEnd.queryNav, strictExtents, &filter, &endLookup.polyRef, endLookup.closest);
 
-                if((dtStatusFailed(endLookup.status) || endLookup.polyRef == 0 || !IsNearestPolyHeightAcceptable(endLookup, projectedEnd, MMAP_NEAREST_POLY_MAX_Z_DELTA)) && projectedEnd.usedResolvedGround)
+                if((dtStatusFailed(endLookup.status) || endLookup.polyRef == 0 ||
+                        !IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure)) &&
+                        projectedEnd.usedResolvedGround)
                 {
                         endLookup.usedProjectedPoint = false;
                         memcpy(endLookup.extents, strictExtents, sizeof(endLookup.extents));
                         endLookup.status = query->findNearestPoly(projectedEnd.originalNav, strictExtents, &filter, &endLookup.polyRef, endLookup.closest);
+                        IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure);
                 }
         }
 
@@ -1026,22 +1289,27 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 result.detail = "no_end_poly";
                 if(sWorld.MMapDebugPathing)
                 {
-                        sLog.outDebug("MMap nearest-poly failed map=%u phase=end status=0x%08X usedProjected=%u expanded=%u extents=%0.3f,%0.3f,%0.3f",
-                                request.mapId, endLookup.status, endLookup.usedProjectedPoint ? 1 : 0, endLookup.usedExpandedExtents ? 1 : 0,
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly status=0x%08X projected=%u expanded=%u extents=(%0.3f,%0.3f,%0.3f)",
+                                request.mapId,
+                                (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                                endLookup.status, endLookup.usedProjectedPoint ? 1 : 0, endLookup.usedExpandedExtents ? 1 : 0,
                                 endLookup.extents[0], endLookup.extents[1], endLookup.extents[2]);
                 }
                 return result;
         }
 
-        if(!IsNearestPolyHeightAcceptable(endLookup, projectedEnd, MMAP_NEAREST_POLY_MAX_Z_DELTA))
+        if(!IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure))
         {
                 result.status = PATH_QUERY_STATUS_NOPATH;
                 result.detail = "no_end_poly";
                 if(sWorld.MMapDebugPathing)
                 {
                         const float referenceZ = endLookup.usedProjectedPoint ? projectedEnd.queryWorld.z : projectedEnd.originalWorld.z;
-                        sLog.outDebug("MMap nearest-poly rejected map=%u phase=end closestZ=%0.3f referenceZ=%0.3f delta=%0.3f extents=%0.3f,%0.3f,%0.3f",
-                                request.mapId, endLookup.closest[1], referenceZ, fabsf(endLookup.closest[1] - referenceZ),
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly detail=%s closestZ=%0.3f referenceZ=%0.3f delta=%0.3f extents=(%0.3f,%0.3f,%0.3f)",
+                                request.mapId,
+                                (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                                endProjectionFailure,
+                                endLookup.closest[1], referenceZ, fabsf(endLookup.closest[1] - referenceZ),
                                 endLookup.extents[0], endLookup.extents[1], endLookup.extents[2]);
                 }
                 return result;
@@ -1049,12 +1317,15 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 
         if(sWorld.MMapDebugPathing)
         {
-                const LocationVector startClosestWorld = ToWorldCoords(startLookup.closest);
-                const LocationVector endClosestWorld = ToWorldCoords(endLookup.closest);
-                sLog.outDebug("MMap nearest-poly map=%u startPoly=" I64FMT " endPoly=" I64FMT " startClosest=%0.3f,%0.3f,%0.3f endClosest=%0.3f,%0.3f,%0.3f",
-                        request.mapId, (uint64)startLookup.polyRef, (uint64)endLookup.polyRef,
-                        startClosestWorld.x, startClosestWorld.y, startClosestWorld.z,
-                        endClosestWorld.x, endClosestWorld.y, endClosestWorld.z);
+                const LocationVector& endReference = endLookup.usedProjectedPoint ? projectedEnd.queryWorld : projectedEnd.originalWorld;
+                sLog.outDebug("[MMAP][POLY] map=%u creature=%u which=end ref=" I64FMT " query=(%0.3f,%0.3f,%0.3f) closest=(%0.3f,%0.3f,%0.3f) projected=%u expanded=%u",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        (uint64)endLookup.polyRef,
+                        endReference.x, endReference.y, endReference.z,
+                        endLookup.closest[0], endLookup.closest[2], endLookup.closest[1],
+                        endLookup.usedProjectedPoint ? 1 : 0,
+                        endLookup.usedExpandedExtents ? 1 : 0);
         }
 
         dtPolyRef pathPolys[MMAP_MAX_PATH_POLYS];
@@ -1066,8 +1337,14 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
         {
                 result.status = PATH_QUERY_STATUS_NOPATH;
 		result.detail = "find_path_failed";
+		if(sWorld.MMapDebugPathing)
+			sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=path_query_failed status=0x%08X polys=%d",
+				request.mapId,
+				(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+				status, pathPolyCount);
 		return result;
 	}
+	result.polyCount = pathPolyCount;
 
 	float straightPath[MMAP_MAX_PATH_POINTS * 3];
 	unsigned char straightFlags[MMAP_MAX_PATH_POINTS];
@@ -1077,24 +1354,125 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 	memset(straightFlags, 0, sizeof(straightFlags));
 	memset(straightRefs, 0, sizeof(straightRefs));
 
-        status = query->findStraightPath(startLookup.closest, endLookup.closest, pathPolys, pathPolyCount, straightPath, straightFlags, straightRefs, &straightCount, MMAP_MAX_PATH_POINTS, 0);
+        status = query->findStraightPath(startLookup.closest, endLookup.closest, pathPolys, pathPolyCount, straightPath, straightFlags, straightRefs, &straightCount, MMAP_MAX_PATH_POINTS, DT_STRAIGHTPATH_ALL_CROSSINGS);
         if(dtStatusFailed(status) || straightCount == 0)
         {
                 result.status = PATH_QUERY_STATUS_NOPATH;
 		result.detail = "straight_path_failed";
+		if(sWorld.MMapDebugPathing)
+			sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=straight_path_generation_failed status=0x%08X polys=%d points=%d",
+				request.mapId,
+				(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+				status, pathPolyCount, straightCount);
+		return result;
+	}
+	result.pointCount = straightCount;
+
+        if(sWorld.MMapDebugPathing)
+        {
+                int pathTileTransitions = 0;
+                int straightTileTransitions = 0;
+                const string pathTileChain = FormatPolyRefTileChain(data->navMesh, pathPolys, pathPolyCount, &pathTileTransitions);
+                const string straightTileChain = FormatPolyRefTileChain(data->navMesh, straightRefs, straightCount, &straightTileTransitions);
+                sLog.outDebug("[MMAP][CHAIN] map=%u creature=%u path_polys=%d refs=%s",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        pathPolyCount,
+                        FormatPolyRefChain(pathPolys, pathPolyCount).c_str());
+                sLog.outDebug("[MMAP][CHAIN] map=%u creature=%u path_tiles=%d transitions=%d refs=%s",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        pathPolyCount,
+                        pathTileTransitions,
+                        pathTileChain.c_str());
+                sLog.outDebug("[MMAP][CHAIN] map=%u creature=%u straight_points=%d refs=%s",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        straightCount,
+                        FormatPolyRefChain(straightRefs, straightCount).c_str());
+                sLog.outDebug("[MMAP][CHAIN] map=%u creature=%u straight_tiles=%d transitions=%d refs=%s",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        straightCount,
+                        straightTileTransitions,
+                        straightTileChain.c_str());
+        }
+
+	LocationVector startPoint(request.startX, request.startY, request.startZ);
+	if(!NormalizePathPoint(mapMgr, "mmap_path_start", startPoint))
+	{
+		result.status = PATH_QUERY_STATUS_NOPATH;
+		result.detail = "invalid_start_ground";
+		if(sWorld.MMapDebugPathing)
+			sLog.outDebug("[MMAP][PATH] map=%u creature=%u reject=invalid_start_ground point=(%0.3f,%0.3f,%0.3f)",
+				request.mapId,
+				(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+				request.startX, request.startY, request.startZ);
 		return result;
 	}
 
-	result.points.push_back(LocationVector(request.startX, request.startY, request.startZ));
+	result.points.push_back(startPoint);
 	for(int i = 0; i < straightCount; ++i)
 	{
 		LocationVector worldPoint = ToWorldCoords(&straightPath[i * 3]);
-		if(result.points.empty() || !NearlyEqualPoints(result.points.back(), worldPoint, 0.25f))
-			result.points.push_back(worldPoint);
+		if(!NormalizePathPoint(mapMgr, "mmap_path_point", worldPoint))
+		{
+			result.status = PATH_QUERY_STATUS_NOPATH;
+			result.detail = "invalid_path_point_ground";
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][PATH] map=%u creature=%u reject=invalid_path_point_ground index=%d point=(%0.3f,%0.3f,%0.3f)",
+					request.mapId,
+					(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+					i, worldPoint.x, worldPoint.y, worldPoint.z);
+			}
+			return result;
+		}
+
+		if(NearlyEqualHorizontalPoints(result.points.back(), worldPoint, 0.25f))
+		{
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][PATH] map=%u creature=%u skip=start_projection_duplicate index=%d prev=(%0.3f,%0.3f,%0.3f) point=(%0.3f,%0.3f,%0.3f)",
+					request.mapId,
+					(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+					i,
+					result.points.back().x, result.points.back().y, result.points.back().z,
+					worldPoint.x, worldPoint.y, worldPoint.z);
+			}
+			continue;
+		}
+
+		if(result.points.empty() || NearlyEqualPoints(result.points.back(), worldPoint, 0.25f))
+			continue;
+
+		string pathValidationDetail;
+		if(!ValidatePathSegment(mapMgr, request.mover, result.points.back(), worldPoint, &pathValidationDetail))
+		{
+			result.status = PATH_QUERY_STATUS_NOPATH;
+			result.detail = pathValidationDetail.empty() ? "unsafe_path_segment" : pathValidationDetail;
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][PATH] map=%u creature=%u reject=%s from=(%0.3f,%0.3f,%0.3f) to=(%0.3f,%0.3f,%0.3f)",
+					request.mapId,
+					(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+					result.detail.c_str(),
+					result.points.back().x, result.points.back().y, result.points.back().z,
+					worldPoint.x, worldPoint.y, worldPoint.z);
+			}
+			result.points.clear();
+			return result;
+		}
+
+		result.points.push_back(worldPoint);
 	}
 
-	if(result.points.empty() || !NearlyEqualPoints(result.points.back(), LocationVector(request.endX, request.endY, request.endZ), 0.25f))
-		result.points.push_back(LocationVector(request.endX, request.endY, request.endZ));
+	if(result.points.size() <= 1)
+	{
+		result.status = PATH_QUERY_STATUS_NOPATH;
+		result.detail = "empty_path_points";
+		return result;
+	}
 
         if(pathPolys[pathPolyCount - 1] == endLookup.polyRef)
 	{
@@ -1104,7 +1482,8 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 	else if(request.allowPartial)
 	{
 		result.status = PATH_QUERY_STATUS_PARTIAL;
-		result.detail = "partial";
+		result.detail = "partial_clamped";
+		result.acceptedPartial = true;
 	}
 	else
 	{
@@ -1112,6 +1491,41 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 		result.detail = "partial_disallowed";
 		result.points.clear();
 	}
+
+	if(sWorld.MMapDebugPathing)
+	{
+		const LocationVector& finalPoint = result.points.back();
+		const float goalDx = finalPoint.x - request.endX;
+		const float goalDy = finalPoint.y - request.endY;
+		const float goalDz = finalPoint.z - request.endZ;
+		const float goalDelta = sqrtf((goalDx * goalDx) + (goalDy * goalDy) + (goalDz * goalDz));
+                sLog.outDebug("[MMAP][PATH] map=%u creature=%u polys=%u points=%u partial=%u final=(%0.3f,%0.3f,%0.3f) goal_delta=%0.3f",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        result.polyCount,
+                        result.pointCount,
+			result.acceptedPartial ? 1 : 0,
+                        finalPoint.x, finalPoint.y, finalPoint.z,
+                        goalDelta);
+                uint32 seamStartTileX = 0;
+                uint32 seamStartTileY = 0;
+                uint32 seamEndTileX = 0;
+                uint32 seamEndTileY = 0;
+                if(result.acceptedPartial &&
+                   result.polyCount <= 1 &&
+                   mapMgr != NULL &&
+                   ResolveTileCoords(mapMgr, request.startX, request.startY, seamStartTileX, seamStartTileY) &&
+                   ResolveTileCoords(mapMgr, request.endX, request.endY, seamEndTileX, seamEndTileY) &&
+                   (seamStartTileX != seamEndTileX || seamStartTileY != seamEndTileY))
+                {
+                        sLog.outDebug("[MMAP][SEAM] map=%u creature=%u reason=partial_single_poly_seam start_tile=%u,%u end_tile=%u,%u final=(%0.3f,%0.3f,%0.3f) goal=(%0.3f,%0.3f,%0.3f)",
+                                request.mapId,
+                                (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                                seamStartTileX, seamStartTileY, seamEndTileX, seamEndTileY,
+                                finalPoint.x, finalPoint.y, finalPoint.z,
+                                request.endX, request.endY, request.endZ);
+                }
+        }
 
 	return result;
 }
@@ -1147,4 +1561,13 @@ void MMapInterface::LogQueryResult(const PathQueryRequest& request, const PathQu
 		result.hadTileData ? 1 : 0,
 		result.hadRuntimeBackend ? 1 : 0,
 		result.usedFallback ? 1 : 0);
+
+	sLog.outDebug("[MMAP][MOVE] map=%u creature=%u tile_start=%u,%u tile_end=%u,%u status=%s detail=%s map_loaded=%u tile_loaded=%u",
+		request.mapId,
+		(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+		startTileX, startTileY, endTileX, endTileY,
+		GetPathQueryStatusName(result.status),
+		result.detail.c_str(),
+		result.hadMapData ? 1 : 0,
+		result.hadTileData ? 1 : 0);
 }

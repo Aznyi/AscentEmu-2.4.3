@@ -162,7 +162,7 @@ namespace MMAP
 
             void buildTile(uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, uint32 curTile, uint32 tileCount, uint32 workerIndex);
             bool buildCommonTile(const char* tileString, Tile& tile, rcConfig& tileCfg, float* tVerts, int tVertCount, int* tTris, int tTriCount, float* lVerts, int lVertCount,
-                                 int* lTris, int lTriCount, uint8* lTriFlags);
+                                 int* lTris, int lTriCount, uint8* lTriFlags, const json* tileConfigJson = NULL);
 
             // move map building
             TileBuildReason buildMoveMapTile(uint32 mapID, uint32 tileX, uint32 tileY, MeshData& meshData, float bmin[3], float bmax[3], dtNavMesh* navMesh);
@@ -173,7 +173,7 @@ namespace MMAP
             void ToNavMeshCoords(float worldX, float worldY, float worldZ, float* out) const;
             void LogInspectPointResult(const char* tileString, uint32 mapID, uint32 tileX, uint32 tileY, dtNavMesh* navMesh, float* queryPoint) const;
             bool TriangleNearInspectPoint(const float* verts, const int* tris, int triIndex, const float* inspectNav, float horizontalRadius, float verticalRadius) const;
-            void LogInputGeometryAroundInspectPoint(const char* tileString, float* tVerts, int tTriCount, int* tTris, float* lVerts, int lTriCount, int* lTris, float* inspectNav) const;
+            void LogInputGeometryAroundInspectPoint(const char* tileString, const char* sourceLabel, float* tVerts, int tTriCount, int* tTris, float* lVerts, int lTriCount, int* lTris, float* inspectNav, float walkableSlopeAngle) const;
 
             bool shouldSkipMap(uint32 mapID);
             bool isTransportMap(uint32 mapID);

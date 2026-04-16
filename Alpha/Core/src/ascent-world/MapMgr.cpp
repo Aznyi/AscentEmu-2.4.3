@@ -163,11 +163,39 @@ PathQueryResult MapMgr::BuildPath(Unit* mover, float startX, float startY, float
 	if(result.status == PATH_QUERY_STATUS_COMPLETE || result.status == PATH_QUERY_STATUS_PARTIAL)
 		return result;
 
+	const bool allowDirectFallback = (navmeshStatus == PATH_QUERY_STATUS_NAVMESH_UNAVAILABLE ||
+		navmeshStatus == PATH_QUERY_STATUS_MISSING_DATA ||
+		navmeshStatus == PATH_QUERY_STATUS_MALFORMED_DATA ||
+		(navmeshStatus == PATH_QUERY_STATUS_NOPATH &&
+			navmeshDetail == "empty_path_points"));
+
+	if(!allowDirectFallback)
+	{
+		if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+		{
+			sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=%s final=no_path",
+				GetMapId(),
+				(mover != NULL && mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0,
+				navmeshDetail.c_str());
+		}
+		return result;
+	}
+
 	result.points.clear();
 	result.points.push_back(LocationVector(startX, startY, startZ));
 	result.points.push_back(LocationVector(destX, destY, destZ));
 
-	if(ValidateGroundMovement(mover, destX, destY, destZ, NULL, NULL, "path_query_destination"))
+	bool collisionDirectAllowed = true;
+#ifdef COLLISION
+	if(mover != NULL && !mover->IsPlayer() && mover->GetAIInterface() != NULL && !mover->GetAIInterface()->IsFlying())
+	{
+		LocationVector startPoint(startX, startY, startZ);
+		LocationVector endPoint(destX, destY, destZ);
+		collisionDirectAllowed = CollideInterface.CheckLOS(GetMapId(), startPoint, endPoint);
+	}
+#endif
+
+	if(collisionDirectAllowed && ValidateGroundMovement(mover, destX, destY, destZ, NULL, NULL, "path_query_destination"))
 	{
 		if(ValidateDirectGroundPath(mover, startX, startY, startZ, destX, destY, destZ, NULL, "path_query"))
 		{
@@ -186,8 +214,20 @@ PathQueryResult MapMgr::BuildPath(Unit* mover, float startX, float startY, float
 
 	if((sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement) && result.usedFallback)
 	{
-		sLog.outDebug("Path query fallback map=%u start=%0.3f,%0.3f,%0.3f dest=%0.3f,%0.3f,%0.3f navmeshStatus=%s navmeshDetail=%s final=%s",
-			GetMapId(), startX, startY, startZ, destX, destY, destZ, GetPathQueryStatusName(navmeshStatus), navmeshDetail.c_str(), GetPathQueryStatusName(result.status));
+		sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=%s navmesh_status=%s final=%s",
+			GetMapId(),
+			(mover != NULL && mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0,
+			navmeshDetail.c_str(),
+			GetPathQueryStatusName(navmeshStatus),
+			GetPathQueryStatusName(result.status));
+	}
+	else if((sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement) && allowDirectFallback && !collisionDirectAllowed)
+	{
+		sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=%s navmesh_status=%s final=blocked_by_los",
+			GetMapId(),
+			(mover != NULL && mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0,
+			navmeshDetail.c_str(),
+			GetPathQueryStatusName(navmeshStatus));
 	}
 
 	return result;
@@ -378,9 +418,9 @@ bool MapMgr::ValidateDirectGroundPath(Unit* mover, float startX, float startY, f
 	if(horizontalDistance < 1.5f)
 		return true;
 
-	const float probeSpacing = ClampGroundPathThreshold(sWorld.creature_direct_path_probe_spacing, 1.5f, 6.0f);
-	const float climbThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_step_threshold, 2.5f, 10.0f);
-	const float dropThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_drop_threshold, 3.0f, 15.0f);
+	const float probeSpacing = ClampGroundPathThreshold(sWorld.creature_direct_path_probe_spacing, 1.0f, 4.0f);
+	const float climbThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_step_threshold, 0.75f, 4.0f);
+	const float dropThreshold = ClampGroundPathThreshold(sWorld.creature_direct_path_drop_threshold, 1.5f, 8.0f);
 	uint32 sampleCount = (uint32)ceilf(horizontalDistance / probeSpacing);
 	if(sampleCount < 2)
 		sampleCount = 2;
@@ -425,11 +465,20 @@ bool MapMgr::ValidateDirectGroundPath(Unit* mover, float startX, float startY, f
 		float allowedDrop = dropThreshold;
 		if(sampleGround.source == GROUND_HEIGHT_SOURCE_VMAP || startGround.source == GROUND_HEIGHT_SOURCE_VMAP)
 		{
-			const float slopeAllowance = segmentDistance * 0.85f;
+			const float slopeAllowance = segmentDistance * 0.35f;
 			if(slopeAllowance > allowedClimb)
 				allowedClimb = slopeAllowance;
 			if(slopeAllowance > allowedDrop)
 				allowedDrop = slopeAllowance;
+		}
+
+		// Short corner hops should not be able to "step" onto low fences or rail tops.
+		if(segmentDistance <= 2.0f)
+		{
+			if(allowedClimb > 0.9f)
+				allowedClimb = 0.9f;
+			if(allowedDrop > 1.75f)
+				allowedDrop = 1.75f;
 		}
 
 		const float delta = sampleGround.z - previousZ;

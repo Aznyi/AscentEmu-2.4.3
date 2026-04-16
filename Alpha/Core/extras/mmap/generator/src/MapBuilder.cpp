@@ -103,6 +103,184 @@ namespace
         }
     }
 #endif
+
+    void NavToWorld(float navX, float navY, float navZ, float* outWorld)
+    {
+        outWorld[0] = navX;
+        outWorld[1] = navZ;
+        outWorld[2] = navY;
+    }
+
+    bool BoundsOverlapInspectPoint(const float* bmin, const float* bmax, const float* inspectNav, float horizontalRadius, float verticalRadius)
+    {
+        return !(inspectNav[0] < (bmin[0] - horizontalRadius) || inspectNav[0] > (bmax[0] + horizontalRadius) ||
+            inspectNav[1] < (bmin[1] - verticalRadius) || inspectNav[1] > (bmax[1] + verticalRadius) ||
+            inspectNav[2] < (bmin[2] - horizontalRadius) || inspectNav[2] > (bmax[2] + horizontalRadius));
+    }
+
+    void ExpandBounds(float* bmin, float* bmax, const float* point)
+    {
+        if (point[0] < bmin[0]) bmin[0] = point[0];
+        if (point[1] < bmin[1]) bmin[1] = point[1];
+        if (point[2] < bmin[2]) bmin[2] = point[2];
+        if (point[0] > bmax[0]) bmax[0] = point[0];
+        if (point[1] > bmax[1]) bmax[1] = point[1];
+        if (point[2] > bmax[2]) bmax[2] = point[2];
+    }
+
+    void ContourVertexToNav(const rcContourSet* cset, const int* vert, float* outNav)
+    {
+        outNav[0] = cset->bmin[0] + vert[0] * cset->cs;
+        outNav[1] = cset->bmin[1] + vert[1] * cset->ch;
+        outNav[2] = cset->bmin[2] + vert[2] * cset->cs;
+    }
+
+    void PolyMeshVertexToNav(const rcPolyMesh* pmesh, unsigned short vertexIndex, float* outNav)
+    {
+        const unsigned short* vertex = &pmesh->verts[vertexIndex * 3];
+        outNav[0] = pmesh->bmin[0] + vertex[0] * pmesh->cs;
+        outNav[1] = pmesh->bmin[1] + vertex[1] * pmesh->ch;
+        outNav[2] = pmesh->bmin[2] + vertex[2] * pmesh->cs;
+    }
+
+    void AppendWorldPoint(std::ostringstream& stream, const float* navPoint)
+    {
+        float worldPoint[3];
+        NavToWorld(navPoint[0], navPoint[1], navPoint[2], worldPoint);
+        stream << "(" << worldPoint[0] << "," << worldPoint[1] << "," << worldPoint[2] << ")";
+    }
+
+    bool ReadWorldVec3(const json& node, float* outWorld)
+    {
+        if (!node.is_array() || node.size() != 3)
+            return false;
+
+        outWorld[0] = node[0].get<float>();
+        outWorld[1] = node[1].get<float>();
+        outWorld[2] = node[2].get<float>();
+        return true;
+    }
+
+    void SortBounds(float* mins, float* maxs)
+    {
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            if (mins[axis] > maxs[axis])
+                std::swap(mins[axis], maxs[axis]);
+        }
+    }
+
+    bool BoundsOverlap(const float* minsA, const float* maxsA, const float* minsB, const float* maxsB)
+    {
+        return !(maxsA[0] < minsB[0] || minsA[0] > maxsB[0] ||
+                 maxsA[1] < minsB[1] || minsA[1] > maxsB[1] ||
+                 maxsA[2] < minsB[2] || minsA[2] > maxsB[2]);
+    }
+
+    void LogContourSetAroundInspectPoint(const char* tileString, const rcContourSet* cset, const float* inspectNav, float horizontalRadius, float verticalRadius)
+    {
+        if (cset == NULL)
+            return;
+
+        for (int contourIndex = 0; contourIndex < cset->nconts; ++contourIndex)
+        {
+            const rcContour& contour = cset->conts[contourIndex];
+            if (contour.nverts <= 0)
+                continue;
+
+            float simplifiedMin[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+            float simplifiedMax[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+            float rawMin[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+            float rawMax[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+            for (int vertIndex = 0; vertIndex < contour.nverts; ++vertIndex)
+            {
+                float navPoint[3];
+                ContourVertexToNav(cset, &contour.verts[vertIndex * 4], navPoint);
+                ExpandBounds(simplifiedMin, simplifiedMax, navPoint);
+            }
+
+            for (int vertIndex = 0; vertIndex < contour.nrverts; ++vertIndex)
+            {
+                float navPoint[3];
+                ContourVertexToNav(cset, &contour.rverts[vertIndex * 4], navPoint);
+                ExpandBounds(rawMin, rawMax, navPoint);
+            }
+
+            if (!BoundsOverlapInspectPoint(simplifiedMin, simplifiedMax, inspectNav, horizontalRadius, verticalRadius) &&
+                !BoundsOverlapInspectPoint(rawMin, rawMax, inspectNav, horizontalRadius, verticalRadius))
+                continue;
+
+            std::ostringstream simplifiedVerts;
+            for (int vertIndex = 0; vertIndex < contour.nverts; ++vertIndex)
+            {
+                if (vertIndex != 0)
+                    simplifiedVerts << " ";
+                float navPoint[3];
+                ContourVertexToNav(cset, &contour.verts[vertIndex * 4], navPoint);
+                AppendWorldPoint(simplifiedVerts, navPoint);
+            }
+
+            std::ostringstream rawVerts;
+            for (int vertIndex = 0; vertIndex < contour.nrverts; ++vertIndex)
+            {
+                if (vertIndex != 0)
+                    rawVerts << " ";
+                float navPoint[3];
+                ContourVertexToNav(cset, &contour.rverts[vertIndex * 4], navPoint);
+                AppendWorldPoint(rawVerts, navPoint);
+            }
+
+            FlushLog("%s Inspect contour[%d]: reg=%u area=%u simplified=%d raw=%d simplifiedVerts=%s rawVerts=%s\n",
+                tileString, contourIndex, uint32(contour.reg), uint32(contour.area),
+                contour.nverts, contour.nrverts, simplifiedVerts.str().c_str(), rawVerts.str().c_str());
+        }
+    }
+
+    void LogPolyMeshAroundInspectPoint(const char* tileString, const rcPolyMesh* pmesh, const float* inspectNav, float horizontalRadius, float verticalRadius, const char* stageLabel)
+    {
+        if (pmesh == NULL)
+            return;
+
+        for (int polyIndex = 0; polyIndex < pmesh->npolys; ++polyIndex)
+        {
+            const unsigned short* poly = &pmesh->polys[polyIndex * 2 * pmesh->nvp];
+            float polyMin[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+            float polyMax[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+            std::ostringstream verts;
+            std::ostringstream neis;
+            int vertexCount = 0;
+
+            for (int vertexSlot = 0; vertexSlot < pmesh->nvp; ++vertexSlot)
+            {
+                if (poly[vertexSlot] == RC_MESH_NULL_IDX)
+                    break;
+
+                ++vertexCount;
+                float navPoint[3];
+                PolyMeshVertexToNav(pmesh, poly[vertexSlot], navPoint);
+                ExpandBounds(polyMin, polyMax, navPoint);
+                if (vertexSlot != 0)
+                    verts << " ";
+                AppendWorldPoint(verts, navPoint);
+            }
+
+            if (!BoundsOverlapInspectPoint(polyMin, polyMax, inspectNav, horizontalRadius, verticalRadius))
+                continue;
+
+            for (int vertexSlot = 0; vertexSlot < vertexCount; ++vertexSlot)
+            {
+                if (vertexSlot != 0)
+                    neis << ",";
+                neis << poly[pmesh->nvp + vertexSlot];
+            }
+
+            FlushLog("%s Inspect %s poly[%d]: reg=%u area=%u flags=%u verts=%d neis=[%s] worldVerts=%s\n",
+                tileString, stageLabel, polyIndex,
+                uint32(pmesh->regs[polyIndex]), uint32(pmesh->areas[polyIndex]), uint32(pmesh->flags[polyIndex]),
+                vertexCount, neis.str().c_str(), verts.str().c_str());
+        }
+    }
 }
 
 void rcModAlmostUnwalkableTriangles(rcContext* ctx, const float walkableSlopeAngle,
@@ -138,13 +316,13 @@ void rcModAlmostUnwalkableTriangles(rcContext* ctx, const float walkableSlopeAng
 void from_json(const json& j, rcConfig& config)
 {
     config.tileSize = MMAP::VERTEX_PER_TILE;
-    config.borderSize = j["borderSize"].get<int>();
-    config.cs = MMAP::BASE_UNIT_DIM;
-    config.ch = MMAP::BASE_UNIT_DIM;
+    config.cs = j.find("cellSize") != j.end() ? j["cellSize"].get<float>() : MMAP::BASE_UNIT_DIM;
+    config.ch = j.find("cellHeight") != j.end() ? j["cellHeight"].get<float>() : (MMAP::BASE_UNIT_DIM * 0.5f);
     config.walkableSlopeAngle = j["walkableSlopeAngle"].get<float>();
     config.walkableHeight = j["walkableHeight"].get<int>();
     config.walkableClimb = j["walkableClimb"].get<int>();
     config.walkableRadius = j["walkableRadius"].get<int>();
+    config.borderSize = j.find("borderSize") != j.end() ? j["borderSize"].get<int>() : (config.walkableRadius + 3);
     config.maxEdgeLen = j["maxEdgeLen"].get<int>();
     config.maxSimplificationError = j["maxSimplificationError"].get<float>();
     config.minRegionArea = rcSqr(j["minRegionArea"].get<int>());
@@ -572,9 +750,9 @@ namespace MMAP
         params.detailTris = iv.polyMeshDetail->tris;
         params.detailTriCount = iv.polyMeshDetail->ntris;
 
-        params.walkableHeight = BASE_UNIT_DIM * config.walkableHeight;
-        params.walkableRadius = BASE_UNIT_DIM * config.walkableRadius;
-        params.walkableClimb = BASE_UNIT_DIM * config.walkableClimb;
+        params.walkableHeight = config.ch * config.walkableHeight;
+        params.walkableRadius = config.cs * config.walkableRadius;
+        params.walkableClimb = config.ch * config.walkableClimb;
 
         rcVcopy(params.bmin, iv.polyMesh->bmin);
         rcVcopy(params.bmax, iv.polyMesh->bmax);
@@ -971,6 +1149,42 @@ namespace MMAP
             m_terrainBuilder->loadOffMeshConnections(mapID, tileX, tileY, meshData, m_offMeshFilePath);
         }
 
+        if (m_inspectPoint.enabled)
+        {
+            float inspectNav[3] = { 0.0f, 0.0f, 0.0f };
+            ToNavMeshCoords(m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav);
+            if (TileBoundsContainInspectPoint(bmin, bmax, inspectNav))
+            {
+                MeshData terrainInspectData;
+                MeshData vmapInspectData;
+                bool inspectLoadedVMap = false;
+                {
+                    std::lock_guard<std::mutex> terrainGuard(m_terrainMutex);
+                    m_terrainBuilder->loadMap(mapID, tileX, tileY, terrainInspectData);
+                    inspectLoadedVMap = m_terrainBuilder->loadVMap(mapID, tileX, tileY, vmapInspectData);
+                }
+
+                const json inspectConfig = getTileConfig(mapID, tileX, tileY);
+                const float inspectSlope = inspectConfig.at("walkableSlopeAngle").get<float>();
+
+                printf("[Map %03i] Tile [%02u,%02u] inspect source split: terrainSolidTris=%u terrainLiquidTris=%u vmapLoaded=%u vmapSolidTris=%u vmapLiquidTris=%u\n",
+                    mapID, tileX, tileY,
+                    uint32(terrainInspectData.solidTris.size() / 3), uint32(terrainInspectData.liquidTris.size() / 3),
+                    inspectLoadedVMap ? 1u : 0u,
+                    uint32(vmapInspectData.solidTris.size() / 3), uint32(vmapInspectData.liquidTris.size() / 3));
+
+                LogInputGeometryAroundInspectPoint("[MMAP][INSPECT]", "terrain",
+                    terrainInspectData.solidVerts.getCArray(), terrainInspectData.solidTris.size() / 3, terrainInspectData.solidTris.getCArray(),
+                    terrainInspectData.liquidVerts.getCArray(), terrainInspectData.liquidTris.size() / 3, terrainInspectData.liquidTris.getCArray(),
+                    inspectNav, inspectSlope);
+
+                LogInputGeometryAroundInspectPoint("[MMAP][INSPECT]", "vmap",
+                    vmapInspectData.solidVerts.getCArray(), vmapInspectData.solidTris.size() / 3, vmapInspectData.solidTris.getCArray(),
+                    vmapInspectData.liquidVerts.getCArray(), vmapInspectData.liquidTris.size() / 3, vmapInspectData.liquidTris.getCArray(),
+                    inspectNav, inspectSlope);
+            }
+        }
+
         // build navmesh tile
         const TileBuildReason reason = buildMoveMapTile(mapID, tileX, tileY, meshData, bmin, bmax, navMesh);
         RecordTileOutcome(reason);
@@ -1091,6 +1305,11 @@ namespace MMAP
 
         IntermediateValues iv(m_workdir);
 
+        rcConfig config;
+        memset(&config, 0, sizeof(rcConfig));
+        const json tileConfigJson = getTileConfig(mapID, tileX, tileY);
+        config = tileConfigJson;
+
         float* tVerts = meshData.solidVerts.getCArray();
         int tVertCount = meshData.solidVerts.size() / 3;
         int* tTris = meshData.solidTris.getCArray();
@@ -1109,7 +1328,7 @@ namespace MMAP
             printf("%s Inspect point world=%0.3f,%0.3f,%0.3f nav=%0.3f,%0.3f,%0.3f tileBoundsMin=%0.3f,%0.3f,%0.3f tileBoundsMax=%0.3f,%0.3f,%0.3f\n",
                 tileString, m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav[0], inspectNav[1], inspectNav[2],
                 bmin[0], bmin[1], bmin[2], bmax[0], bmax[1], bmax[2]);
-            LogInputGeometryAroundInspectPoint(tileString, tVerts, tTriCount, tTris, lVerts, lTriCount, lTris, inspectNav);
+            LogInputGeometryAroundInspectPoint(tileString, "combined", tVerts, tTriCount, tTris, lVerts, lTriCount, lTris, inspectNav, config.walkableSlopeAngle);
         }
         else if (m_inspectPoint.enabled)
         {
@@ -1117,10 +1336,6 @@ namespace MMAP
                 tileString, m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav[0], inspectNav[1], inspectNav[2],
                 bmin[0], bmin[1], bmin[2], bmax[0], bmax[1], bmax[2]);
         }
-
-        rcConfig config;
-        memset(&config, 0, sizeof(rcConfig));
-        config = getTileConfig(mapID, tileX, tileY);
 
         rcVcopy(config.bmin, bmin);
         rcVcopy(config.bmax, bmax);
@@ -1131,7 +1346,15 @@ namespace MMAP
         // allocate subregions : tiles
         const bool verboseTileLogs = m_debug || inspectThisTile;
         if (verboseTileLogs)
+        {
+            FlushLog("%s Tile config: cs=%0.3f ch=%0.3f border=%d slope=%0.1f height=%d climb=%d radius=%d maxEdgeLen=%d maxSimplificationError=%0.3f minRegion=%d mergeRegion=%d detailDist=%0.3f detailError=%0.3f\n",
+                tileString,
+                config.cs, config.ch, config.borderSize, config.walkableSlopeAngle, config.walkableHeight,
+                config.walkableClimb, config.walkableRadius, config.maxEdgeLen, config.maxSimplificationError,
+                int(sqrtf(float(config.minRegionArea))), int(sqrtf(float(config.mergeRegionArea))),
+                config.detailSampleDist, config.detailSampleMaxError);
             FlushLog("%s Allocating subtile state...\n", tileString);
+        }
         Tile* tiles = new Tile[TILES_PER_MAP * TILES_PER_MAP];
 
         // Initialize per tile config.
@@ -1321,7 +1544,7 @@ namespace MMAP
                     solidLocalTris.size() ? solidLocalTris.getCArray() : nullptr, solidLocalTris.size() / 3,
                     liquidSubVerts.size() ? liquidSubVerts.getCArray() : nullptr, liquidSubVerts.size() / 3,
                     liquidLocalTris.size() ? liquidLocalTris.getCArray() : nullptr, liquidLocalTris.size() / 3,
-                    liquidSubFlags.size() ? liquidSubFlags.getCArray() : nullptr);
+                    liquidSubFlags.size() ? liquidSubFlags.getCArray() : nullptr, &tileConfigJson);
                 if (!subtileOk)
                 {
                     FlushLog("%s Aborting tile after subtile [%02d,%02d] failure.\n", tileString, x, y);
@@ -1416,6 +1639,14 @@ namespace MMAP
                 iv.polyMeshDetail ? uint32(iv.polyMeshDetail->ntris) : 0u,
                 iv.polyMeshDetail ? uint32(iv.polyMeshDetail->nverts) : 0u);
 
+        if (m_inspectPoint.enabled)
+        {
+            float inspectNav[3] = { 0.0f, 0.0f, 0.0f };
+            ToNavMeshCoords(m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ, inspectNav);
+            if (TileBoundsContainInspectPoint(bmin, bmax, inspectNav))
+                LogPolyMeshAroundInspectPoint(tileString, iv.polyMesh, inspectNav, m_inspectPoint.extents[0], m_inspectPoint.extents[1], "merged");
+        }
+
         // set polygons as walkable
         // TODO: special flags for DYNAMIC polygons, ie surfaces that can be turned on and off
         for (int i = 0; i < iv.polyMesh->npolys; ++i)
@@ -1452,9 +1683,9 @@ namespace MMAP
         params.offMeshConAreas = meshData.offMeshConnectionsAreas.getCArray();
         params.offMeshConFlags = meshData.offMeshConnectionsFlags.getCArray();
 
-        params.walkableHeight = BASE_UNIT_DIM * config.walkableHeight;
-        params.walkableRadius = BASE_UNIT_DIM * config.walkableRadius;
-        params.walkableClimb = BASE_UNIT_DIM * config.walkableClimb;
+        params.walkableHeight = config.ch * config.walkableHeight;
+        params.walkableRadius = config.cs * config.walkableRadius;
+        params.walkableClimb = config.ch * config.walkableClimb;
 
         params.tileX = (((bmin[0] + bmax[0]) / 2) - navMesh->getParams()->orig[0]) / GRID_SIZE;
         params.tileY = (((bmin[2] + bmax[2]) / 2) - navMesh->getParams()->orig[2]) / GRID_SIZE;
@@ -1601,7 +1832,7 @@ namespace MMAP
     }
 
     bool MapBuilder::buildCommonTile(const char* tileString, Tile& tile, rcConfig& tileCfg, float* tVerts, int tVertCount, int* tTris, int tTriCount, float* lVerts, int lVertCount,
-                                     int* lTris, int lTriCount, uint8* lTriFlags)
+                                     int* lTris, int lTriCount, uint8* lTriFlags, const json* tileConfigJson)
     {
         rcContext buildContext(false);
         float inspectNav[3] = { 0.0f, 0.0f, 0.0f };
@@ -1734,6 +1965,45 @@ namespace MMAP
             return false;
         }
 
+        if (tileConfigJson != NULL)
+        {
+            json::const_iterator blockerBoxesIt = tileConfigJson->find("blockBoxes");
+            if (blockerBoxesIt != tileConfigJson->end() && blockerBoxesIt->is_array())
+            {
+                for (json::const_iterator blockerIt = blockerBoxesIt->begin(); blockerIt != blockerBoxesIt->end(); ++blockerIt)
+                {
+                    if (!blockerIt->is_object() || blockerIt->find("min") == blockerIt->end() || blockerIt->find("max") == blockerIt->end())
+                        continue;
+
+                    float worldMin[3] = { 0.0f, 0.0f, 0.0f };
+                    float worldMax[3] = { 0.0f, 0.0f, 0.0f };
+                    if (!ReadWorldVec3(blockerIt->at("min"), worldMin) || !ReadWorldVec3(blockerIt->at("max"), worldMax))
+                        continue;
+
+                    float navMin[3] = { 0.0f, 0.0f, 0.0f };
+                    float navMax[3] = { 0.0f, 0.0f, 0.0f };
+                    ToNavMeshCoords(worldMin[0], worldMin[1], worldMin[2], navMin);
+                    ToNavMeshCoords(worldMax[0], worldMax[1], worldMax[2], navMax);
+                    SortBounds(navMin, navMax);
+
+                    if (!BoundsOverlap(navMin, navMax, tileCfg.bmin, tileCfg.bmax))
+                        continue;
+
+                    rcMarkBoxArea(&buildContext, navMin, navMax, RC_NULL_AREA, *tile.chf);
+
+                    const char* label = "block_box";
+                    json::const_iterator labelIt = blockerIt->find("label");
+                    if (labelIt != blockerIt->end() && labelIt->is_string())
+                        label = labelIt->get_ref<const std::string&>().c_str();
+
+                    FlushLog("%s Applied blocker box label=%s worldMin=(%0.3f,%0.3f,%0.3f) worldMax=(%0.3f,%0.3f,%0.3f)\n",
+                        tileString, label,
+                        worldMin[0], worldMin[1], worldMin[2],
+                        worldMax[0], worldMax[1], worldMax[2]);
+                }
+            }
+        }
+
         // build polymesh intermediates
         if (verboseSubtileLogs)
             FlushLog("%s Stage begin: rcErodeWalkableArea\n", tileString);
@@ -1786,6 +2056,9 @@ namespace MMAP
             return false;
         }
 
+        if (inspectThisSubTile)
+            LogContourSetAroundInspectPoint(tileString, tile.cset, inspectNav, m_inspectPoint.extents[0], m_inspectPoint.extents[1]);
+
         // build polymesh
         tile.pmesh = rcAllocPolyMesh();
         if (verboseSubtileLogs)
@@ -1800,6 +2073,9 @@ namespace MMAP
         {
             return false;
         }
+
+        if (inspectThisSubTile)
+            LogPolyMeshAroundInspectPoint(tileString, tile.pmesh, inspectNav, m_inspectPoint.extents[0], m_inspectPoint.extents[1], "subtile");
 
         tile.dmesh = rcAllocPolyMeshDetail();
         if (verboseSubtileLogs)
@@ -1946,6 +2222,45 @@ namespace MMAP
                 tileString, m_inspectPoint.worldX, m_inspectPoint.worldY, m_inspectPoint.worldZ);
         }
 
+        for (int i = 0; i < nearbyPolyCount; ++i)
+        {
+            const dtPolyRef polyRef = nearbyPolys[i];
+            if (polyRef == 0)
+                continue;
+
+            const dtMeshTile* tile = NULL;
+            const dtPoly* poly = NULL;
+            if (dtStatusFailed(navMesh->getTileAndPolyByRef(polyRef, &tile, &poly)) || tile == NULL || tile->header == NULL || poly == NULL)
+                continue;
+
+            const uint32 polyIndex = uint32(poly - tile->polys);
+            std::ostringstream verts;
+            std::ostringstream neis;
+            for (unsigned int vertIndex = 0; vertIndex < poly->vertCount; ++vertIndex)
+            {
+                if (vertIndex != 0)
+                {
+                    verts << " ";
+                    neis << ",";
+                }
+
+                const float* navVert = &tile->verts[poly->verts[vertIndex] * 3];
+                AppendWorldPoint(verts, navVert);
+                neis << poly->neis[vertIndex];
+            }
+
+            printf("%s Inspect nav poly ref=%llu tile=%d,%d layer=%d poly=%u area=%u type=%u verts=%u neis=[%s] worldVerts=%s\n",
+                tileString,
+                (unsigned long long)polyRef,
+                tile->header->x, tile->header->y, tile->header->layer,
+                polyIndex,
+                uint32(poly->getArea()),
+                uint32(poly->getType()),
+                uint32(poly->vertCount),
+                neis.str().c_str(),
+                verts.str().c_str());
+        }
+
         dtFreeNavMeshQuery(query);
     }
 
@@ -1975,12 +2290,17 @@ namespace MMAP
         return true;
     }
 
-    void MapBuilder::LogInputGeometryAroundInspectPoint(const char* tileString, float* tVerts, int tTriCount, int* tTris, float* lVerts, int lTriCount, int* lTris, float* inspectNav) const
+    void MapBuilder::LogInputGeometryAroundInspectPoint(const char* tileString, const char* sourceLabel, float* tVerts, int tTriCount, int* tTris, float* lVerts, int lTriCount, int* lTris, float* inspectNav, float walkableSlopeAngle) const
     {
         uint32 nearbySolidTris = 0;
         uint32 nearbyLiquidTris = 0;
         uint32 nearbyUpwardSolidTris = 0;
         uint32 nearbyDownwardSolidTris = 0;
+        uint32 nearbyEstimatedWalkableSolidTris = 0;
+        uint32 nearbyEstimatedWallLikeSolidTris = 0;
+        const float walkableThreshold = cosf(walkableSlopeAngle / 180.0f * RC_PI);
+        const int maxLoggedBlockerTriangles = 18;
+        int loggedBlockerTriangles = 0;
         for (int i = 0; i < tTriCount; ++i)
         {
             if (TriangleNearInspectPoint(tVerts, tTris, i, inspectNav, m_inspectPoint.extents[0], m_inspectPoint.extents[1]))
@@ -1996,11 +2316,41 @@ namespace MMAP
                 const float e1x = c[0] - a[0];
                 const float e1y = c[1] - a[1];
                 const float e1z = c[2] - a[2];
+                const float normalX = (e0y * e1z) - (e0z * e1y);
                 const float normalY = (e0z * e1x) - (e0x * e1z);
+                const float normalZ = (e0x * e1y) - (e0y * e1x);
+                const float normalLen = sqrtf((normalX * normalX) + (normalY * normalY) + (normalZ * normalZ));
+                const float normalizedY = normalLen > 0.0f ? (normalY / normalLen) : 0.0f;
+                const float clampedY = dtClamp(normalizedY, -1.0f, 1.0f);
+                const float slopeDegrees = acosf(fabsf(clampedY)) * (180.0f / RC_PI);
+                const bool estimatedWalkable = normalizedY > walkableThreshold;
+                const bool estimatedWallLike = fabsf(normalizedY) < 0.35f;
+
                 if (normalY >= 0.0f)
                     ++nearbyUpwardSolidTris;
                 else
                     ++nearbyDownwardSolidTris;
+
+                if (estimatedWalkable)
+                    ++nearbyEstimatedWalkableSolidTris;
+                if (estimatedWallLike)
+                    ++nearbyEstimatedWallLikeSolidTris;
+
+                if (!estimatedWalkable && loggedBlockerTriangles < maxLoggedBlockerTriangles)
+                {
+                    float worldA[3];
+                    float worldB[3];
+                    float worldC[3];
+                    NavToWorld(a[0], a[1], a[2], worldA);
+                    NavToWorld(b[0], b[1], b[2], worldB);
+                    NavToWorld(c[0], c[1], c[2], worldC);
+                    printf("%s Inspect %s blocker tri[%d]: slope=%0.1f normalY=%0.3f wallLike=%u worldVerts=(%0.3f,%0.3f,%0.3f) (%0.3f,%0.3f,%0.3f) (%0.3f,%0.3f,%0.3f)\n",
+                        tileString, sourceLabel != NULL ? sourceLabel : "source", i, slopeDegrees, normalizedY, estimatedWallLike ? 1u : 0u,
+                        worldA[0], worldA[1], worldA[2],
+                        worldB[0], worldB[1], worldB[2],
+                        worldC[0], worldC[1], worldC[2]);
+                    ++loggedBlockerTriangles;
+                }
             }
         }
 
@@ -2010,8 +2360,8 @@ namespace MMAP
                 ++nearbyLiquidTris;
         }
 
-        printf("%s Inspect point geometry overlap: nearbySolidTris=%u nearbyUpwardSolidTris=%u nearbyDownwardSolidTris=%u nearbyLiquidTris=%u inspectExtents=%0.3f,%0.3f,%0.3f\n",
-            tileString, nearbySolidTris, nearbyUpwardSolidTris, nearbyDownwardSolidTris, nearbyLiquidTris,
+        printf("%s Inspect %s geometry overlap: nearbySolidTris=%u nearbyUpwardSolidTris=%u nearbyDownwardSolidTris=%u nearbyEstimatedWalkableSolidTris=%u nearbyWallLikeSolidTris=%u nearbyLiquidTris=%u inspectExtents=%0.3f,%0.3f,%0.3f\n",
+            tileString, sourceLabel != NULL ? sourceLabel : "source", nearbySolidTris, nearbyUpwardSolidTris, nearbyDownwardSolidTris, nearbyEstimatedWalkableSolidTris, nearbyEstimatedWallLikeSolidTris, nearbyLiquidTris,
             m_inspectPoint.extents[0], m_inspectPoint.extents[1], m_inspectPoint.extents[2]);
     }
 
@@ -2109,17 +2459,19 @@ namespace MMAP
     json MapBuilder::getDefaultConfig()
     {
         return {
-            {"borderSize", 5},
-            {"detailSampleDist", BASE_UNIT_DIM * 16.0f},
+            {"borderSize", 6},
+            {"cellSize", BASE_UNIT_DIM},
+            {"cellHeight", BASE_UNIT_DIM * 0.5f},
+            {"detailSampleDist", BASE_UNIT_DIM * 8.0f},
             {"detailSampleMaxError", BASE_UNIT_DIM},
-            {"maxEdgeLen", VERTEX_PER_TILE + 1},
-            {"maxSimplificationError", 1.8f},
+            {"maxEdgeLen", 24},
+            {"maxSimplificationError", 1.1f},
             {"mergeRegionArea", 50},
             {"minRegionArea", 60},
-            {"walkableClimb", 4},
+            {"walkableClimb", 2},
             {"walkableHeight", 6},
-            {"walkableRadius", 2},
-            {"walkableSlopeAngle", 60.0f},
+            {"walkableRadius", 3},
+            {"walkableSlopeAngle", 50.0f},
         };
     }
 
@@ -2136,11 +2488,14 @@ namespace MMAP
 
     json MapBuilder::getTileConfig(uint32 mapId, uint32 tileX, uint32 tileY)
     {
-        std::string key = std::to_string(tileX) + std::to_string(tileY);
+        std::string key = std::to_string(tileX) + "_" + std::to_string(tileY);
+        std::string legacyKey = std::to_string(tileX) + std::to_string(tileY);
 
         json config = getMapIdConfig(mapId);
         if (config.find(key) != config.end())
             config.merge_patch(config.at(key));
+        else if (config.find(legacyKey) != config.end())
+            config.merge_patch(config.at(legacyKey));
 
         for (json::iterator it = config.begin(); it != config.end();) {
             if ((*it).is_object())

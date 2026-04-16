@@ -109,11 +109,12 @@ void printUsage()
     printf("--threads [#]: specifies number of threads to use for maps processing\n\n");
     printf("--workdir [directory] : Path to basedir of maps/vmaps.\n\n");
     printf("--inspectPoint [x,y,z] : Inspect whether built navmesh covers a world-space point.\n\n");
+    printf("--inspectExtents [x,y,z] : Override inspect query extents for focused tile debugging.\n\n");
     printf("--inspectTileHeader [file] : Print baked .mmtile header contents.\n\n");
     printf("Example:\nmovemapgen (generate all mmap with default arg\n"
            "movemapgen \"1 0 169\" (generate maps 1, 0 and 169)\n"
            "movemapgen 0 --tile 34,46 (builds only tile 34,46 of map 0)\n"
-           "movemapgen 36 --tile 32,32 --inspectPoint -40.120,-370.386,56.504\n\n");
+           "movemapgen 36 --tile 32,32 --inspectPoint -40.120,-370.386,56.504 --inspectExtents 4,8,4\n\n");
     printf("Please read readme file for more information and examples.\n");
 }
 
@@ -308,6 +309,30 @@ bool handleArgs(int argc, char** argv,
             inspectPoint.worldX = (float)atof(sx);
             inspectPoint.worldY = (float)atof(sy);
             inspectPoint.worldZ = (float)atof(sz);
+        }
+        else if (strcmp(argv[i], "--inspectExtents") == 0 && i + 1 < argc)
+        {
+            param = argv[++i];
+            if (!param)
+                return false;
+
+            char* sx = strtok(param, ",");
+            char* sy = strtok(NULL, ",");
+            char* sz = strtok(NULL, ",");
+            if (sx == NULL || sy == NULL || sz == NULL)
+            {
+                printf("invalid inspect extents.\n");
+                return false;
+            }
+
+            inspectPoint.extents[0] = (float)atof(sx);
+            inspectPoint.extents[1] = (float)atof(sy);
+            inspectPoint.extents[2] = (float)atof(sz);
+            if (inspectPoint.extents[0] <= 0.0f || inspectPoint.extents[1] <= 0.0f || inspectPoint.extents[2] <= 0.0f)
+            {
+                printf("inspect extents must be positive.\n");
+                return false;
+            }
         }
         else if (strcmp(argv[i], "--inspectTileHeader") == 0 && i + 1 < argc)
         {

@@ -56,9 +56,12 @@ struct PathQueryResult
 	bool hadMapData;
 	bool hadTileData;
 	bool hadRuntimeBackend;
+	bool acceptedPartial;
+	uint32 polyCount;
+	uint32 pointCount;
 	string detail;
 
-	PathQueryResult() : status(PATH_QUERY_STATUS_NAVMESH_UNAVAILABLE), attemptedMMap(false), usedFallback(false), hadMapData(false), hadTileData(false), hadRuntimeBackend(false) {}
+	PathQueryResult() : status(PATH_QUERY_STATUS_NAVMESH_UNAVAILABLE), attemptedMMap(false), usedFallback(false), hadMapData(false), hadTileData(false), hadRuntimeBackend(false), acceptedPartial(false), polyCount(0), pointCount(0) {}
 };
 
 struct NavMeshInspectionResult
@@ -123,7 +126,9 @@ private:
 	bool ValidateTileFile(uint32 mapId, uint32 tileX, uint32 tileY, string* detail = NULL) const;
 	bool EnsureMapLoaded(uint32 mapId, string* detail = NULL);
 	bool EnsureTileLoaded(uint32 mapId, uint32 tileX, uint32 tileY, bool temporaryLoad, string* detail = NULL);
+	bool EnsurePathTilesLoaded(uint32 mapId, uint32 startTileX, uint32 startTileY, uint32 endTileX, uint32 endTileY, std::vector<uint32>* temporaryTiles, string* detail = NULL);
 	void ReleaseTemporaryTile(uint32 mapId, uint32 tileX, uint32 tileY);
+	void ReleaseTemporaryTiles(uint32 mapId, const std::vector<uint32>& temporaryTiles);
 	bool UnloadTile(uint32 mapId, uint32 tileX, uint32 tileY, bool logFailure);
 	void FreeRuntimeMapData(RuntimeMapData* data);
         PathQueryResult QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 instanceId, const PathQueryRequest& request);

@@ -1441,35 +1441,11 @@ bool Object::isInFront(Object* target)
 
 bool Object::isInBack(Object* target)
 {
-	// check if we are behind something ( is the object within a 180 degree slice of our negative y axis )
+	if(target == NULL)
+		return false;
 
-    double x = m_position.x - target->GetPositionX();
-    double y = m_position.y - target->GetPositionY();
-
-    double angle = atan2( y, x );
-    angle = ( angle >= 0.0 ) ? angle : 2.0 * M_PI + angle;
-
-	// if we are a unit and have a UNIT_FIELD_TARGET then we are always facing them
-	if( m_objectTypeId == TYPEID_UNIT && m_uint32Values[UNIT_FIELD_TARGET] != 0 && static_cast< Unit* >( this )->GetAIInterface()->GetNextTarget() )
-	{
-		Unit* pTarget = static_cast< Unit* >( this )->GetAIInterface()->GetNextTarget();
-		angle -= double( Object::calcRadAngle( target->m_position.x, target->m_position.y, pTarget->m_position.x, pTarget->m_position.y ) );
-	}
-	else
-		angle -= target->GetOrientation();
-
-    while( angle > M_PI)
-        angle -= 2.0 * M_PI;
-
-    while(angle < -M_PI)
-        angle += 2.0 * M_PI;
-
-	// replace M_H_PI in the two lines below to reduce or increase angle
-
-    double left = -1.0 * ( M_H_PI / 2.0 );
-    double right = ( M_H_PI / 2.0 );
-
-    return( ( angle <= left ) && ( angle >= right ) );
+	// Keep back-attack logic aligned with the shared front-facing check.
+	return !target->isInFront(this);
 }
 bool Object::isInArc(Object* target , float angle) // angle in degrees
 {

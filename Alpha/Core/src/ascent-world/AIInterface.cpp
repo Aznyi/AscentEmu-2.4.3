@@ -58,6 +58,44 @@ static bool ShouldRecoverToValidGround(AIInterface* ai)
 	return (unit->GetPositionZ() + GetMovementGroundCorrectionTolerance()) < ground.z;
 }
 
+static bool RecoverIfTooHighAboveGround(AIInterface* ai, const char* reason)
+{
+	if(ai == NULL || ai->GetUnit() == NULL)
+		return false;
+
+	Unit* unit = ai->GetUnit();
+	if(ai->IsFlying() || unit->GetMapMgr() == NULL)
+		return false;
+
+	GroundHeightResult ground = unit->GetMapMgr()->ResolveGroundHeight(unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ(), false);
+	if(!ground.valid)
+		return false;
+
+	const float highDelta = unit->GetPositionZ() - ground.z;
+	if(highDelta <= 1.0f)
+		return false;
+
+	if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+	{
+		sLog.outDebug("[MMAP][GROUND] map=%u creature=%u reason=%s action=recover_high_surface current=(%0.3f,%0.3f,%0.3f) ground=%0.3f delta=%0.3f source=%s",
+			unit->GetMapId(),
+			(unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(unit)->GetEntry() : 0,
+			reason != NULL ? reason : "unknown",
+			unit->GetPositionX(), unit->GetPositionY(), unit->GetPositionZ(),
+			ground.z, highDelta, GetGroundHeightSourceName(ground.source));
+	}
+
+	return ai->RecoverToLastValidPosition();
+}
+
+static const float ROUTED_MOVEMENT_REPATH_MIN_DELTA = 1.5f;
+static const float ROUTED_MOVEMENT_REPATH_STRONG_DELTA = 3.0f;
+static const uint32 ROUTED_MOVEMENT_REPATH_THROTTLE_MS = 400;
+static const uint32 ROUTED_MOVEMENT_NO_ROUTE_RETRY_MS = 900;
+static const float ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE = 0.25f;
+static const float ROUTED_MOVEMENT_FINAL_APPROACH_TARGET_DRIFT = 0.5f;
+static const float FOLLOW_REPATH_MIN_DELTA = 1.5f;
+
 AIInterface::AIInterface()
 {
 	m_waypoints=NULL;
@@ -119,6 +157,13 @@ AIInterface::AIInterface()
 	m_invalidMoveCount = 0;
 	m_lastMoveRejectTime = 0;
 	m_skipDirectPathValidation = false;
+	m_movementPathIndex = 0;
+	m_lastPathRepathTime = 0;
+	m_lastFinalApproachLogTime = 0;
+	m_lastFinalApproachDistance = 0.0f;
+	m_lastRepathGoalX = 0.0f;
+	m_lastRepathGoalY = 0.0f;
+	m_lastRepathGoalZ = 0.0f;
 	m_totemspelltime = 0;
 	m_totemspelltimer = 0;
 	m_formationFollowAngle = 0.0f;
@@ -252,6 +297,10 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 		case EVENT_ENTERCOMBAT:
 			{
 				if( pUnit == NULL ) return;
+				if(sWorld.MMapDebugPathing)
+					sLog.outDebug("[MMAP][STATE] map=%u creature=%u switch=attack reason=enter_combat",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0);
 
 				/* send the message */
 				if( m_Unit->GetTypeId() == TYPEID_UNIT )
@@ -302,6 +351,11 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 		case EVENT_LEAVECOMBAT:
 			{
 				if( pUnit == NULL ) return;
+				if(sWorld.MMapDebugPathing)
+					sLog.outDebug("[MMAP][STATE] map=%u creature=%u switch=%s reason=leave_combat",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						(m_AIType == AITYPE_PET) ? "follow" : "evade");
 				
 				if( pUnit->IsCreature() )
 					pUnit->RemoveNegativeAuras();
@@ -420,6 +474,10 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 			}break;
 		case EVENT_FOLLOWOWNER:
 			{
+				if(sWorld.MMapDebugPathing)
+					sLog.outDebug("[MMAP][STATE] map=%u creature=%u switch=follow reason=follow_owner",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0);
 				m_AIState = STATE_FOLLOWING;
 				if(m_Unit->IsPet())
 					((Pet*)m_Unit)->SetPetAction(PET_ACTION_FOLLOW);
@@ -441,6 +499,10 @@ void AIInterface::HandleEvent(uint32 event, Unit* pUnit, uint32 misc1)
 		case EVENT_FEAR:
 			{
 				if( pUnit == NULL ) return;
+				if(sWorld.MMapDebugPathing)
+					sLog.outDebug("[MMAP][STATE] map=%u creature=%u switch=fear reason=fear_event",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0);
 
 				m_FearTimer = 0;
 				SetUnitToFear(pUnit);
@@ -1095,12 +1157,77 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 			{
 				float combatReach[2]; // Calculate Combat Reach
 				float distance = m_Unit->CalcDistance(m_nextTarget);
+				const bool routedApproachActive = (m_creatureState == MOVING || !m_movementPath.empty());
+				bool meleeLos = true;
+				bool meleePathClear = true;
+				const float attackRangeThreshold = routedApproachActive ? (combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE) : (combatReach[1] + DISTANCE_TO_SMALL_TO_WALK);
 
 				combatReach[0] = PLAYER_SIZE;
 				combatReach[1] = _CalcCombatRange(m_nextTarget, false);
 
-				if(distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK) // Target is in Range -> Attack
+#ifdef COLLISION
+				meleeLos = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), m_nextTarget->GetPositionNC());
+				if(sWorld.CollisionDebugMovement)
 				{
+					sLog.outDebug("[LOS][MELEE] map=%u creature=%u target=" I64FMT " source=ai_update result=%u distance=%0.3f reach=%0.3f",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						m_nextTarget->GetGUID(), meleeLos ? 1 : 0, distance, combatReach[1]);
+				}
+#endif
+
+				if(distance <= attackRangeThreshold &&
+					m_Unit->GetMapMgr() != NULL &&
+					!m_Unit->IsPlayer() &&
+					(m_Unit->GetAIInterface() == NULL || !m_Unit->GetAIInterface()->IsFlying()))
+				{
+					DirectGroundPathResult meleePathResult;
+					meleePathClear = m_Unit->GetMapMgr()->ValidateDirectGroundPath(
+						m_Unit,
+						m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(),
+						m_nextTarget->GetPositionX(), m_nextTarget->GetPositionY(), m_nextTarget->GetPositionZ(),
+						&meleePathResult,
+						"melee_contact");
+					if((sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement) && !meleePathClear)
+					{
+						sLog.outDebug("[MMAP][ARRIVAL] map=%u creature=%u transition=blocked_final_contact status=%s distance=%0.3f reach=%0.3f",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							GetDirectGroundPathStatusName(meleePathResult.status),
+							distance, combatReach[1]);
+					}
+				}
+
+				if(routedApproachActive && distance > combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE &&
+					distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK)
+				{
+					uint32 now = getMSTime();
+					if(sWorld.MMapDebugPathing &&
+						(now - m_lastFinalApproachLogTime > 500 || fabsf(distance - m_lastFinalApproachDistance) > 0.2f))
+					{
+						sLog.outDebug("[MMAP][ARRIVAL] map=%u creature=%u transition=hold_final_approach distance=%0.3f reach=%0.3f",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							distance, combatReach[1]);
+						m_lastFinalApproachLogTime = now;
+						m_lastFinalApproachDistance = distance;
+					}
+				}
+				else if(distance <= attackRangeThreshold && meleeLos && meleePathClear) // Target is in Range -> Attack
+				{
+					if(routedApproachActive)
+					{
+						if(sWorld.MMapDebugPathing)
+						{
+							sLog.outDebug("[MMAP][ARRIVAL] map=%u creature=%u transition=melee_in_range distance=%0.3f reach=%0.3f threshold=%0.3f",
+								m_Unit->GetMapId(),
+								(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+								distance, combatReach[1], attackRangeThreshold);
+						}
+						ClearMovementPath("attack_range_transition");
+						StopMovement(0);
+					}
+
 					if(UnitToFollow != NULL)
 					{
 						UnitToFollow = NULL; //we shouldn't be following any one
@@ -1133,6 +1260,13 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 							uint32 health_before_strike=m_nextTarget->GetUInt32Value(UNIT_FIELD_HEALTH);
 #endif
 							m_Unit->Strike( m_nextTarget, ( agent == AGENT_MELEE ? MELEE : RANGED ), NULL, 0, 0, 0, false, false );
+							if(sWorld.MMapDebugPathing && routedApproachActive)
+							{
+								sLog.outDebug("[MMAP][ARRIVAL] map=%u creature=%u transition=attack_start_after_route distance=%0.3f",
+									m_Unit->GetMapId(),
+									(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+									distance);
+							}
 #ifdef ENABLE_CREATURE_DAZE
 							//now if the target is facing his back to us then we could just cast dazed on him :P
 							//as far as i know dazed is casted by most of the creatures but feel free to remove this code if you think otherwise
@@ -1158,6 +1292,14 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				}
 				else // Target out of Range -> Run to it
 				{
+					if(distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK && !meleeLos && sWorld.CollisionDebugMovement)
+					{
+						sLog.outDebug("[LOS][MELEE] map=%u creature=%u target=" I64FMT " result=blocked reason=corner_obstruction_repath",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							m_nextTarget->GetGUID());
+					}
+
 					//calculate next move
 					float dist = combatReach[1]-PLAYER_SIZE;
 
@@ -1240,21 +1382,50 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				if(!m_nextSpell || !m_nextTarget)
 					return;  // this shouldnt happen
 
-				/* stop moving so we don't interrupt the spell */
-				//this the way justly suggested
-//				if(m_nextSpell->spell->CastingTimeIndex != 1)
-				//do not stop for instant spells
-				SpellCastTime *sd = dbcSpellCastTime.LookupEntry(m_nextSpell->spell->CastingTimeIndex);
-				if(GetCastTime(sd) != 0)
-					StopMovement(0);
-
 				float distance = m_Unit->GetDistanceSq(m_nextTarget);
 				bool los = true;
 #ifdef COLLISION
 				los = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(),m_nextTarget->GetPositionNC());
 #endif
+				if(!los && sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[LOS][CAST] map=%u creature=%u target=" I64FMT " source=ai_update result=blocked",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						m_nextTarget->GetGUID());
+				}
+				if(!los)
+				{
+					float currentDist = m_Unit->CalcDistance(m_nextTarget);
+					float desiredDist = (m_nextSpell->maxrange < 5.0f) ? 0.0f : (m_nextSpell->maxrange - 5.0f);
+					if(currentDist <= desiredDist + 0.5f)
+					{
+						if(currentDist > 2.0f)
+							desiredDist = currentDist - 2.0f;
+						else
+							desiredDist = 0.0f;
+					}
+					if(sWorld.MMapDebugPathing)
+					{
+						sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=los_blocked_move dist=%0.3f current=%0.3f",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							desiredDist, currentDist);
+					}
+					m_moveRun = true;
+					_CalcDestinationAndMove(m_nextTarget, desiredDist);
+					return;
+				}
 				if(los && ((distance <= (m_nextSpell->maxrange*m_nextSpell->maxrange)  && distance >= (m_nextSpell->minrange*m_nextSpell->minrange)) || m_nextSpell->maxrange == 0)) // Target is in Range -> Attack
 				{
+					/* stop moving so we don't interrupt the spell */
+					//this the way justly suggested
+//					if(m_nextSpell->spell->CastingTimeIndex != 1)
+					//do not stop for instant spells
+					SpellCastTime *sd = dbcSpellCastTime.LookupEntry(m_nextSpell->spell->CastingTimeIndex);
+					if(GetCastTime(sd) != 0)
+						StopMovement(0);
+
 					SpellEntry* spellInfo = m_nextSpell->spell;
 /*					if(m_nextSpell->procCount)
 						m_nextSpell->procCount--;*/
@@ -1527,6 +1698,7 @@ bool AIInterface::HealReaction(Unit* caster, Unit* victim, uint32 amount)
 
 void AIInterface::OnDeath(Object* pKiller)
 {
+	ClearMovementPath("death");
 	if(pKiller->GetTypeId() == TYPEID_PLAYER || pKiller->GetTypeId() == TYPEID_UNIT)
 		HandleEvent(EVENT_UNITDIED, static_cast<Unit*>(pKiller), 0);
 	else
@@ -1998,6 +2170,21 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		m_nextPosX = ResX - x;
 		m_nextPosY = ResY - y;
 		m_nextPosZ = ResZ;
+
+		const float stepDistance = m_Unit->CalcDistance(m_nextPosX, m_nextPosY, m_nextPosZ);
+		if(stepDistance < 0.25f)
+		{
+			const float currentDistance = m_Unit->CalcDistance(target);
+			if(currentDistance > 1.5f)
+			{
+				const float adjustedDist = std::max(0.0f, currentDistance - 1.5f);
+				const float adjustedX = adjustedDist * cosf(angle);
+				const float adjustedY = adjustedDist * sinf(angle);
+				m_nextPosX = ResX - adjustedX;
+				m_nextPosY = ResY - adjustedY;
+				m_nextPosZ = ResZ;
+			}
+		}
 	}
 	else
 	{
@@ -2009,31 +2196,155 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 
 	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
 	{
+		if(RecoverIfTooHighAboveGround(this, "calc_destination_and_move"))
+			return;
+
 		float normalizedZ = m_nextPosZ;
 		if(m_Unit->GetMapMgr()->NormalizeGroundPosition(m_nextPosX, m_nextPosY, m_nextPosZ, &normalizedZ, NULL, "calc_destination_and_move", 8.0f))
 			m_nextPosZ = normalizedZ;
 
-				PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
-				if((pathResult.status == PATH_QUERY_STATUS_COMPLETE || pathResult.status == PATH_QUERY_STATUS_PARTIAL) && pathResult.points.size() > 1)
-				{
-						size_t nextPointIndex = 1;
-						const float currentX = m_Unit->GetPositionX();
-						const float currentY = m_Unit->GetPositionY();
-						const float currentZ = m_Unit->GetPositionZ();
-						while(nextPointIndex + 1 < pathResult.points.size() &&
-								m_Unit->CalcDistance(currentX, currentY, currentZ,
-								pathResult.points[nextPointIndex].x, pathResult.points[nextPointIndex].y, pathResult.points[nextPointIndex].z) < DISTANCE_TO_SMALL_TO_WALK)
-								++nextPointIndex;
-
-						const LocationVector& nextStep = pathResult.points[nextPointIndex];
-						m_nextPosX = nextStep.x;
-						m_nextPosY = nextStep.y;
-						m_nextPosZ = nextStep.z;
-						m_skipDirectPathValidation = true;
-				}
-		else if(pathResult.status == PATH_QUERY_STATUS_NOPATH)
+		const bool hasActiveRoute = !m_movementPath.empty();
+		const float currentDistanceToTarget = (target != NULL) ? m_Unit->CalcDistance(target) : 0.0f;
+		const float finalApproachReach = dist + PLAYER_SIZE;
+		const float finalApproachRange = finalApproachReach + DISTANCE_TO_SMALL_TO_WALK;
+		if(hasActiveRoute && m_creatureState == MOVING)
 		{
-			StopMovement(200);
+			const LocationVector& currentGoal = m_movementPath.back();
+			const float routeGoalDelta = m_Unit->CalcDistance(currentGoal.x, currentGoal.y, currentGoal.z, m_nextPosX, m_nextPosY, m_nextPosZ);
+			const uint32 now = getMSTime();
+			const bool isFinalApproach = (target != NULL && currentDistanceToTarget <= finalApproachRange);
+			const bool isCloseMeleeApproach = (target != NULL && finalApproachReach <= 6.0f &&
+				currentDistanceToTarget <= (finalApproachReach + ROUTED_MOVEMENT_FINAL_APPROACH_TARGET_DRIFT));
+			bool allowCloseMeleeRepath = false;
+			if(isCloseMeleeApproach)
+			{
+#ifdef COLLISION
+				allowCloseMeleeRepath = !CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), target->GetPositionNC());
+#endif
+				if(!allowCloseMeleeRepath && !m_Unit->isInFront(target))
+					allowCloseMeleeRepath = true;
+
+				if(!allowCloseMeleeRepath)
+				{
+					if(sWorld.MMapDebugPathing)
+					{
+						sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=final_approach_locked delta=%0.3f distance=%0.3f",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							routeGoalDelta, currentDistanceToTarget);
+					}
+					return;
+				}
+			}
+			if(isFinalApproach && !allowCloseMeleeRepath && routeGoalDelta < ROUTED_MOVEMENT_REPATH_STRONG_DELTA)
+			{
+				if(sWorld.MMapDebugPathing)
+				{
+					sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=final_approach_hold delta=%0.3f distance=%0.3f",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						routeGoalDelta, currentDistanceToTarget);
+				}
+				return;
+			}
+			if(isFinalApproach && routeGoalDelta > ROUTED_MOVEMENT_FINAL_APPROACH_TARGET_DRIFT)
+			{
+				if(sWorld.MMapDebugPathing)
+				{
+					sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=final_approach_target_drift delta=%0.3f",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						routeGoalDelta);
+				}
+			}
+			else
+			{
+				if(routeGoalDelta < ROUTED_MOVEMENT_REPATH_MIN_DELTA)
+					return;
+				if(routeGoalDelta < ROUTED_MOVEMENT_REPATH_STRONG_DELTA && (now - m_lastPathRepathTime) < ROUTED_MOVEMENT_REPATH_THROTTLE_MS)
+					return;
+			}
+
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=%s delta=%0.3f",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					(routeGoalDelta >= ROUTED_MOVEMENT_REPATH_STRONG_DELTA) ? "target_moved" : "target_moved_throttled_window_expired",
+					routeGoalDelta);
+			}
+		}
+		else
+		{
+			if(target != NULL && currentDistanceToTarget <= finalApproachRange)
+			{
+				bool needsCorrection = false;
+#ifdef COLLISION
+				needsCorrection = !CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), target->GetPositionNC());
+#endif
+				if(!needsCorrection && !m_Unit->isInFront(target))
+					needsCorrection = true;
+
+				if(!needsCorrection)
+				{
+					if(sWorld.MMapDebugPathing)
+					{
+						sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=final_approach_hold_no_route distance=%0.3f",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							currentDistanceToTarget);
+					}
+					return;
+				}
+			}
+
+			const uint32 now = getMSTime();
+			const float dx = m_nextPosX - m_lastRepathGoalX;
+			const float dy = m_nextPosY - m_lastRepathGoalY;
+			const float dz = m_nextPosZ - m_lastRepathGoalZ;
+			const float goalDeltaSq = (dx * dx) + (dy * dy) + (dz * dz);
+			if((now - m_lastPathRepathTime) < ROUTED_MOVEMENT_NO_ROUTE_RETRY_MS && goalDeltaSq < 0.25f)
+			{
+				if(sWorld.MMapDebugPathing)
+				{
+					sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=no_active_route_throttled delta=%0.3f",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						sqrtf(goalDeltaSq));
+				}
+				return;
+			}
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=%s",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					hasActiveRoute ? "route_not_moving" : "no_active_route");
+			}
+		}
+
+		m_lastPathRepathTime = getMSTime();
+		m_lastRepathGoalX = m_nextPosX;
+		m_lastRepathGoalY = m_nextPosY;
+		m_lastRepathGoalZ = m_nextPosZ;
+		const bool hadRouteBeforeRepath = (m_movementPathIndex < m_movementPath.size());
+		PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
+		if(!ApplyPathResult(pathResult) && pathResult.status == PATH_QUERY_STATUS_NOPATH)
+		{
+			m_lastMoveRejectTime = getMSTime();
+			if(hadRouteBeforeRepath && m_creatureState == MOVING)
+			{
+				if(sWorld.MMapDebugPathing)
+				{
+					sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=kept_existing reason=%s",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						pathResult.detail.c_str());
+				}
+				return;
+			}
+			if(m_creatureState == MOVING)
+				StopMovement(200);
 			return;
 		}
 	}
@@ -2207,6 +2518,7 @@ bool AIInterface::StopMovement(uint32 time)
 	m_moveTimer = time; //set pause after stopping
 	m_creatureState = STOPPED;
 	m_skipDirectPathValidation = false;
+	ClearMovementPath("stop_movement");
 
 	m_destinationX = m_destinationY = m_destinationZ = 0;
 	m_nextPosX = m_nextPosY = m_nextPosZ = 0;
@@ -2224,12 +2536,164 @@ bool AIInterface::StopMovement(uint32 time)
 	return true;
 }
 
+void AIInterface::ClearMovementPath(const char* reason /* = NULL */)
+{
+	if(!m_movementPath.empty() && sWorld.MMapDebugPathing)
+	{
+		sLog.outDebug("[MMAP][QUEUE] map=%u creature=%u cancel=%s remaining=%u",
+			m_Unit->GetMapId(),
+			(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+			(reason != NULL) ? reason : "clear",
+			(uint32)(m_movementPath.size() - m_movementPathIndex));
+	}
+
+	m_movementPath.clear();
+	m_movementPathIndex = 0;
+}
+
+bool AIInterface::AdvanceMovementPath(const char* reason /* = NULL */)
+{
+	if(m_movementPath.empty())
+		return false;
+
+	const bool reachedCurrentDestination = (m_creatureState == MOVING && m_timeToMove > 0 && m_timeMoved == m_timeToMove);
+	const float currentX = reachedCurrentDestination ? m_destinationX : m_Unit->GetPositionX();
+	const float currentY = reachedCurrentDestination ? m_destinationY : m_Unit->GetPositionY();
+	const float currentZ = reachedCurrentDestination ? m_destinationZ : m_Unit->GetPositionZ();
+	while(m_movementPathIndex < m_movementPath.size())
+	{
+		const LocationVector& nextStep = m_movementPath[m_movementPathIndex];
+		const size_t nextIndex = m_movementPathIndex++;
+
+		if(m_Unit->CalcDistance(currentX, currentY, currentZ, nextStep.x, nextStep.y, nextStep.z) < DISTANCE_TO_SMALL_TO_WALK)
+		{
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][QUEUE] map=%u creature=%u skipped=%u/%u reason=%s point=(%0.3f,%0.3f,%0.3f)",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					(uint32)nextIndex,
+					(uint32)(m_movementPath.size() - 1),
+					(reason != NULL) ? reason : "skip",
+					nextStep.x, nextStep.y, nextStep.z);
+			}
+			continue;
+		}
+
+		m_nextPosX = nextStep.x;
+		m_nextPosY = nextStep.y;
+		m_nextPosZ = nextStep.z;
+		m_skipDirectPathValidation = true;
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][QUEUE] map=%u creature=%u advance=%u/%u reason=%s point=(%0.3f,%0.3f,%0.3f)",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				(uint32)nextIndex,
+				(uint32)(m_movementPath.size() - 1),
+				(reason != NULL) ? reason : "advance",
+				nextStep.x, nextStep.y, nextStep.z);
+		}
+		return true;
+	}
+
+	if(sWorld.MMapDebugPathing)
+	{
+		sLog.outDebug("[MMAP][QUEUE] map=%u creature=%u complete reason=%s",
+			m_Unit->GetMapId(),
+			(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+			(reason != NULL) ? reason : "complete");
+	}
+	m_movementPath.clear();
+	m_movementPathIndex = 0;
+	return false;
+}
+
+bool AIInterface::ApplyPathResult(const PathQueryResult& pathResult)
+{
+	const bool hadRoute = (m_movementPathIndex < m_movementPath.size());
+	const uint32 remainingRoutePoints = hadRoute && m_movementPath.size() > m_movementPathIndex ?
+		(uint32)(m_movementPath.size() - m_movementPathIndex) : 0;
+	if((pathResult.status != PATH_QUERY_STATUS_COMPLETE && pathResult.status != PATH_QUERY_STATUS_PARTIAL) || pathResult.points.size() <= 1)
+	{
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=rejected reason=%s status=%s had_route=%u points=%u",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				pathResult.detail.c_str(),
+				GetPathQueryStatusName(pathResult.status),
+				hadRoute ? 1 : 0,
+				(uint32)pathResult.points.size());
+		}
+		return false;
+	}
+
+	if(hadRoute &&
+		pathResult.status == PATH_QUERY_STATUS_COMPLETE &&
+		pathResult.polyCount <= 1 &&
+		pathResult.pointCount <= 2 &&
+		remainingRoutePoints > 1 &&
+		m_nextTarget != NULL)
+	{
+		const float currentDistanceToTarget = m_Unit->CalcDistance(m_nextTarget);
+		const float meleeReach = _CalcCombatRange(m_nextTarget, false);
+		if(currentDistanceToTarget > (meleeReach + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE))
+		{
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=rejected reason=keep_existing_corner_route status=%s had_route=1 remaining=%u polys=%u points=%u distance=%0.3f reach=%0.3f",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					GetPathQueryStatusName(pathResult.status),
+					remainingRoutePoints,
+					pathResult.polyCount,
+					pathResult.pointCount,
+					currentDistanceToTarget,
+					meleeReach);
+			}
+			return false;
+		}
+	}
+
+	if(hadRoute && pathResult.status == PATH_QUERY_STATUS_PARTIAL)
+	{
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=rejected reason=keep_existing_complete_route status=%s had_route=1 points=%u",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				GetPathQueryStatusName(pathResult.status),
+				(uint32)pathResult.points.size());
+		}
+		return false;
+	}
+
+	ClearMovementPath("repath_replace");
+	m_movementPath = pathResult.points;
+	m_movementPathIndex = 1;
+	if(sWorld.MMapDebugPathing)
+	{
+		const LocationVector& finalPoint = m_movementPath.back();
+		sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=accepted status=%s points=%u final=(%0.3f,%0.3f,%0.3f)",
+			m_Unit->GetMapId(),
+			(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+			GetPathQueryStatusName(pathResult.status),
+			(uint32)m_movementPath.size(),
+			finalPoint.x, finalPoint.y, finalPoint.z);
+	}
+	return AdvanceMovementPath("path_query");
+}
+
 void AIInterface::MoveTo(float x, float y, float z, float o)
 {
 	m_sourceX = m_Unit->GetPositionX();
 	m_sourceY = m_Unit->GetPositionY();
 	m_sourceZ = m_Unit->GetPositionZ();
 	m_skipDirectPathValidation = false;
+	ClearMovementPath((m_AIState == STATE_EVADE) ? "evade_move_request" : "move_request");
+	const bool petFollowMove = (m_AIType == AITYPE_PET && UnitToFollow != NULL &&
+		(m_AIState == STATE_IDLE || m_AIState == STATE_FOLLOWING));
 
 	if(!m_canMove || m_Unit->IsStunned())
 	{
@@ -2257,6 +2721,42 @@ void AIInterface::MoveTo(float x, float y, float z, float o)
 		}
 
 		m_nextPosZ = validatedZ;
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=%s",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				(m_AIState == STATE_EVADE) ? "evade_return" : "move_to");
+		}
+
+		PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_sourceX, m_sourceY, m_sourceZ, m_nextPosX, m_nextPosY, m_nextPosZ);
+		if(ApplyPathResult(pathResult))
+		{
+			if(sWorld.MMapDebugPathing)
+				sLog.outDebug("[MMAP][MOVE] map=%u creature=%u status=using_navmesh_route points=%u",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					(uint32)pathResult.points.size());
+		}
+		else if(pathResult.status == PATH_QUERY_STATUS_NOPATH)
+		{
+			if(petFollowMove)
+			{
+				if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[MMAP][FOLLOW] map=%u creature=%u status=direct_pet_follow_fallback reason=%s",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						pathResult.detail.c_str());
+				}
+				m_skipDirectPathValidation = true;
+			}
+			else
+			{
+				StopMovement(200);
+				return;
+			}
+		}
 	}
 
 /*	//Andy
@@ -2330,11 +2830,22 @@ void AIInterface::UpdateMove()
 {
 	//this should NEVER be called directly !!!!!!
 	//use MoveTo()
+	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
+	{
+		if(RecoverIfTooHighAboveGround(this, "update_move"))
+			return;
+	}
+
 	float distance = m_Unit->CalcDistance(m_nextPosX,m_nextPosY,m_nextPosZ);
 	const bool skipDirectPathValidation = m_skipDirectPathValidation;
 	m_skipDirectPathValidation = false;
 	
-	if(distance < DISTANCE_TO_SMALL_TO_WALK) return; //we don't want little movements here and there
+	if(distance < DISTANCE_TO_SMALL_TO_WALK)
+	{
+		if(AdvanceMovementPath("short_segment"))
+			UpdateMove();
+		return; //we don't want little movements here and there
+	}
 
 	m_destinationX = m_nextPosX;
 	m_destinationY = m_nextPosY;
@@ -2342,6 +2853,7 @@ void AIInterface::UpdateMove()
 
 	if(!m_moveFly && m_Unit->GetMapMgr() != NULL)
 	{
+		const float rawDestinationZ = m_destinationZ;
 		float validatedZ = m_destinationZ;
 		if(!m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, m_destinationX, m_destinationY, m_destinationZ, &validatedZ, NULL, "UpdateMove"))
 		{
@@ -2353,6 +2865,14 @@ void AIInterface::UpdateMove()
 			return;
 		}
 		m_destinationZ = validatedZ;
+		if(sWorld.MMapDebugPathing && fabsf(m_destinationZ - rawDestinationZ) > 0.5f)
+		{
+			sLog.outDebug("[MMAP][Z] map=%u creature=%u reason=update_move raw=%0.3f validated=%0.3f point=(%0.3f,%0.3f,%0.3f)",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				rawDestinationZ, m_destinationZ,
+				m_destinationX, m_destinationY, m_destinationZ);
+		}
 
 				DirectGroundPathResult pathResult;
 				if(!skipDirectPathValidation && !m_Unit->GetMapMgr()->ValidateDirectGroundPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_destinationX, m_destinationY, m_destinationZ, &pathResult, "UpdateMove"))
@@ -2387,6 +2907,7 @@ void AIInterface::UpdateMove()
 	else if(m_moveRun)
 		moveTime = (uint32) (distance / m_runSpeed);
 	else moveTime = (uint32) (distance / m_walkSpeed);
+	const uint32 moveFlags = getMoveFlags();
 
 	m_totalMoveTime = moveTime;
 
@@ -2414,7 +2935,16 @@ void AIInterface::UpdateMove()
 	}
 
 	if (m_Unit->GetCurrentSpell() == NULL)
-		SendMoveToPacket(m_destinationX, m_destinationY, m_destinationZ, m_Unit->GetOrientation(), moveTime, getMoveFlags());
+	{
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][COMMIT] map=%u creature=%u destination=(%0.3f,%0.3f,%0.3f) moveTime=%u flags=0x%X",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				m_destinationX, m_destinationY, m_destinationZ, moveTime, moveFlags);
+		}
+		SendMoveToPacket(m_destinationX, m_destinationY, m_destinationZ, m_Unit->GetOrientation(), moveTime, moveFlags);
+	}
 
 	m_timeToMove = moveTime;
 	m_timeMoved = 0;
@@ -2733,6 +3263,19 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 		return;
 	}
 
+	if((!m_canMove || m_Unit->IsStunned()) && (m_creatureState == MOVING || !m_movementPath.empty()))
+	{
+		if(sWorld.MMapDebugPathing)
+		{
+			sLog.outDebug("[MMAP][STATE] map=%u creature=%u conflict=%s resolution=stop_and_clear",
+				m_Unit->GetMapId(),
+				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+				!m_canMove ? "movement_disabled" : "stunned");
+		}
+		StopMovement(1);
+		return;
+	}
+
 	//move after finishing our current spell
 	if ( m_Unit->GetCurrentSpell() != NULL )
 		return;
@@ -2769,6 +3312,16 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 
 				if(m_moveType == MOVEMENTTYPE_WANTEDWP)//We reached wanted wp stop now
 					m_moveType = MOVEMENTTYPE_DONTMOVEWP;
+
+				if(!m_movementPath.empty())
+				{
+					m_Unit->SetPosition(m_destinationX, m_destinationY, m_destinationZ, m_Unit->GetOrientation(), true);
+					if(AdvanceMovementPath("segment_boundary"))
+					{
+						UpdateMove();
+						return;
+					}
+				}
 
 				float wayO = 0.0f;
 
@@ -3199,9 +3752,29 @@ void AIInterface::_UpdateMovement(uint32 p_time)
 							if(m_formationLinkTarget)
 								d = m_formationFollowDistance;
 
-							MoveTo(delta_x+(d*(cosf(m_fallowAngle+UnitToFollow->GetOrientation()))),
-								delta_y+(d*(sinf(m_fallowAngle+UnitToFollow->GetOrientation()))),
-								UnitToFollow->GetPositionZ(),UnitToFollow->GetOrientation());				
+							float followX = delta_x + (d * cosf(m_fallowAngle + UnitToFollow->GetOrientation()));
+							float followY = delta_y + (d * sinf(m_fallowAngle + UnitToFollow->GetOrientation()));
+							float followZ = UnitToFollow->GetPositionZ();
+							bool refreshFollowMove = true;
+
+							if(m_creatureState == MOVING || !m_movementPath.empty())
+							{
+								float activeGoalX = m_destinationX;
+								float activeGoalY = m_destinationY;
+								float activeGoalZ = m_destinationZ;
+								if(!m_movementPath.empty())
+								{
+									const LocationVector& finalPoint = m_movementPath.back();
+									activeGoalX = finalPoint.x;
+									activeGoalY = finalPoint.y;
+									activeGoalZ = finalPoint.z;
+								}
+
+								refreshFollowMove = (m_Unit->CalcDistance(activeGoalX, activeGoalY, activeGoalZ, followX, followY, followZ) > FOLLOW_REPATH_MIN_DELTA);
+							}
+
+							if(refreshFollowMove)
+								MoveTo(followX, followY, followZ, UnitToFollow->GetOrientation());
 						}
 						else
 						{

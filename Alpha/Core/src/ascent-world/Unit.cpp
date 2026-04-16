@@ -2316,12 +2316,30 @@ void Unit::Strike( Unit* pVictim, uint32 weapon_damage_type, SpellEntry* ability
 //==========================================================================================
 	if(!pVictim->isAlive() || !isAlive()  || IsStunned() || IsPacified() || IsFeared())
 		return;
-	if(!isInFront(pVictim))
-		if(IsPlayer())
+#ifdef COLLISION
+	if(weapon_damage_type != RANGED && GetMapId() == pVictim->GetMapId() &&
+		!CollideInterface.CheckLOS(GetMapId(), GetPositionNC(), pVictim->GetPositionNC()))
+	{
+		if(sWorld.CollisionDebugMovement)
 		{
-			static_cast< Player* >( this )->GetSession()->OutPacket(SMSG_ATTACKSWING_BADFACING);
-			return;
+			sLog.outDebug("[LOS][MELEE] map=%u attacker=" I64FMT " victim=" I64FMT " source=strike result=blocked reason=collision_los",
+				GetMapId(), GetGUID(), pVictim->GetGUID());
 		}
+		return;
+	}
+#endif
+	if(!isInFront(pVictim))
+	{
+		if(sWorld.CollisionDebugMovement)
+		{
+			sLog.outDebug("[FACING][MELEE] map=%u attacker=" I64FMT " victim=" I64FMT " result=blocked reason=not_in_front",
+				GetMapId(), GetGUID(), pVictim->GetGUID());
+		}
+
+		if(IsPlayer())
+			static_cast< Player* >( this )->GetSession()->OutPacket(SMSG_ATTACKSWING_BADFACING);
+		return;
+	}
 //==========================================================================================
 //==============================Variables Initialization====================================
 //==========================================================================================
