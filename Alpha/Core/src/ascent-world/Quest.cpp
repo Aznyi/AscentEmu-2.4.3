@@ -286,6 +286,12 @@ bool QuestLogEntry::CanBeFinished()
 		}
 	}
 
+	if(m_quest->rep_objective_faction)
+	{
+		if(m_plr->GetStanding(m_quest->rep_objective_faction) < m_quest->rep_objective_value)
+			return false;
+	}
+
 //Check for Gold & AreaTrigger Requirement s
 	for(i = 0; i < 4; ++i)
 	{

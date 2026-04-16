@@ -23,6 +23,25 @@
 #define FACTION_FLAG_AT_WAR  2
 #define FACTION_FLAG_VISIBLE 1
 
+static void UpdateReputationQuestObjectives(Player* player, uint32 faction)
+{
+	if(!player || !player->IsInWorld())
+		return;
+
+	for(uint32 i = 0; i < 25; ++i)
+	{
+		QuestLogEntry* qle = player->GetQuestLogInSlot(i);
+		if(!qle || !qle->GetQuest() || qle->GetQuest()->rep_objective_faction != faction)
+			continue;
+
+		if(qle->CanBeFinished())
+		{
+			player->UpdateNearbyGameObjects();
+			qle->SendQuestComplete();
+		}
+	}
+}
+
 Standing Player::GetReputationRankFromStanding(int32 Standing_)
 {
 	if( Standing_ >= 42000 )  
@@ -241,6 +260,8 @@ void Player::SetStanding(uint32 Faction, int32 Value)
 		}
 	}
 
+	UpdateReputationQuestObjectives(this, Faction);
+
 #ifdef OPTIMIZED_PLAYER_SAVING
 	save_Reputation();
 #endif
@@ -343,6 +364,8 @@ void Player::ModStanding(uint32 Faction, int32 Value)
 			m_session->SendPacket(&data);
 		}
    }
+
+	UpdateReputationQuestObjectives(this, Faction);
 
 #ifdef OPTIMIZED_PLAYER_SAVING
 	save_Reputation();
