@@ -50,7 +50,7 @@ WorldPacket* WorldSession::BuildQuestQueryResponse(Quest *qst)
 	*data << uint32(qst->reward_xp);				 // Money at max level; client uses this for XP display
 	*data << uint32(qst->reward_spell);			 // Spell added to spellbook upon completion
 	*data << uint32(qst->effect_on_player);		 // Spell casted on player upon completion
-	*data << uint32(0);								// 2.3.0 - bonus honor
+	*data << uint32(sQuestMgr.GenerateRewardHonor(_player, qst)); // 2.3.0 - bonus honor
 	*data << uint32(qst->srcitem);				  // Item given at the start of a quest (srcitem)
 	*data << uint32(qst->quest_flags);			  // Quest Flags
 	*data << uint32(0);								// 2.4.0 character title

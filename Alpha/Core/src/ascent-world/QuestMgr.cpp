@@ -354,7 +354,7 @@ void QuestMgr::BuildOfferReward(WorldPacket *data, Quest* qst, Object* qst_giver
 	
 
 	*data << GenerateRewardMoney( plr, qst );
-	*data << uint32(0);										 // rewarded honor
+	*data << uint32(GenerateRewardHonor(plr, qst) * 10);	 // rewarded honor
 	*data << uint32(0x08);									 // unused by client
 	*data << qst->reward_spell;
 	*data << qst->effect_on_player;
@@ -419,7 +419,7 @@ void QuestMgr::BuildQuestDetails(WorldPacket *data, Quest* qst, Object* qst_give
 	}
 
 	*data << GenerateRewardMoney( plr, qst );
-	*data << uint32(0);										 // rewarded honor
+	*data << uint32(GenerateRewardHonor(plr, qst) * 10);	 // rewarded honor
 	*data << qst->reward_spell;
 	*data << qst->effect_on_player;
 	*data << uint32(0);										 // character title
@@ -505,7 +505,7 @@ void QuestMgr::BuildQuestComplete(Player*plr, Quest* qst)
 	   // data <<  uint32(GenerateQuestXP(NULL,qst)); //xp
 	data << xp;
 	data <<  uint32( GenerateRewardMoney( plr, qst ) );
-	data << uint32(0);
+	data << uint32( GenerateRewardHonor( plr, qst ) );
 	data <<  uint32(qst->count_reward_item); //Reward item count
 
 	for(uint32 i = 0; i < 4; ++i)
@@ -959,6 +959,9 @@ void QuestMgr::OnQuestFinished(Player* plr, Quest* qst, Object *qst_giver, uint3
 		}
 	}
 
+	if(qst->reward_honorable_kills)
+		HonorHandler::AddHonorPointsToPlayer(plr, GenerateRewardHonor(plr, qst));
+
     //details: hmm as i can remember, repeatable quests give faction rep still after first completation
     if(IsQuestRepeatable(qst))
     {
@@ -1343,6 +1346,15 @@ uint32 QuestMgr::GenerateRewardMoney( Player * plr, Quest * qst )
 	{
 //		return qst->reward_money + float2int32( GenerateQuestXP( plr, qst ) * sWorld.getRate( RATE_QUESTXP ) ) * 6;
 	}
+}
+
+uint32 QuestMgr::GenerateRewardHonor( Player * plr, Quest * qst )
+{
+	if(!qst->reward_honorable_kills)
+		return 0;
+
+	uint32 level = plr ? plr->getLevel() : qst->max_level;
+	return uint32(ceil(qst->reward_honorable_kills * (-0.53177f + 0.59357f * exp((level + 23.54042f) / 26.07859f))));
 }
 /*
 #define XP_INC 50

@@ -77,6 +77,7 @@ public:
 
 	uint32 GenerateQuestXP(Player *plr, Quest *qst);
 	uint32 GenerateRewardMoney( Player * plr, Quest * qst );
+	uint32 GenerateRewardHonor( Player * plr, Quest * qst );
 	bool HasExclusiveQuestInGroup(Player *plr, Quest *qst);
 
 	void SendQuestInvalid( INVALID_REASON reason, Player *plyr);

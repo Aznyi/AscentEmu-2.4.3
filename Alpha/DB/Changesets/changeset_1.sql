@@ -57,6 +57,43 @@ ALTER TABLE `quests`
 ADD COLUMN IF NOT EXISTS `RewRepValue5` int(10) NOT NULL DEFAULT 0
 AFTER `RewRepValue4`;
 
+-- Preserve quest honor rewards instead of sending a placeholder packet value.
+ALTER TABLE `quests`
+ADD COLUMN IF NOT EXISTS `RewHonorableKills` int(10) unsigned NOT NULL DEFAULT 0
+AFTER `RewRepLimit`;
+
+CREATE TEMPORARY TABLE `_quest_honor_rewards` (
+  `entry` int(10) unsigned NOT NULL,
+  `RewHonorableKills` int(10) unsigned NOT NULL,
+  PRIMARY KEY (`entry`)
+);
+
+INSERT INTO `_quest_honor_rewards` (`entry`, `RewHonorableKills`) VALUES
+(8367, 15),
+(8371, 15),
+(8385, 15),
+(8388, 15),
+(11335, 20),
+(11336, 20),
+(11337, 20),
+(11338, 20),
+(11339, 20),
+(11340, 20),
+(11341, 20),
+(11342, 20),
+(11502, 10),
+(11503, 10),
+(11505, 10),
+(11506, 10);
+
+UPDATE `quests` q
+JOIN `_quest_honor_rewards` h
+  ON h.`entry` = q.`entry`
+SET q.`RewHonorableKills` = h.`RewHonorableKills`
+WHERE q.`RewHonorableKills` = 0;
+
+DROP TEMPORARY TABLE `_quest_honor_rewards`;
+
 -- Fix Invalid loot for non existent item in issue 7
 DELETE cl
 FROM creatureloot cl
