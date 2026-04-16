@@ -41,33 +41,19 @@ WorldPacket* WorldSession::BuildQuestQueryResponse(Quest *qst)
 
 	*data << uint32(qst->type);					 // Info ID / Type
 	*data << uint32(qst->suggested_players);			// suggested players
-	*data << uint32(qst->required_rep_faction);	 // Faction ID
-	*data << uint32(qst->required_rep_value);	   // Faction Amount
-	*data << uint32(0);							 // Unknown (always 0)
-	*data << uint32(0);							 // Unknown (always 0)
+	*data << uint32(qst->rep_objective_faction);	 // Objective faction ID
+	*data << uint32(qst->rep_objective_value);	   // Objective faction amount
+	*data << uint32(0);							 // Opposite objective faction ID
+	*data << uint32(0);							 // Opposite objective faction amount
 	*data << uint32(qst->next_quest_id);			// Next Quest ID
 	*data << uint32( sQuestMgr.GenerateRewardMoney( _player, qst ) );			 // Copper reward
- // disabled for dirty fix remove this   *data << uint32(qst->reward_xp_as_money);	   // Copper given instead of XP
-	/**data << uint32(0);
-	*data << uint32(0);			
-	*data << uint32(271);
-	*data << uint32(69);
-	*data << uint32(56);
-	*data << uint32(2);*/
-	// unk
-	// effect
-	// unk
-	// bonus honor
-	// srcitem
-	// flags
-	
-	*data << uint32(qst->required_money);		   // Required Money
-	*data << uint32(qst->effect_on_player);		 // Spell casted on player upon completion
+	*data << uint32(qst->reward_xp);				 // Money at max level; client uses this for XP display
 	*data << uint32(qst->reward_spell);			 // Spell added to spellbook upon completion
+	*data << uint32(qst->effect_on_player);		 // Spell casted on player upon completion
 	*data << uint32(0);								// 2.3.0 - bonus honor
 	*data << uint32(qst->srcitem);				  // Item given at the start of a quest (srcitem)
 	*data << uint32(qst->quest_flags);			  // Quest Flags
-	*data << uint32(0);								// 2.4.0 unk
+	*data << uint32(0);								// 2.4.0 character title
 
 	// (loop 4 times)
 	for(uint32 i = 0; i < 4; ++i)

@@ -354,12 +354,11 @@ void QuestMgr::BuildOfferReward(WorldPacket *data, Quest* qst, Object* qst_giver
 	
 
 	*data << GenerateRewardMoney( plr, qst );
+	*data << uint32(0);										 // rewarded honor
+	*data << uint32(0x08);									 // unused by client
 	*data << qst->reward_spell;
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
+	*data << qst->effect_on_player;
+	*data << uint32(0);										 // character title
 }
 
 void QuestMgr::BuildQuestDetails(WorldPacket *data, Quest* qst, Object* qst_giver, uint32 menutype, uint32 language, Player * plr)
@@ -420,20 +419,11 @@ void QuestMgr::BuildQuestDetails(WorldPacket *data, Quest* qst, Object* qst_give
 	}
 
 	*data << GenerateRewardMoney( plr, qst );
+	*data << uint32(0);										 // rewarded honor
 	*data << qst->reward_spell;
-
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(4);
-	*data << uint32(1);
-	*data << uint32(0);
-	*data << uint32(1);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
-	*data << uint32(0);
+	*data << qst->effect_on_player;
+	*data << uint32(0);										 // character title
+	*data << uint32(0);										 // details emote count
 }
 
 void QuestMgr::BuildRequestItems(WorldPacket *data, Quest* qst, Object* qst_giver, uint32 status, uint32 language)
