@@ -890,14 +890,14 @@ void QuestMgr::OnPlayerExploreArea(Player* plr, uint32 AreaID)
 void QuestMgr::GiveQuestRewardReputation(Player* plr, Quest* qst, Object *qst_giver)
 {
 	// Reputation reward
-	for(int z = 0; z < 2; z++)
+	for(int z = 0; z < 5; z++)
 	{
 		uint32 fact = 19;   // default to 19 if no factiondbc
 		int32 amt  = float2int32( float( GenerateQuestXP( plr, qst) ) * 0.1f );   // guess
 		if(!qst->reward_repfaction[z])
 		{
-			if( z == 1 )
-				break;
+			if( z > 0 )
+				continue;
 
 			// Let's do this properly. Determine the faction of the creature, and give reputation to his faction.
 			if( qst_giver->GetTypeId() == TYPEID_UNIT )
