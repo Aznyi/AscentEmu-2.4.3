@@ -87,6 +87,10 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 		if(plr->GetStanding(qst->required_rep_faction) < (int32)qst->required_rep_value)
 			return QMGR_QUEST_NOT_AVAILABLE;
 
+	if(qst->required_max_rep_faction)
+		if(plr->GetStanding(qst->required_max_rep_faction) >= (int32)qst->required_max_rep_value)
+			return QMGR_QUEST_NOT_AVAILABLE;
+
 	if(!repeatable && plr->HasFinishedQuest(qst->id))
 		return QMGR_QUEST_NOT_AVAILABLE;
 

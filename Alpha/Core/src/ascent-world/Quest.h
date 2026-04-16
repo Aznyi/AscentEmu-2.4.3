@@ -129,6 +129,8 @@ struct Quest
 	uint32 required_tradeskill_value;
 	uint32 required_rep_faction;
 	uint32 required_rep_value;
+	uint32 required_max_rep_faction;
+	uint32 required_max_rep_value;
 
 	uint32 time;
 	uint32 special_flags;
