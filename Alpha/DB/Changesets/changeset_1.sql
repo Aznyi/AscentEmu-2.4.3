@@ -1,12 +1,32 @@
 -- Update Shrine of Dath Remars Object Type to match retail
 UPDATE gameobject_names SET TYPE = 10 WHERE entry = 180516;
 
+-- Add support for quest suggested player counts so the client can display
+-- group-size hints instead of hardcoded zeroes.
+ALTER TABLE `quests`
+ADD COLUMN IF NOT EXISTS `SuggestedPlayers` int(10) unsigned NOT NULL DEFAULT 0
+AFTER `Type`;
+
 -- Fix Invalid loot for non existent item in issue 7
 DELETE cl
 FROM creatureloot cl
 LEFT JOIN items i ON i.entry = cl.itemid
 WHERE cl.entryid IN (24560, 25169)
   AND i.entry IS NULL;
+
+-- Fix Draenei starter quest chain visibility at Proenitus.
+-- "Botanist Taerix" should not appear until "You Survived!" is turned in,
+-- and "Urgent Delivery!" should stay hidden until the healing crystal quest
+-- has been completed.
+UPDATE quests
+SET PrevQuestId = 9279,
+    RequiredQuest1 = 9279
+WHERE entry = 9371;
+
+UPDATE quests
+SET PrevQuestId = 9280,
+    RequiredQuest1 = 9280
+WHERE entry = 9409;
 
 DELETE pl
 FROM pickpocketingloot pl

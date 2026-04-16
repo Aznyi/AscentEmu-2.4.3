@@ -88,6 +88,10 @@ uint32 QuestMgr::PlayerMeetsReqs(Player* plr, Quest* qst, bool skiplevelcheck)
 	if (plr->HasFinishedQuest(qst->id))
 		return QMGR_QUEST_NOT_AVAILABLE;
 
+	// Keep linear chains locked until the previous quest has been turned in.
+	if(qst->previous_quest_id && !plr->HasFinishedQuest(qst->previous_quest_id))
+		return QMGR_QUEST_NOT_AVAILABLE;
+
 	for(uint32 i = 0; i < 4; ++i)
 	{
 		if (qst->required_quests[i] > 0 && !plr->HasFinishedQuest(qst->required_quests[i]))
@@ -346,7 +350,7 @@ void QuestMgr::BuildQuestDetails(WorldPacket *data, Quest* qst, Object* qst_give
 	}
 
 	*data <<  uint32(1);
-	*data << uint32(0);		 // "Suggested players"
+	*data << uint32(qst->suggested_players);	 // "Suggested players"
 
 	*data << qst->count_reward_choiceitem;
 	ItemPrototype *ip;

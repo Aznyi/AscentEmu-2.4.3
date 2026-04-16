@@ -1097,6 +1097,7 @@ CREATE TABLE `quests` (
   `MinLevel` int(10) unsigned NOT NULL default '0',
   `questlevel` int(10) unsigned NOT NULL default '0',
   `Type` int(10) unsigned NOT NULL default '0',
+  `SuggestedPlayers` int(10) unsigned NOT NULL default '0',
   `RequiredRaces` int(10) unsigned NOT NULL default '0',
   `RequiredClass` int(10) unsigned NOT NULL default '0',
   `RequiredTradeskill` int(10) unsigned NOT NULL default '0',

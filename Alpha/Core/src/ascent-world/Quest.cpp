@@ -40,7 +40,7 @@ WorldPacket* WorldSession::BuildQuestQueryResponse(Quest *qst)
 		*data << uint32(qst->zone_id);			  // Positive if pointing to a zone.
 
 	*data << uint32(qst->type);					 // Info ID / Type
-	*data << uint32(0);								// suggested players
+	*data << uint32(qst->suggested_players);			// suggested players
 	*data << uint32(qst->required_rep_faction);	 // Faction ID
 	*data << uint32(qst->required_rep_value);	   // Faction Amount
 	*data << uint32(0);							 // Unknown (always 0)

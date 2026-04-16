@@ -122,6 +122,7 @@ struct Quest
 	uint32 min_level;
 	uint32 max_level;
 	uint32 type;
+	uint32 suggested_players;
 	uint32 required_races;
 	uint32 required_class;
 	uint32 required_tradeskill;
