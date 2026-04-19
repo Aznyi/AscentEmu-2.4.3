@@ -1563,6 +1563,18 @@ void Object::DealDamage(Unit *pVictim, uint32 damage, uint32 targetEvent, uint32
 	{
 		// Set our attack target to the victim.
 		static_cast< Unit* >( this )->CombatStatus.OnDamageDealt( pVictim );
+
+		if(pVictim->IsPlayer())
+		{
+			Unit* attacker = static_cast<Unit*>(this);
+			Pet* pet = static_cast<Player*>(pVictim)->GetSummon();
+			if(pet != NULL && pet->isAlive() && pet->GetPetOwner() == pVictim && pet->GetPetState() == PET_STATE_DEFENSIVE &&
+				attacker != pet && isAttackable(pet, attacker))
+			{
+				pet->HandleAutoCastEvent(AUTOCAST_EVENT_OWNER_ATTACKED);
+				pet->GetAIInterface()->AttackReaction(attacker, 1, spellId);
+			}
+		}
 	}
 	
 	if( pVictim->GetStandState() )//not standing-> standup

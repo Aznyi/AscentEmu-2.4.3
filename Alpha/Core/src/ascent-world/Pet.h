@@ -137,7 +137,16 @@ public:
 	ASCENT_INLINE void SetPetAction(uint32 act) { m_Action = act; }
 	ASCENT_INLINE uint32 GetPetAction(void) { return m_Action; }
 
-	ASCENT_INLINE void SetPetState(uint32 state) { m_State = state; }
+	ASCENT_INLINE void SetPetState(uint32 state)
+	{
+		if(state == PET_SPELL_PASSIVE)
+			state = PET_STATE_PASSIVE;
+		else if(state == PET_SPELL_DEFENSIVE)
+			state = PET_STATE_DEFENSIVE;
+		else if(state == PET_SPELL_AGRESSIVE)
+			state = PET_STATE_AGGRESSIVE;
+		m_State = state;
+	}
 	ASCENT_INLINE uint32 GetPetState(void) { return m_State; }
 
 	ASCENT_INLINE void SetPetDiet(uint32 diet) { m_Diet = diet; }

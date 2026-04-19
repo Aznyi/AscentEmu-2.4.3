@@ -2317,7 +2317,7 @@ void Unit::Strike( Unit* pVictim, uint32 weapon_damage_type, SpellEntry* ability
 	if(!pVictim->isAlive() || !isAlive()  || IsStunned() || IsPacified() || IsFeared())
 		return;
 #ifdef COLLISION
-	if(weapon_damage_type != RANGED && GetMapId() == pVictim->GetMapId() &&
+	if(!IsPet() && weapon_damage_type != RANGED && GetMapId() == pVictim->GetMapId() &&
 		!CollideInterface.CheckLOS(GetMapId(), GetPositionNC(), pVictim->GetPositionNC()))
 	{
 		if(sWorld.CollisionDebugMovement)

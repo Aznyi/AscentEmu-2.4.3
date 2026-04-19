@@ -983,6 +983,19 @@ void AIInterface::_UpdateTargets()
 		}
 	}
 	// Find new Targets when we are ooc
+	if(m_AIType == AITYPE_PET && m_Unit->IsPet())
+	{
+		Pet* pet = static_cast<Pet*>(m_Unit);
+		if(pet->GetPetState() == PET_STATE_AGGRESSIVE && m_aiTargets.size() == 0 &&
+			(m_AIState == STATE_IDLE || m_AIState == STATE_FOLLOWING || m_AIState == STATE_SCRIPTIDLE))
+		{
+			Unit* target = FindTarget();
+			if(target)
+				AttackReaction(target, 1, 0);
+		}
+		return;
+	}
+
 	if((m_AIState == STATE_IDLE || m_AIState == STATE_SCRIPTIDLE) && m_assistTargets.size() == 0)
 	{
 		Unit* target = FindTarget();
@@ -1158,12 +1171,13 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				float combatReach[2]; // Calculate Combat Reach
 				float distance = m_Unit->CalcDistance(m_nextTarget);
 				const bool routedApproachActive = (m_creatureState == MOVING || !m_movementPath.empty());
+				const bool controlledPet = (m_AIType == AITYPE_PET);
 				bool meleeLos = true;
 				bool meleePathClear = true;
-				const float attackRangeThreshold = routedApproachActive ? (combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE) : (combatReach[1] + DISTANCE_TO_SMALL_TO_WALK);
 
 				combatReach[0] = PLAYER_SIZE;
 				combatReach[1] = _CalcCombatRange(m_nextTarget, false);
+				const float attackRangeThreshold = routedApproachActive ? (combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE) : (combatReach[1] + DISTANCE_TO_SMALL_TO_WALK);
 
 #ifdef COLLISION
 				meleeLos = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), m_nextTarget->GetPositionNC());
@@ -1179,6 +1193,7 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				if(distance <= attackRangeThreshold &&
 					m_Unit->GetMapMgr() != NULL &&
 					!m_Unit->IsPlayer() &&
+					!controlledPet &&
 					(m_Unit->GetAIInterface() == NULL || !m_Unit->GetAIInterface()->IsFlying()))
 				{
 					DirectGroundPathResult meleePathResult;
@@ -1385,7 +1400,8 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				float distance = m_Unit->GetDistanceSq(m_nextTarget);
 				bool los = true;
 #ifdef COLLISION
-				los = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(),m_nextTarget->GetPositionNC());
+				if(m_AIType != AITYPE_PET)
+					los = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(),m_nextTarget->GetPositionNC());
 #endif
 				if(!los && sWorld.CollisionDebugMovement)
 				{
@@ -2332,6 +2348,19 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		if(!ApplyPathResult(pathResult) && pathResult.status == PATH_QUERY_STATUS_NOPATH)
 		{
 			m_lastMoveRejectTime = getMSTime();
+			if(m_AIType == AITYPE_PET && target != NULL)
+			{
+				if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[MMAP][PET] map=%u creature=%u status=direct_combat_fallback reason=%s",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						pathResult.detail.c_str());
+				}
+				m_skipDirectPathValidation = true;
+			}
+			else
+			{
 			if(hadRouteBeforeRepath && m_creatureState == MOVING)
 			{
 				if(sWorld.MMapDebugPathing)
@@ -2346,6 +2375,7 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 			if(m_creatureState == MOVING)
 				StopMovement(200);
 			return;
+			}
 		}
 	}
 

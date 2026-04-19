@@ -3352,7 +3352,7 @@ uint8 Spell::CanCast(bool tolerate)
 			}
 
 #ifdef COLLISION
-			if(u_caster != NULL && u_caster->GetMapId() == target->GetMapId())
+			if(u_caster != NULL && !u_caster->IsPet() && u_caster->GetMapId() == target->GetMapId())
 			{
 				const bool hasLos = CollideInterface.CheckLOS(u_caster->GetMapId(), u_caster->GetPositionNC(), target->GetPositionNC());
 				if(sWorld.CollisionDebugMovement)
