@@ -585,14 +585,7 @@ WorldPacket* MapMgr::BuildInitialWorldState()
 
 void MapMgr::SetWorldState(uint32 state, uint32 value)
 {
-	if(_worldStateSet.find(state) == _worldStateSet.end())
-	{
-		_worldStateSet.insert( make_pair(state, value) );
-	}
-	else
-	{
-		_worldStateSet[state] = value;
-	}
+	_worldStateSet[state] = value;
 
 	// Distribute this update
 	
@@ -612,10 +605,8 @@ void MapMgr::SetWorldState(uint32 state, uint32 value)
 
 uint32 MapMgr::GetWorldState(uint32 state)
 {
-	if(_worldStateSet.find(state) == _worldStateSet.end())
-		return 0;
-
-	return _worldStateSet[state];
+	std::map<uint32,uint32>::iterator it = _worldStateSet.find(state);
+	return (it != _worldStateSet.end()) ? it->second : 0u;
 }
 
 uint32 MapMgr::GetTeamPlayersCount(uint32 teamId)
@@ -940,7 +931,7 @@ void MapMgr::RemoveObject(Object *obj, bool free_guid)
 	if(!obj->GetMapCell())
 	{
 		/* set the map cell correctly */
-		if(obj->GetPositionX() >= _maxX || obj->GetPositionX() <= _minY ||
+		if(obj->GetPositionX() >= _maxX || obj->GetPositionX() <= _minX ||
 			obj->GetPositionY() >= _maxY || obj->GetPositionY() <= _minY)
 		{
 			// do nothing
@@ -991,7 +982,7 @@ void MapMgr::RemoveObject(Object *obj, bool free_guid)
 	if(!_shutdown && obj->GetTypeId() == TYPEID_PLAYER)
 	{
 		// get x/y
-		if(obj->GetPositionX() >= _maxX || obj->GetPositionX() <= _minY ||
+		if(obj->GetPositionX() >= _maxX || obj->GetPositionX() <= _minX ||
 			obj->GetPositionY() >= _maxY || obj->GetPositionY() <= _minY)
 		{
 			// do nothing

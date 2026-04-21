@@ -1108,8 +1108,8 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 			}
 			*/
 
-			if(m_canFlee && !m_hasFleed 
-				&& ((m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) < m_FleeHealth ))
+			if(m_canFlee && !m_hasFleed
+				&& ((float)m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / (float)m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) < m_FleeHealth )
 				agent = AGENT_FLEE;
 			else if(m_canCallForHelp 
 				&& !m_hasCalledForHelp 

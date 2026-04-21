@@ -566,13 +566,13 @@ uint8 Spell::DidHit(uint32 effindex,Unit* target)
 		bool no_damage_component = true;
 		for( int x = 0 ; x <= 2 ; x ++ )
 		{
-			if( m_spellInfo->Effect[0] == SPELL_EFFECT_SCHOOL_DAMAGE
-				|| m_spellInfo->Effect[0] == SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
-				|| m_spellInfo->Effect[0] == SPELL_EFFECT_WEAPON_DAMAGE
-				|| m_spellInfo->Effect[0] == SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
-				|| m_spellInfo->Effect[0] == SPELL_EFFECT_DUMMY
-				|| ( m_spellInfo->Effect[0] == SPELL_EFFECT_APPLY_AURA &&
-					( m_spellInfo->EffectApplyAuraName[0] == SPELL_AURA_PERIODIC_DAMAGE 
+			if( m_spellInfo->Effect[x] == SPELL_EFFECT_SCHOOL_DAMAGE
+				|| m_spellInfo->Effect[x] == SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+				|| m_spellInfo->Effect[x] == SPELL_EFFECT_WEAPON_DAMAGE
+				|| m_spellInfo->Effect[x] == SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+				|| m_spellInfo->Effect[x] == SPELL_EFFECT_DUMMY
+				|| ( m_spellInfo->Effect[x] == SPELL_EFFECT_APPLY_AURA &&
+					( m_spellInfo->EffectApplyAuraName[x] == SPELL_AURA_PERIODIC_DAMAGE
 					) )
 				)
 			{
