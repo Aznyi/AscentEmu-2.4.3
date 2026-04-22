@@ -4644,6 +4644,12 @@ void AIInterface::WipeCurrentTarget()
 
 inline void AIInterface::SetNextTarget (uint64 nextTarget_guid)
 { 
+	if( m_Unit == NULL || m_Unit->GetMapMgr() == NULL )
+	{
+		SetNextTarget( (Unit*)NULL );
+		return;
+	}
+
 	SetNextTarget ( m_Unit->GetMapMgr()->GetUnit( nextTarget_guid ) );
 }
 
