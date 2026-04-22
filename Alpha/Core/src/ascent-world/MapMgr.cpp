@@ -960,18 +960,68 @@ void MapMgr::RemoveObject(Object *obj, bool free_guid)
 		static_cast< Player* >( obj )->ClearAllPendingUpdates();
 	}
 	
-	// Remove object from all objects 'seeing' him
-	for (Object::InRangeSet::iterator iter = obj->GetInRangeSetBegin();
-		iter != obj->GetInRangeSetEnd(); ++iter)
+	// Remove object from all objects 'seeing' him. Copy first: stale entries can
+	// exist after abnormal despawns, and erasing peer state while iterating the
+	// source set makes crash analysis much harder.
+	std::vector<Object*> inRangeObjects;
+	inRangeObjects.reserve(obj->GetInRangeCount());
+	for(Object::InRangeSet::iterator iter = obj->GetInRangeSetBegin(); iter != obj->GetInRangeSetEnd(); ++iter)
+		inRangeObjects.push_back(*iter);
+
+	ObjectSet registeredObjects;
+	for(PlayerStorageMap::iterator itr = m_PlayerStorage.begin(); itr != m_PlayerStorage.end(); ++itr)
+		registeredObjects.insert(itr->second);
+
+	for(uint32 i = 0; i < m_CreatureArraySize; ++i)
+		if(m_CreatureStorage[i] != NULL)
+			registeredObjects.insert(m_CreatureStorage[i]);
+
+	for(uint32 i = 0; i < m_GOArraySize; ++i)
+		if(m_GOStorage[i] != NULL)
+			registeredObjects.insert(m_GOStorage[i]);
+
+	for(PetStorageMap::iterator itr = m_PetStorage.begin(); itr != m_PetStorage.end(); ++itr)
+		registeredObjects.insert(itr->second);
+
+	for(DynamicObjectStorageMap::iterator itr = m_DynamicObjectStorage.begin(); itr != m_DynamicObjectStorage.end(); ++itr)
+		registeredObjects.insert(itr->second);
+
+	for(set<Corpse*>::iterator itr = m_corpses.begin(); itr != m_corpses.end(); ++itr)
+		registeredObjects.insert(*itr);
+
+	for(set<Object*>::iterator itr = _mapWideStaticObjects.begin(); itr != _mapWideStaticObjects.end(); ++itr)
+		registeredObjects.insert(*itr);
+
+	for(std::vector<Object*>::iterator iter = inRangeObjects.begin(); iter != inRangeObjects.end(); ++iter)
 	{
-		if( (*iter) )
+		Object* inRangeObject = *iter;
+		if( inRangeObject == NULL || inRangeObject == obj )
+			continue;
+
+		if( registeredObjects.find(inRangeObject) == registeredObjects.end() )
 		{
-			if( (*iter)->GetTypeId() == TYPEID_PLAYER )
+			sLog.outDebug("MapMgr::RemoveObject skipped stale in-range pointer %p while removing " I64FMT " on map %u",
+				inRangeObject, obj->GetGUID(), _mapId);
+			continue;
+		}
+
+		if( inRangeObject->GetTypeId() == TYPEID_PLAYER )
+		{
+			if( static_cast< Player* >( inRangeObject )->IsVisible( obj ) && static_cast< Player* >( inRangeObject )->m_TransporterGUID != obj->GetGUID() )
+				static_cast< Player* >( inRangeObject )->PushOutOfRange(obj->GetNewGUID());
+		}
+
+		inRangeObject->RemoveInRangeObject(obj);
+
+		if(obj->GetMapMgr() != this)
+		{
+			for(++iter; iter != inRangeObjects.end(); ++iter)
 			{
-				if( static_cast< Player* >( *iter )->IsVisible( obj ) && static_cast< Player* >( *iter )->m_TransporterGUID != obj->GetGUID() )
-					static_cast< Player* >( *iter )->PushOutOfRange(obj->GetNewGUID());
+				inRangeObject = *iter;
+				if(inRangeObject != NULL && inRangeObject != obj && registeredObjects.find(inRangeObject) != registeredObjects.end())
+					inRangeObject->RemoveInRangeObject(obj);
 			}
-			(*iter)->RemoveInRangeObject(obj);
+			break;
 		}
 	}
 	
@@ -1046,76 +1096,6 @@ void MapMgr::ChangeObjectLocation( Object *obj )
 	///////////////////////////////////////
 	// Update in-range data for old objects
 	///////////////////////////////////////
-
-	/** let's duplicate some code here :P Less branching is always good.
-	 * - Burlex
-	 */
-/*#define IN_RANGE_LOOP \
-	for (Object::InRangeSet::iterator iter = obj->GetInRangeSetBegin(), iter2; \
-		iter != obj->GetInRangeSetEnd();) \
-	{ \
-		curObj = *iter; \
-		iter2 = iter; \
-		++iter; \
-		if(curObj->IsPlayer() && obj->IsPlayer() && plObj->m_TransporterGUID && plObj->m_TransporterGUID == static_cast< Player* >( curObj )->m_TransporterGUID ) \
-			fRange = 0.0f;		\
-		else if((curObj->GetGUIDHigh() == HIGHGUID_TRANSPORTER || obj->GetGUIDHigh() == HIGHGUID_TRANSPORTER)) \
-			fRange = 0.0f;		\
-		else if((curObj->GetGUIDHigh() == HIGHGUID_GAMEOBJECT && curObj->GetUInt32Value(GAMEOBJECT_TYPE_ID) == GAMEOBJECT_TYPE_TRANSPORT || obj->GetGUIDHigh() == HIGHGUID_GAMEOBJECT && obj->GetUInt32Value(GAMEOBJECT_TYPE_ID) == GAMEOBJECT_TYPE_TRANSPORT)) \
-			fRange = 0.0f;		\
-		else \
-			fRange = m_UpdateDistance;	\
-		if (curObj->GetDistance2dSq(obj) > fRange && fRange > 0) \
-
-#define END_IN_RANGE_LOOP } \
-
-	if(plObj)
-	{
-		IN_RANGE_LOOP
-		{
-			plObj->RemoveIfVisible(curObj);
-			plObj->RemoveInRangeObject(iter2);
-
-			if(curObj->NeedsInRangeSet())
-				curObj->RemoveInRangeObject(obj);
-
-			if(curObj->IsPlayer())
-				static_cast< Player* >( curObj )->RemoveIfVisible(obj);
-		}
-		END_IN_RANGE_LOOP
-	}
-	else if(obj->NeedsInRangeSet())
-	{
-		IN_RANGE_LOOP
-		{
-			if(curObj->NeedsInRangeSet())
-				curObj->RemoveInRangeObject(obj);
-
-			if(curObj->IsPlayer())
-				static_cast< Player* >( curObj )->RemoveIfVisible(obj);
-
-			obj->RemoveInRangeObject(iter2);
-		}
-		END_IN_RANGE_LOOP
-	}
-	else
-	{
-		IN_RANGE_LOOP
-		{
-			if(curObj->NeedsInRangeSet())
-				curObj->RemoveInRangeObject(obj);
-
-			if(curObj->IsPlayer())
-			{
-				static_cast< Player* >( curObj )->RemoveIfVisible(obj);
-				obj->RemoveInRangePlayer(curObj);
-			}
-		}
-		END_IN_RANGE_LOOP
-	}
-
-#undef IN_RANGE_LOOP
-#undef END_IN_RANGE_LOOP*/
 
 	if(obj->HasInRangeObjects()) {
 		for (Object::InRangeSet::iterator iter = obj->GetInRangeSetBegin(), iter2;
@@ -1257,7 +1237,9 @@ void MapMgr::ChangeObjectLocation( Object *obj )
 		{
 			cell = GetCell(posX, posY);
 			if (cell)
-			UpdateInRangeSet(obj, plObj, cell, &buf);
+			{
+				UpdateInRangeSet(obj, plObj, cell, &buf);
+			}
 		}
 	}
 
@@ -1393,130 +1375,6 @@ void MapMgr::UpdateInRangeSet( Object *obj, Player *plObj, MapCell* cell, ByteBu
 			}
 		}
 	}
-/*
-#define IN_RANGE_LOOP_P1 \
-	while(iter != cell->End()) \
-	{ \
-		curObj = *iter; \
-		++iter; \
-		if(curObj->IsPlayer() && obj->IsPlayer() && plObj && plObj->m_TransporterGUID && plObj->m_TransporterGUID == static_cast< Player* >( curObj )->m_TransporterGUID) \
-			fRange = 0.0f; \
-		else if((curObj->GetGUIDHigh() == HIGHGUID_TRANSPORTER ||obj->GetGUIDHigh() == HIGHGUID_TRANSPORTER)) \
-			fRange = 0.0f; \
-		else if((curObj->GetGUIDHigh() == HIGHGUID_GAMEOBJECT && curObj->GetUInt32Value(GAMEOBJECT_TYPE_ID) == GAMEOBJECT_TYPE_TRANSPORT || obj->GetGUIDHigh() == HIGHGUID_GAMEOBJECT && obj->GetUInt32Value(GAMEOBJECT_TYPE_ID) == GAMEOBJECT_TYPE_TRANSPORT)) \
-			fRange = 0.0f; \
-		else \
-			fRange = m_UpdateDistance; \
-		if ( curObj != obj && (fRange == 0.0f || curObj->GetDistance2dSq(obj) < fRange ) ) \
-		{ \
-			if(!obj->IsInRangeSet(curObj)) \
-			{ \
-				if(curObj->NeedsInRangeSet()) \
-				{ \
-					curObj->AddInRangeObject(obj); \
-				} else if(obj->IsPlayer()) \
-				{ \
-					curObj->AddInRangePlayer(obj); \
-				} \
-				if(curObj->IsPlayer()) \
-				{ \
-					plObj2 = static_cast< Player* >( curObj ); \
-					if (plObj2->CanSee(obj) && !plObj2->IsVisible(obj))  \
-					{ \
-						CHECK_BUF; \
-						count = obj->BuildCreateUpdateBlockForPlayer(*buf, plObj2); \
-						plObj2->PushCreationData(*buf, count); \
-						plObj2->AddVisibleObject(obj); \
-						(*buf)->clear(); \
-					} \
-				} 
-
-#define IN_RANGE_LOOP_P2 \
-			} \
-			else \
-			{ \
-				if(curObj->IsPlayer()) \
-				{ \
-					plObj2 = static_cast< Player* >( curObj ); \
-					cansee = plObj2->CanSee(obj); \
-					isvisible = plObj2->GetVisibility(obj, &itr); \
-					if(!cansee && isvisible) \
-					{ \
-						plObj2->RemoveVisibleObject(itr); \
-						plObj2->PushOutOfRange(obj->GetNewGUID()); \
-					} \
-					else if(cansee && !isvisible) \
-					{ \
-						CHECK_BUF; \
-						count = obj->BuildCreateUpdateBlockForPlayer(*buf, plObj2); \
-						plObj2->PushCreationData(*buf, count); \
-						plObj2->AddVisibleObject(obj); \
-						(*buf)->clear(); \
-					} \
-				} \
-
-#define IN_RANGE_LOOP_P3 \
-			} \
-		} \
-	} \
-
-
-	if(plObj)
-	{
-		IN_RANGE_LOOP_P1
-
-			obj->AddInRangeObject(curObj);
-			if(plObj->CanSee(curObj) && !plObj->IsVisible(curObj))
-			{
-				CHECK_BUF;
-				count = curObj->BuildCreateUpdateBlockForPlayer(*buf, plObj);
-				plObj->PushCreationData(*buf, count);
-				plObj->AddVisibleObject(curObj);
-				(*buf)->clear();
-			}
-
-		IN_RANGE_LOOP_P2
-
-			if(plObj)
-			{
-				cansee = plObj->CanSee(curObj);
-				isvisible = plObj->GetVisibility(curObj, &itr);
-				if(!cansee && isvisible)
-				{
-					plObj->PushOutOfRange(curObj->GetNewGUID());
-					plObj->RemoveVisibleObject(itr);
-				}
-				else if(cansee && !isvisible)
-				{
-					CHECK_BUF;
-					count = curObj->BuildCreateUpdateBlockForPlayer(*buf, plObj);
-					plObj->PushCreationData(*buf, count);
-					plObj->AddVisibleObject(curObj);
-					(*buf)->clear();
-				}
-			}
-
-		IN_RANGE_LOOP_P3
-	} else if(obj->NeedsInRangeSet())
-	{
-		IN_RANGE_LOOP_P1
-			obj->AddInRangeObject(curObj);
-		IN_RANGE_LOOP_P2
-		IN_RANGE_LOOP_P3
-	}
-	else
-	{
-		IN_RANGE_LOOP_P1
-			if(curObj->IsPlayer())
-				obj->AddInRangePlayer(obj);
-
-		IN_RANGE_LOOP_P2
-		IN_RANGE_LOOP_P3
-	}
-
-#undef IN_RANGE_LOOP_P1
-#undef IN_RANGE_LOOP_P2
-#undef IN_RANGE_LOOP_P3*/
 }
 
 void MapMgr::_UpdateObjects()

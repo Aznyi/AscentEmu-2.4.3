@@ -1883,3 +1883,16 @@ WHERE q.`RepObjectiveFaction` = 0
   AND q.`RepObjectiveValue` = 0;
 
 DROP TEMPORARY TABLE `_quest_rep_objectives`;
+
+-- Undercity elevator transports near map 0, zone 85 are permanent city objects.
+-- If the converted game_event_gameobject import is applied on top of the
+-- existing DB.sql spawn ids, guid 15196 collides with the upper elevator door
+-- at X 1553.3, Y 240.656 and hides it unless event 1 is active.
+
+DELETE geg
+FROM `game_event_gameobject` geg
+INNER JOIN `gameobject_spawns` gos ON gos.`id` = geg.`guid`
+WHERE gos.`map` = 0
+  AND gos.`Entry` BETWEEN 20649 AND 20657
+  AND gos.`position_x` BETWEEN 1530 AND 1600
+  AND gos.`position_y` BETWEEN 175 AND 305;

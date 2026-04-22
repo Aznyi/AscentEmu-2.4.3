@@ -528,9 +528,9 @@ uint8 Spell::DidHit(uint32 effindex,Unit* target)
 		return SPELL_DID_HIT_MISS;
 	
 	/************************************************************************/
-	/* Elite mobs always hit                                                */
+	/* Explicitly unresistable spells always hit                            */
 	/************************************************************************/
-	if(u_caster && u_caster->GetTypeId()==TYPEID_UNIT && ((Creature*)u_caster)->GetCreatureName() && ((Creature*)u_caster)->GetCreatureName()->Rank >= 3)
+	if(m_spellInfo->Attributes & ATTRIBUTES_IGNORE_INVULNERABILITY)
 		return SPELL_DID_HIT_SUCCESS;
 
 	/************************************************************************/
@@ -2073,23 +2073,19 @@ void Spell::SendSpellGo()
 	{
 		if( m_spellInfo->Effect[x] )
 		{
-            bool add = true;
 			for( i = m_targetUnits[x].begin(); i != m_targetUnits[x].end(); i++ )
 			{
-				add = true;
+				if( (*i) == 0 )
+					continue;
+
 				for( j = UniqueTargets.begin(); j != UniqueTargets.end(); j++ )
 				{
 					if( (*j) == (*i) )
-					{
-						add = false;
 						break;
-					}
 				}
-				if( add && (*i) != 0 )
+
+				if( j == UniqueTargets.end() )
 					UniqueTargets.push_back( (*i) );
-                //TargetsList::iterator itr = std::unique(m_targetUnits[x].begin(), m_targetUnits[x].end());
-                //UniqueTargets.insert(UniqueTargets.begin(),));
-                //UniqueTargets.insert(UniqueTargets.begin(), itr);
 			}
 		}
 	}
