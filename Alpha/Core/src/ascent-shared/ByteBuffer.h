@@ -309,7 +309,7 @@ public:
 	};
 	template <typename T> T read(size_t pos) const {
 		//ASSERT(pos + sizeof(T) <= size());
-		if(pos + sizeof(T) > size())
+		if(pos > size() || sizeof(T) > size() - pos)
 		{
 			return (T)0;
 		} else {
@@ -349,6 +349,7 @@ public:
 	}
 	void append(const uint8 *src, size_t cnt) {
 		if (!cnt) return;
+		if (!src) return;
 
 		// noone should even need uint8buffer longer than 10mb
 		// if you DO need, think about it
@@ -368,6 +369,8 @@ public:
 
 	void put(size_t pos, const uint8 *src, size_t cnt) {
 		ASSERT(pos + cnt <= size());
+		if(!src || pos > size() || cnt > size() - pos)
+			return;
 		memcpy(&_storage[pos], src, cnt);
 	}
 	//void insert(size_t pos, const uint8 *src, size_t cnt) {
