@@ -130,6 +130,7 @@ void Creature::Update( uint32 p_time )
 	Unit::Update( p_time );
 	if(IsTotem() && isDead())
 	{
+		sEventMgr.RemoveEvents(this);
 		RemoveFromWorld(false, true);
 		delete this;
 		return;
@@ -169,7 +170,7 @@ void Creature::DeleteMe()
 void Creature::OnRemoveCorpse()
 {
 	// time to respawn!
-	if (IsInWorld() && (int32)m_mapMgr->GetInstanceID() == m_instanceId)
+	if (IsInWorld() && GetMapMgr() != NULL && (int32)GetMapMgr()->GetInstanceID() == m_instanceId)
 	{
 
 		sLog.outDetail("Removing corpse of " I64FMT "...", GetGUID());
