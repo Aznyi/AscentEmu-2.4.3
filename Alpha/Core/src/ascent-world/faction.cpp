@@ -76,7 +76,11 @@ bool isHostile(Object* objA, Object* objB)// B is hostile for A?
 	// We check this after the normal isHostile test, that way if we're
 	// on the opposite team we'll already know :p
 
-	if( hostile && ( objA->IsPlayer() || objA->IsPet() || ( objA->IsUnit() && !objA->IsPlayer() && static_cast< Creature* >( objA )->IsTotem() && static_cast< Creature* >( objA )->GetTotemOwner()->IsPvPFlagged() ) ) )
+	Player* totemOwner = NULL;
+	if( objA->IsUnit() && !objA->IsPlayer() && static_cast< Creature* >( objA )->IsTotem() )
+		totemOwner = static_cast< Creature* >( objA )->GetTotemOwner();
+
+	if( hostile && ( objA->IsPlayer() || objA->IsPet() || ( totemOwner != NULL && totemOwner->IsPvPFlagged() ) ) )
 	{
 		if( objB->IsPlayer() )
 		{
@@ -235,36 +239,44 @@ bool isAttackable(Object* objA, Object* objB, bool CheckStealth)// A can attack 
 	{
 		if(static_cast<Creature *>(objA)->IsTotem())
 		{
+			Player* ownerA = static_cast<Creature *>(objA)->GetTotemOwner();
 			if(objB->IsPlayer())
-				if( static_cast<Creature *>(objA)->GetTotemOwner() &&
-					static_cast<Creature *>(objA)->GetTotemOwner()->DuelingWith == static_cast< Player* >(objB) && 
-					static_cast<Creature *>(objA)->GetTotemOwner()->GetDuelState() == DUEL_STATE_STARTED
+				if( ownerA &&
+					ownerA->DuelingWith == static_cast< Player* >(objB) &&
+					ownerA->GetDuelState() == DUEL_STATE_STARTED
 					)
 					return true;
 			if(objB->IsPet())
-				if( static_cast<Creature *>(objA)->GetTotemOwner() &&
-					static_cast<Creature *>(objA)->GetTotemOwner()->DuelingWith == static_cast<Pet *>(objB)->GetPetOwner() && 
-					static_cast<Creature *>(objA)->GetTotemOwner()->GetDuelState() == DUEL_STATE_STARTED
+			{
+				Player* petOwnerB = static_cast<Pet *>(objB)->GetPetOwner();
+				if( ownerA && petOwnerB &&
+					ownerA->DuelingWith == petOwnerB &&
+					ownerA->GetDuelState() == DUEL_STATE_STARTED
 					)
 					return true;
+			}
 		}
 	}
 	if(objB->IsUnit() && !objB->IsPlayer()) // must be creature
 	{
 		if(static_cast<Creature *>(objB)->IsTotem())
 		{
+			Player* ownerB = static_cast<Creature *>(objB)->GetTotemOwner();
 			if(objA->IsPlayer())
-				if( static_cast<Creature *>(objB)->GetTotemOwner() &&
-					static_cast<Creature *>(objB)->GetTotemOwner()->DuelingWith == static_cast< Player* >(objA) && 
-					static_cast<Creature *>(objB)->GetTotemOwner()->GetDuelState() == DUEL_STATE_STARTED
+				if( ownerB &&
+					ownerB->DuelingWith == static_cast< Player* >(objA) &&
+					ownerB->GetDuelState() == DUEL_STATE_STARTED
 					)
 					return true;
 			if(objA->IsPet())
-				if( static_cast<Creature *>(objB)->GetTotemOwner() &&
-					static_cast<Creature *>(objB)->GetTotemOwner()->DuelingWith == static_cast<Pet *>(objA)->GetPetOwner() && 
-					static_cast<Creature *>(objB)->GetTotemOwner()->GetDuelState() == DUEL_STATE_STARTED
+			{
+				Player* petOwnerA = static_cast<Pet *>(objA)->GetPetOwner();
+				if( ownerB && petOwnerA &&
+					ownerB->DuelingWith == petOwnerA &&
+					ownerB->GetDuelState() == DUEL_STATE_STARTED
 					)
 					return true;
+			}
 		}
 	}
 
