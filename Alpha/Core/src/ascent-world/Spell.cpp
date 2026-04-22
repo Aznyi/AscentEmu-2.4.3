@@ -518,14 +518,15 @@ uint8 Spell::DidHit(uint32 effindex,Unit* target)
 {
 	//note resistchance is vise versa, is full hit chance
 	Unit* u_victim = target;
+	if( u_victim == NULL )
+		return SPELL_DID_HIT_MISS;
+
 	Player* p_victim = ( target->GetTypeId() == TYPEID_PLAYER ) ? static_cast< Player* >( target ) : NULL;
 
 	// 
 	float baseresist[3] = { 4.0f, 5.0f, 6.0f };
 	int32 lvldiff;
 	float resistchance ;
-	if( u_victim == NULL )
-		return SPELL_DID_HIT_MISS;
 	
 	/************************************************************************/
 	/* Explicitly unresistable spells always hit                            */
