@@ -270,7 +270,7 @@ public:
 	ASCENT_INLINE uint8  GetWaterType(float x, float y) { return GetBaseMap()->GetWaterType(x, y); }
 	ASCENT_INLINE uint8  GetWalkableState(float x, float y) { return GetBaseMap()->GetWalkableState(x, y); }
 	ASCENT_INLINE uint16 GetAreaID(float x, float y) { return GetBaseMap()->GetAreaID(x, y); }
-	GroundHeightResult ResolveGroundHeight(float x, float y, float zHint, bool allowWater = false);
+	GroundHeightResult ResolveGroundHeight(float x, float y, float zHint, bool allowWater = false, const float* knownWaterZ = NULL, const uint8* knownWaterType = NULL);
 	bool ValidateGroundMovement(Unit* mover, float x, float y, float zHint, float* outZ = NULL, GroundHeightResult* outResult = NULL, const char* reason = NULL);
 	bool ValidateDirectGroundPath(Unit* mover, float startX, float startY, float startZ, float destX, float destY, float destZ, DirectGroundPathResult* outResult = NULL, const char* reason = NULL);
 	bool NormalizeGroundPosition(float x, float y, float zHint, float* outZ, GroundHeightResult* outResult = NULL, const char* reason = NULL, float maxTerrainDelta = 5.0f);

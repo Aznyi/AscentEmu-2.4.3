@@ -233,12 +233,12 @@ PathQueryResult MapMgr::BuildPath(Unit* mover, float startX, float startY, float
 	return result;
 }
 
-GroundHeightResult MapMgr::ResolveGroundHeight(float x, float y, float zHint, bool allowWater /* = false */)
+GroundHeightResult MapMgr::ResolveGroundHeight(float x, float y, float zHint, bool allowWater /* = false */, const float* knownWaterZ /* = NULL */, const uint8* knownWaterType /* = NULL */)
 {
 	GroundHeightResult result;
 	result.terrainZ = GetLandHeight(x, y);
-	result.waterZ = GetWaterHeight(x, y);
-	result.waterType = GetWaterType(x, y);
+	result.waterZ = (knownWaterZ != NULL) ? *knownWaterZ : GetWaterHeight(x, y);
+	result.waterType = (knownWaterType != NULL) ? *knownWaterType : GetWaterType(x, y);
 
 #ifdef COLLISION
 	if(CollisionMgr != NULL)
@@ -295,7 +295,7 @@ bool MapMgr::ValidateGroundMovement(Unit* mover, float x, float y, float zHint, 
 {
 	const float waterZ = GetWaterHeight(x, y);
 	const uint8 waterType = GetWaterType(x, y);
-	GroundHeightResult result = ResolveGroundHeight(x, y, zHint, waterType != 0 && zHint <= (waterZ + 1.0f));
+	GroundHeightResult result = ResolveGroundHeight(x, y, zHint, waterType != 0 && zHint <= (waterZ + 1.0f), &waterZ, &waterType);
 	if(outResult != NULL)
 		*outResult = result;
 

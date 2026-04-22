@@ -660,34 +660,41 @@ void AIInterface::Update(uint32 p_time)
 		assert(totemspell != 0);
 		if(p_time >= m_totemspelltimer)
 		{
-			Spell *pSpell = new Spell(m_Unit, totemspell, true, 0);
-
-			SpellCastTargets targets(0);
 			if(!m_nextTarget ||
 				(m_nextTarget && 
 					(!m_Unit->GetMapMgr()->GetUnit(m_nextTarget->GetGUID()) || 
 					!m_nextTarget->isAlive() ||
-					!IsInrange(m_Unit,m_nextTarget,pSpell->m_spellInfo->base_range_or_radius_sqr) ||
-					!isAttackable(m_Unit, m_nextTarget,!(pSpell->m_spellInfo->c_is_flags & SPELL_FLAG_IS_TARGETINGSTEALTHED))
+					!IsInrange(m_Unit,m_nextTarget,totemspell->base_range_or_radius_sqr) ||
+					!isAttackable(m_Unit, m_nextTarget,!(totemspell->c_is_flags & SPELL_FLAG_IS_TARGETINGSTEALTHED))
 					)
 				)
 				)
 			{
+				Spell *pSpell = new Spell(m_Unit, totemspell, true, 0);
+				SpellCastTargets targets(0);
 				//we set no target and see if we managed to fid a new one
 				SetNextTarget( (Unit*)NULL );
 				//something happend to our target, pick another one
 				pSpell->GenerateTargets(&targets);
 				if(targets.m_targetMask & TARGET_FLAG_UNIT)
 					SetNextTarget( targets.m_unitTarget );
+				if(m_nextTarget)
+				{
+					SpellCastTargets targets(m_nextTarget->GetGUID());
+					pSpell->prepare(&targets);
+					// need proper cooldown time!
+					m_totemspelltimer = m_totemspelltime;
+				}
+				else delete pSpell;
 			}
-			if(m_nextTarget)
+			else
 			{
+				Spell *pSpell = new Spell(m_Unit, totemspell, true, 0);
 				SpellCastTargets targets(m_nextTarget->GetGUID());
 				pSpell->prepare(&targets);
 				// need proper cooldown time!
 				m_totemspelltimer = m_totemspelltime;
 			}
-			else delete pSpell;
 			// these will *almost always* be AoE, so no need to find a target here.
 //			SpellCastTargets targets(m_Unit->GetGUID());
 //			Spell * pSpell = new Spell(m_Unit, totemspell, true, 0);
@@ -1108,12 +1115,16 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 			}
 			*/
 
+			uint32 maxHealth = m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH);
+			float healthPct = (float)m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / (float)(maxHealth > 0 ? maxHealth : 1);
+			float callForHelpHealth = (m_CallForHelpHealth > 0.0f) ? m_CallForHelpHealth : 0.2f;
+
 			if(m_canFlee && !m_hasFleed
-				&& ((float)m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / (float)m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH)) < m_FleeHealth )
+				&& healthPct < m_FleeHealth )
 				agent = AGENT_FLEE;
 			else if(m_canCallForHelp 
 				&& !m_hasCalledForHelp 
-				/*&& (m_CallForHelpHealth > (m_Unit->GetUInt32Value(UNIT_FIELD_HEALTH) / (m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH) > 0 ? m_Unit->GetUInt32Value(UNIT_FIELD_MAXHEALTH) : 1)))*/)
+				&& healthPct < callForHelpHealth)
 				agent = AGENT_CALLFORHELP;
 			else if(m_nextSpell)
 			{

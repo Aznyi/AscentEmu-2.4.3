@@ -300,7 +300,7 @@ void Spell::FillSpecifiedTargetsInArea(uint32 i,float srcx,float srcy,float srcz
             }
             if( m_spellInfo->MaxTargets)
             {
-                if( m_spellInfo->MaxTargets >= tmpMap->size())
+                if( m_spellInfo->MaxTargets == tmpMap->size())
                     return;
             }
         }
