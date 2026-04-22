@@ -149,10 +149,12 @@ void DynamicObject::UpdateTargets()
 			itr2 = itr;
 			++itr;
 
-			if( !( (*itr2)->IsUnit() ) || ! static_cast< Unit* >( *itr2 )->isAlive() || ( static_cast< Creature* >( *itr2 )->IsTotem() && !static_cast< Unit* >( *itr2 )->IsPlayer() ) )
+			if( !( (*itr2)->IsUnit() ) )
 				continue;
 
 			target = static_cast< Unit* >( *itr2 );
+			if( !target->isAlive() || ( !target->IsPlayer() && static_cast< Creature* >( target )->IsTotem() ) )
+				continue;
 
 			if( !isAttackable( p_caster, target, !(m_spellProto->c_is_flags & SPELL_FLAG_IS_TARGETINGSTEALTHED) ) )
 				continue;
