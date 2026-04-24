@@ -195,6 +195,16 @@ PathQueryResult MapMgr::BuildPath(Unit* mover, float startX, float startY, float
 	}
 #endif
 
+	if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+	{
+		sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u los=%u start=(%0.3f,%0.3f,%0.3f) end=(%0.3f,%0.3f,%0.3f) reason=%s",
+			GetMapId(),
+			(mover != NULL && mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0,
+			collisionDirectAllowed ? 1 : 0,
+			startX, startY, startZ, destX, destY, destZ,
+			navmeshDetail.c_str());
+	}
+
 	if(collisionDirectAllowed && ValidateGroundMovement(mover, destX, destY, destZ, NULL, NULL, "path_query_destination"))
 	{
 		if(ValidateDirectGroundPath(mover, startX, startY, startZ, destX, destY, destZ, NULL, "path_query"))

@@ -341,6 +341,13 @@ void Spell::FillAllTargetsInArea(uint32 i,float srcx,float srcy,float srcz, floa
 			{
 				if( isAttackable( u_caster, static_cast< Unit* >( *itr ), !(m_spellInfo->c_is_flags & SPELL_FLAG_IS_TARGETINGSTEALTHED) ) )
 				{
+#ifdef COLLISION
+					if( u_caster->GetMapId() == (*itr)->GetMapId() &&
+						!CollideInterface.CheckLOS( u_caster->GetMapId(),
+							srcx, srcy, srcz + 2.0f,
+							(*itr)->GetPositionX(), (*itr)->GetPositionY(), (*itr)->GetPositionZ() + 2.0f ) )
+						continue;
+#endif
 					did_hit_result = DidHit(i, static_cast< Unit* >( *itr ) );
 					if( did_hit_result == SPELL_DID_HIT_SUCCESS )
 						tmpMap->push_back( (*itr)->GetGUID() );
@@ -358,12 +365,12 @@ void Spell::FillAllTargetsInArea(uint32 i,float srcx,float srcy,float srcz, floa
 				}
 				else
 					tmpMap->push_back( (*itr)->GetGUID() );
-			}			
+			}
 			if( m_spellInfo->MaxTargets )
 				if( m_spellInfo->MaxTargets == tmpMap->size() )
 					return;
 		}
-	}	
+	}
 }
 
 // We fill all the targets in the area, including the stealth ed one's
@@ -392,6 +399,13 @@ void Spell::FillAllFriendlyInArea( uint32 i, float srcx, float srcy, float srcz,
 			{
 				if( isFriendly( u_caster, static_cast< Unit* >( *itr ) ) )
 				{
+#ifdef COLLISION
+					if( u_caster->GetMapId() == (*itr)->GetMapId() &&
+						!CollideInterface.CheckLOS( u_caster->GetMapId(),
+							srcx, srcy, srcz + 2.0f,
+							(*itr)->GetPositionX(), (*itr)->GetPositionY(), (*itr)->GetPositionZ() + 2.0f ) )
+						continue;
+#endif
 					did_hit_result = DidHit(i, static_cast< Unit* >( *itr ) );
 					if( did_hit_result == SPELL_DID_HIT_SUCCESS )
 						tmpMap->push_back( (*itr)->GetGUID() );
@@ -3285,25 +3299,9 @@ uint8 Spell::CanCast(bool tolerate)
 	}
 
 	// set up our max Range
+	// The +2.52 tolerance applied at the range check below covers Blizzard's intended
+	// client-server movement tolerance; a per-ping dynamic extension is exploitable.
 	float maxRange = GetMaxRange( dbcSpellRange.LookupEntry( m_spellInfo->rangeIndex ) );
-		// latency compensation!!
-		// figure out how much extra distance we need to allow for based on our movespeed and latency.
-		if( u_caster && m_caster->GetMapMgr() && m_targets.m_unitTarget )
-		{
-			Unit * utarget;
-			utarget = m_caster->GetMapMgr()->GetUnit( m_targets.m_unitTarget );
-			if( utarget && utarget->IsPlayer() && static_cast< Player* >( utarget )->m_isMoving )
-				{
-					// this only applies to PvP.
-					uint32 lat = static_cast< Player* >( utarget )->GetSession() ? static_cast< Player* >( utarget )->GetSession()->GetLatency() : 0;
-
-					// if we're over 500 get fucked anyway.. your gonna lag! and this stops cheaters too
-					lat = ( lat > 500 ) ? 500 : lat;
-
-					// calculate the added distance
-					maxRange += ( u_caster->m_runSpeed * 0.001f ) * float( lat );
-				}
-		}
 	if( m_spellInfo->SpellGroupType && u_caster != NULL )
 	{
 		SM_FFValue( u_caster->SM_FRange, &maxRange, m_spellInfo->SpellGroupType );
@@ -3349,9 +3347,11 @@ uint8 Spell::CanCast(bool tolerate)
 			}
 
 #ifdef COLLISION
-			if(u_caster != NULL && !u_caster->IsPet() && u_caster->GetMapId() == target->GetMapId())
+			if(u_caster != NULL && u_caster->GetMapId() == target->GetMapId())
 			{
-				const bool hasLos = CollideInterface.CheckLOS(u_caster->GetMapId(), u_caster->GetPositionNC(), target->GetPositionNC());
+				const bool hasLos = CollideInterface.CheckLOS(u_caster->GetMapId(),
+					u_caster->GetPositionX(), u_caster->GetPositionY(), u_caster->GetPositionZ() + 2.0f,
+					target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + 2.0f);
 				if(sWorld.CollisionDebugMovement)
 				{
 					sLog.outDebug("[LOS][CAST] map=%u spell=%u caster=" I64FMT " target=" I64FMT " source=checkcast result=%u",
@@ -3561,7 +3561,7 @@ uint8 Spell::CanCast(bool tolerate)
 					}
 					else
 					{
-						if( GetType() == SPELL_DMG_TYPE_MAGIC && m_spellInfo->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INFRONT )
+						if( m_spellInfo->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INFRONT )
 						{
 							facingChecked = true;
 							facingMode = "require_in_front";

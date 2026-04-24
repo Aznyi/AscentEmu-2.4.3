@@ -159,7 +159,7 @@ World::World()
         MMapPathingEnabled = true;
         MMapLogTileLoads = true;
         MMapDebugPathing = false;
-        mmap_nearest_poly_extent_horizontal = 5.0f;
+        mmap_nearest_poly_extent_horizontal = 4.0f;
         mmap_nearest_poly_extent_vertical = 15.0f;
         mmap_inspect_radius = 12.0f;
         m_levelCap=70;
@@ -1441,13 +1441,13 @@ void World::Rehash(bool load)
         MMapPathingEnabled = Config.MainConfig.GetBoolDefault("Terrain", "MMapPathingEnabled", true);
         MMapLogTileLoads = Config.MainConfig.GetBoolDefault("Terrain", "MMapLogTileLoads", true);
         MMapDebugPathing = Config.MainConfig.GetBoolDefault("Terrain", "MMapDebugPathing", false);
-        mmap_nearest_poly_extent_horizontal = Config.MainConfig.GetFloatDefault("Terrain", "MMapNearestPolyExtentHorizontal", 5.0f);
+        mmap_nearest_poly_extent_horizontal = Config.MainConfig.GetFloatDefault("Terrain", "MMapNearestPolyExtentHorizontal", 4.0f);
         mmap_nearest_poly_extent_vertical = Config.MainConfig.GetFloatDefault("Terrain", "MMapNearestPolyExtentVertical", 15.0f);
         mmap_inspect_radius = Config.MainConfig.GetFloatDefault("Terrain", "MMapInspectRadius", 12.0f);
         creature_ground_movement_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureGroundMovementThreshold", 10.0f);
 	creature_direct_path_probe_spacing = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathProbeSpacing", 2.5f);
-	creature_direct_path_step_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathStepThreshold", 4.0f);
-	creature_direct_path_drop_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathDropThreshold", 6.0f);
+	creature_direct_path_step_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathStepThreshold", 2.0f);
+	creature_direct_path_drop_threshold = Config.MainConfig.GetFloatDefault("Terrain", "CreatureDirectPathDropThreshold", 3.0f);
 	BreathingEnabled = Config.MainConfig.GetBoolDefault("Server", "EnableBreathing", true);
 	SendStatsOnJoin = Config.MainConfig.GetBoolDefault("Server", "SendStatsOnJoin", true);
 	compression_threshold = Config.MainConfig.GetIntDefault("Server", "CompressionThreshold", 1000);

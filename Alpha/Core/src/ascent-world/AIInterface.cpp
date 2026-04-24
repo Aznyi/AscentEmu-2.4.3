@@ -92,6 +92,7 @@ static const float ROUTED_MOVEMENT_REPATH_MIN_DELTA = 1.5f;
 static const float ROUTED_MOVEMENT_REPATH_STRONG_DELTA = 3.0f;
 static const uint32 ROUTED_MOVEMENT_REPATH_THROTTLE_MS = 400;
 static const uint32 ROUTED_MOVEMENT_NO_ROUTE_RETRY_MS = 900;
+static const uint32 CAST_BLOCKED_LOS_RETRY_MS = 750;
 static const float ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE = 0.25f;
 static const float ROUTED_MOVEMENT_FINAL_APPROACH_TARGET_DRIFT = 0.5f;
 static const float FOLLOW_REPATH_MIN_DELTA = 1.5f;
@@ -159,8 +160,7 @@ AIInterface::AIInterface()
 	m_skipDirectPathValidation = false;
 	m_movementPathIndex = 0;
 	m_lastPathRepathTime = 0;
-	m_lastFinalApproachLogTime = 0;
-	m_lastFinalApproachDistance = 0.0f;
+
 	m_lastRepathGoalX = 0.0f;
 	m_lastRepathGoalY = 0.0f;
 	m_lastRepathGoalZ = 0.0f;
@@ -1030,13 +1030,26 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 	// If creature is very far from spawn point return to spawnpoint
 	// If at instance dont return -- this is wrong ... instance creatures always returns to spawnpoint, dunno how do you got this ideia. 
 
-	if(	m_AIType != AITYPE_PET 
-		&& (m_outOfCombatRange && m_Unit->GetDistanceSq(m_returnX,m_returnY,m_returnZ) > m_outOfCombatRange) 
+	// Leash is measured from the spawn point, not the combat-entry position,
+	// so kiting the mob away from its spawn correctly triggers evade.
+	if(m_AIType != AITYPE_PET
+		&& m_outOfCombatRange
 		&& m_AIState != STATE_EVADE
 		&& m_AIState != STATE_SCRIPTMOVE
 		&& !m_is_in_instance)
 	{
-		HandleEvent( EVENT_LEAVECOMBAT, m_Unit, 0 );
+		CreatureSpawn* spawnInfo = static_cast<Creature*>(m_Unit)->m_spawn;
+		float leashX = spawnInfo ? spawnInfo->x : m_returnX;
+		float leashY = spawnInfo ? spawnInfo->y : m_returnY;
+		float leashZ = spawnInfo ? spawnInfo->z : m_returnZ;
+		if(m_Unit->GetDistanceSq(leashX, leashY, leashZ) > m_outOfCombatRange)
+		{
+			// Only evade if the target is also outside leash range (or gone).
+			// A temporary LOS/path failure that pushed the creature near the edge
+			// must not evict it from combat while the target is still nearby.
+			if(m_nextTarget == NULL || m_nextTarget->GetDistanceSq(leashX, leashY, leashZ) > m_outOfCombatRange)
+				HandleEvent( EVENT_LEAVECOMBAT, m_Unit, 0 );
+		}
 	}
 	else if( m_nextTarget == NULL && m_AIState != STATE_FOLLOWING && m_AIState != STATE_SCRIPTMOVE )
 	{
@@ -1191,7 +1204,9 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				const float attackRangeThreshold = routedApproachActive ? (combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE) : (combatReach[1] + DISTANCE_TO_SMALL_TO_WALK);
 
 #ifdef COLLISION
-				meleeLos = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), m_nextTarget->GetPositionNC());
+				meleeLos = CollideInterface.CheckLOS(m_Unit->GetMapId(),
+					m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+					m_nextTarget->GetPositionX(), m_nextTarget->GetPositionY(), m_nextTarget->GetPositionZ() + 2.0f);
 				if(sWorld.CollisionDebugMovement)
 				{
 					sLog.outDebug("[LOS][MELEE] map=%u creature=%u target=" I64FMT " source=ai_update result=%u distance=%0.3f reach=%0.3f",
@@ -1224,22 +1239,7 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 					}
 				}
 
-				if(routedApproachActive && distance > combatReach[1] + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE &&
-					distance <= combatReach[1] + DISTANCE_TO_SMALL_TO_WALK)
-				{
-					uint32 now = getMSTime();
-					if(sWorld.MMapDebugPathing &&
-						(now - m_lastFinalApproachLogTime > 500 || fabsf(distance - m_lastFinalApproachDistance) > 0.2f))
-					{
-						sLog.outDebug("[MMAP][ARRIVAL] map=%u creature=%u transition=hold_final_approach distance=%0.3f reach=%0.3f",
-							m_Unit->GetMapId(),
-							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
-							distance, combatReach[1]);
-						m_lastFinalApproachLogTime = now;
-						m_lastFinalApproachDistance = distance;
-					}
-				}
-				else if(distance <= attackRangeThreshold && meleeLos && meleePathClear) // Target is in Range -> Attack
+				if(distance <= attackRangeThreshold && meleeLos && meleePathClear) // Target is in Range -> Attack
 				{
 					if(routedApproachActive)
 					{
@@ -1271,12 +1271,13 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 
 						if(!infront) // set InFront
 						{
-							//prevent mob from rotating while stunned
-							if(!m_Unit->IsStunned ())
+							// prevent mob from rotating while stunned or under any loss-of-control effect
+							if(!m_Unit->IsStunned() && !m_Unit->IsFeared() &&
+								!(m_Unit->m_special_state & (UNIT_STATE_CHARM | UNIT_STATE_CONFUSE)))
 							{
 								setInFront(m_nextTarget);
 								infront = true;
-							}							
+							}
 						}
 						if(infront)
 						{
@@ -1345,6 +1346,8 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 
 				combatReach[0] = 8.0f;
 				combatReach[1] = 30.0f;
+				if(m_nextSpell && m_nextSpell->maxrange > 0.0f)
+					combatReach[1] = m_nextSpell->maxrange;
 
 				if(distance >= combatReach[0] && distance <= combatReach[1]) // Target is in Range -> Attack
 				{
@@ -1365,12 +1368,13 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 
 						if(!infront) // set InFront
 						{
-							//prevent mob from rotating while stunned
-							if(!m_Unit->IsStunned ())
+							// prevent mob from rotating while stunned or under any loss-of-control effect
+							if(!m_Unit->IsStunned() && !m_Unit->IsFeared() &&
+								!(m_Unit->m_special_state & (UNIT_STATE_CHARM | UNIT_STATE_CONFUSE)))
 							{
 								setInFront(m_nextTarget);
 								infront = true;
-							}							
+							}
 						}
 
 						if(infront)
@@ -1411,40 +1415,292 @@ void AIInterface::_UpdateCombat(uint32 p_time)
 				float distance = m_Unit->GetDistanceSq(m_nextTarget);
 				bool los = true;
 #ifdef COLLISION
-				if(m_AIType != AITYPE_PET)
-					los = CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(),m_nextTarget->GetPositionNC());
+				los = CollideInterface.CheckLOS(m_Unit->GetMapId(),
+					m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+					m_nextTarget->GetPositionX(), m_nextTarget->GetPositionY(), m_nextTarget->GetPositionZ() + 2.0f);
 #endif
-				if(!los && sWorld.CollisionDebugMovement)
+				if(sWorld.CollisionDebugMovement)
 				{
-					sLog.outDebug("[LOS][CAST] map=%u creature=%u target=" I64FMT " source=ai_update result=blocked",
+					sLog.outDebug("[LOS][CAST] map=%u creature=%u target=" I64FMT " source=ai_update result=%u",
 						m_Unit->GetMapId(),
 						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
-						m_nextTarget->GetGUID());
+						m_nextTarget->GetGUID(), los ? 1 : 0);
 				}
 				if(!los)
 				{
-					float currentDist = m_Unit->CalcDistance(m_nextTarget);
-					float desiredDist = (m_nextSpell->maxrange < 5.0f) ? 0.0f : (m_nextSpell->maxrange - 5.0f);
-					if(currentDist <= desiredDist + 0.5f)
+					const uint32 now = getMSTime();
+					const bool hasActiveRoute = (m_movementPathIndex < m_movementPath.size());
+					const uint32 elapsedSinceMoveReject = now - m_lastMoveRejectTime;
+					const bool targetWithinSpellRange = (((distance <= (m_nextSpell->maxrange * m_nextSpell->maxrange) &&
+						distance >= (m_nextSpell->minrange * m_nextSpell->minrange)) || m_nextSpell->maxrange == 0));
+
+					if(m_Unit->isCasting())
+						m_Unit->InterruptSpell();
+					if(m_AIState == STATE_CASTING)
+						m_AIState = STATE_ATTACKING;
+
+					if(hasActiveRoute)
+						return;
+
+					if(elapsedSinceMoveReject < CAST_BLOCKED_LOS_RETRY_MS)
 					{
-						if(currentDist > 2.0f)
-							desiredDist = currentDist - 2.0f;
-						else
-							desiredDist = 0.0f;
+						if((sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement) && elapsedSinceMoveReject <= p_time)
+						{
+							sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=chase_retry_suppressed reason=blocked_cast_los cooldown_remaining=%u",
+								m_Unit->GetMapId(),
+								(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+								CAST_BLOCKED_LOS_RETRY_MS - elapsedSinceMoveReject);
+						}
+						return;
 					}
-					if(sWorld.MMapDebugPathing)
+
+					m_lastMoveRejectTime = now;
+					if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
 					{
-						sLog.outDebug("[MMAP][REPATH] map=%u creature=%u reason=los_blocked_move dist=%0.3f current=%0.3f",
+						sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=chase_retry_allowed reason=blocked_cast_los distance=%0.3f",
 							m_Unit->GetMapId(),
 							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
-							desiredDist, currentDist);
+							sqrtf(distance));
 					}
+
+					if(targetWithinSpellRange && m_Unit->GetMapMgr() != NULL)
+					{
+						struct LosRecoveryProbe
+						{
+							float towardTarget;
+							float side;
+							float radius;
+						};
+
+						const LosRecoveryProbe probes[] =
+						{
+							{ 1.00f, 0.00f, 3.0f },
+							{ 0.85f, 0.55f, 3.0f },
+							{ 0.85f, -0.55f, 3.0f },
+							{ -0.35f, 0.00f, 3.0f },
+							{ 1.00f, 0.00f, 5.0f },
+							{ 0.85f, 0.55f, 5.0f },
+							{ 0.85f, -0.55f, 5.0f },
+							{ -0.35f, 0.00f, 5.0f },
+							{ 1.00f, 0.00f, 8.0f },
+							{ 0.85f, 0.55f, 8.0f },
+							{ 0.85f, -0.55f, 8.0f },
+							{ -0.35f, 0.00f, 8.0f },
+						};
+
+						const float toTargetX = m_nextTarget->GetPositionX() - m_Unit->GetPositionX();
+						const float toTargetY = m_nextTarget->GetPositionY() - m_Unit->GetPositionY();
+						const float toTargetLength = sqrtf((toTargetX * toTargetX) + (toTargetY * toTargetY));
+						if(toTargetLength > 0.1f)
+						{
+							const float dirX = toTargetX / toTargetLength;
+							const float dirY = toTargetY / toTargetLength;
+							const float perpX = -dirY;
+							const float perpY = dirX;
+							bool foundRecoveryPoint = false;
+							bool bestUsesDirectFallback = false;
+							float bestScore = FLT_MAX;
+							float bestX = 0.0f;
+							float bestY = 0.0f;
+							float bestZ = 0.0f;
+							PathQueryResult bestPathResult;
+
+							for(size_t probeIndex = 0; probeIndex < sizeof(probes) / sizeof(probes[0]); ++probeIndex)
+							{
+								const LosRecoveryProbe& probe = probes[probeIndex];
+								float candidateX = m_nextTarget->GetPositionX() - (dirX * probe.towardTarget * probe.radius) + (perpX * probe.side * probe.radius);
+								float candidateY = m_nextTarget->GetPositionY() - (dirY * probe.towardTarget * probe.radius) + (perpY * probe.side * probe.radius);
+								float candidateZ = m_nextTarget->GetPositionZ();
+								GroundHeightResult candidateGround;
+								if(!m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, candidateX, candidateY, candidateZ, &candidateZ, &candidateGround, "cast_los_probe"))
+									continue;
+
+								if(fabsf(candidateZ - m_Unit->GetPositionZ()) > 6.0f)
+									continue;
+
+#ifdef COLLISION
+								if(!CollideInterface.CheckLOS(m_Unit->GetMapId(),
+									candidateX, candidateY, candidateZ + 2.0f,
+									m_nextTarget->GetPositionX(), m_nextTarget->GetPositionY(), m_nextTarget->GetPositionZ() + 2.0f))
+									continue;
+#endif
+
+								const float candidateTargetDistance = m_Unit->CalcDistance(candidateX, candidateY, candidateZ,
+									m_nextTarget->GetPositionX(), m_nextTarget->GetPositionY(), m_nextTarget->GetPositionZ());
+								if(m_nextSpell->maxrange > 0.0f && candidateTargetDistance > (m_nextSpell->maxrange + 0.5f))
+									continue;
+								if(m_nextSpell->minrange > 0.0f && candidateTargetDistance + 0.5f < m_nextSpell->minrange)
+									continue;
+
+								PathQueryResult candidatePath = m_Unit->GetMapMgr()->BuildPath(m_Unit,
+									m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(),
+									candidateX, candidateY, candidateZ);
+								bool candidateUsesDirectFallback = false;
+								bool candidateReachable = (candidatePath.status == PATH_QUERY_STATUS_COMPLETE ||
+									candidatePath.status == PATH_QUERY_STATUS_PARTIAL ||
+									candidatePath.status == PATH_QUERY_STATUS_DIRECT);
+
+								if(!candidateReachable)
+								{
+									bool safeDirectFallback = true;
+#ifdef COLLISION
+									safeDirectFallback = CollideInterface.CheckLOS(m_Unit->GetMapId(),
+										m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+										candidateX, candidateY, candidateZ + 2.0f);
+#endif
+									DirectGroundPathResult directResult;
+									if(safeDirectFallback && m_Unit->GetMapMgr()->ValidateDirectGroundPath(m_Unit,
+										m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(),
+										candidateX, candidateY, candidateZ, &directResult, "cast_los_probe"))
+									{
+										candidateReachable = true;
+										candidateUsesDirectFallback = true;
+									}
+								}
+
+								if(!candidateReachable)
+									continue;
+
+								const float moveDistance = m_Unit->CalcDistance(candidateX, candidateY, candidateZ);
+								const float score = moveDistance + (candidateUsesDirectFallback ? 0.5f : 0.0f);
+								if(!foundRecoveryPoint || score < bestScore)
+								{
+									foundRecoveryPoint = true;
+									bestUsesDirectFallback = candidateUsesDirectFallback;
+									bestScore = score;
+									bestX = candidateX;
+									bestY = candidateY;
+									bestZ = candidateZ;
+									bestPathResult = candidatePath;
+								}
+							}
+
+							if(foundRecoveryPoint)
+							{
+								m_sourceX = m_Unit->GetPositionX();
+								m_sourceY = m_Unit->GetPositionY();
+								m_sourceZ = m_Unit->GetPositionZ();
+								m_skipDirectPathValidation = false;
+								ClearMovementPath("cast_los_recovery");
+								m_nextPosX = bestX;
+								m_nextPosY = bestY;
+								m_nextPosZ = bestZ;
+								m_moveRun = true;
+
+								if(bestUsesDirectFallback)
+								{
+									m_skipDirectPathValidation = true;
+									if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+									{
+										sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=los_recovery_direct point=(%0.3f,%0.3f,%0.3f)",
+											m_Unit->GetMapId(),
+											(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+											bestX, bestY, bestZ);
+									}
+								}
+								else
+								{
+									ApplyPathResult(bestPathResult);
+									if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+									{
+										sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=los_recovery_path point=(%0.3f,%0.3f,%0.3f) status=%s",
+											m_Unit->GetMapId(),
+											(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+											bestX, bestY, bestZ,
+											GetPathQueryStatusName(bestPathResult.status));
+									}
+								}
+
+								if(m_creatureState != MOVING)
+									UpdateMove();
+								return;
+							}
+						}
+
+						if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+						{
+							sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=hold_blocked reason=los_recovery_no_candidate",
+								m_Unit->GetMapId(),
+								(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0);
+						}
+						return;
+					}
+
 					m_moveRun = true;
-					_CalcDestinationAndMove(m_nextTarget, desiredDist);
+					if(m_nextSpell->maxrange < 5.0f)
+						_CalcDestinationAndMove(m_nextTarget, 0.0f);
+					else
+						_CalcDestinationAndMove(m_nextTarget, m_nextSpell->maxrange - 5.0f);
 					return;
 				}
 				if(los && ((distance <= (m_nextSpell->maxrange*m_nextSpell->maxrange)  && distance >= (m_nextSpell->minrange*m_nextSpell->minrange)) || m_nextSpell->maxrange == 0)) // Target is in Range -> Attack
 				{
+					bool facingChecked = false;
+					bool facingResult = true;
+					const char* facingMode = "none";
+					if(m_nextSpell->spell->Spell_Dmg_Type == SPELL_DMG_TYPE_RANGED)
+					{
+						facingChecked = true;
+						facingMode = "ranged_in_front";
+						facingResult = m_Unit->isInFront(m_nextTarget);
+					}
+					else if(m_nextSpell->spell->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INFRONT)
+					{
+						facingChecked = true;
+						facingMode = "require_in_front";
+						facingResult = m_Unit->isInFront(m_nextTarget);
+					}
+					else if(m_nextSpell->spell->in_front_status == SPELL_INFRONT_STATUS_REQUIRE_INBACK)
+					{
+						facingChecked = true;
+						facingMode = "require_behind";
+						facingResult = m_nextTarget->isInBack(m_Unit);
+					}
+
+					if(facingChecked && sWorld.CollisionDebugMovement)
+					{
+						sLog.outDebug("[FACING][CAST] map=%u creature=%u target=" I64FMT " mode=%s result=%u",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							m_nextTarget->GetGUID(), facingMode, facingResult ? 1 : 0);
+					}
+
+					if(facingChecked && !facingResult && m_nextSpell->spell->in_front_status != SPELL_INFRONT_STATUS_REQUIRE_INBACK)
+					{
+						if(!m_Unit->IsStunned() && !m_Unit->IsFeared() &&
+							!(m_Unit->m_special_state & (UNIT_STATE_CHARM | UNIT_STATE_CONFUSE)))
+						{
+							facingResult = setInFront(m_nextTarget);
+							if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+							{
+								sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=face_target result=%u",
+									m_Unit->GetMapId(),
+									(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+									facingResult ? 1 : 0);
+							}
+						}
+
+						if(sWorld.CollisionDebugMovement)
+						{
+							sLog.outDebug("[FACING][CAST] map=%u creature=%u target=" I64FMT " mode=%s result=%u",
+								m_Unit->GetMapId(),
+								(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+								m_nextTarget->GetGUID(), facingMode, facingResult ? 1 : 0);
+						}
+					}
+
+					if(facingChecked && !facingResult)
+					{
+						if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+						{
+							sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=hold_blocked reason=facing_invalid mode=%s",
+								m_Unit->GetMapId(),
+								(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+								facingMode);
+						}
+						return;
+					}
+
 					/* stop moving so we don't interrupt the spell */
 					//this the way justly suggested
 //					if(m_nextSpell->spell->CastingTimeIndex != 1)
@@ -1852,30 +2108,36 @@ Unit* AIInterface::FindTarget()
 		if(dist > distance)	 // we want to find the CLOSEST target
 			continue;
 		
-		if(dist <= _CalcAggroRange(pUnit) )
+		const float aggroRangeSq = _CalcAggroRange(pUnit);
+		if(dist <= aggroRangeSq)
 		{
-#ifdef LOS_CHECKS
-
-	#ifdef LOS_ONLY_IN_INSTANCE
-			if( !check_los )
-			{
-				distance = dist;
-				target = pUnit;	
-				continue;
-			}
-
-	#endif		// LOS_ONLY_IN_INSTANCE
-
-            if( CollideInterface.CheckLOS( m_Unit->GetMapId( ), m_Unit->GetPositionNC( ), pUnit->GetPositionNC( ) ) )
+#ifdef COLLISION
+			const bool aggroLOS = CollideInterface.CheckLOS(m_Unit->GetMapId(),
+				m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+				pUnit->GetPositionX(), pUnit->GetPositionY(), pUnit->GetPositionZ() + 2.0f);
+			if(sWorld.CollisionDebugMovement)
+				sLog.outDebug("[AGGRO] map=%u creature=%u clvl=%u target=" I64FMT " tlvl=%u dist=%0.3f range=%0.3f los=%u decision=%s",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					m_Unit->getLevel(), pUnit->GetGUID(), pUnit->getLevel(),
+					sqrtf(dist), sqrtf(aggroRangeSq),
+					aggroLOS ? 1 : 0,
+					aggroLOS ? "aggro" : "los_blocked");
+			if(aggroLOS)
 			{
 				distance = dist;
 				target = pUnit;
 			}
 #else
+			if(sWorld.CollisionDebugMovement)
+				sLog.outDebug("[AGGRO] map=%u creature=%u clvl=%u target=" I64FMT " tlvl=%u dist=%0.3f range=%0.3f los=1 decision=aggro",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					m_Unit->getLevel(), pUnit->GetGUID(), pUnit->getLevel(),
+					sqrtf(dist), sqrtf(aggroRangeSq));
 			distance = dist;
 			target = pUnit;
-#endif		// LOS_CHECKS
-
+#endif
 		}
 	}
 
@@ -2112,61 +2374,29 @@ bool AIInterface::FindFriends(float dist)
 
 float AIInterface::_CalcAggroRange(Unit* target)
 {
-	//float baseAR = 15.0f; // Base Aggro Range
-					// -8	 -7	 -6	 -5	 -4	 -3	 -2	 -1	 0	  +1	 +2	 +3	 +4	 +5	 +6	 +7	+8
-	//float baseAR[17] = {29.0f, 27.5f, 26.0f, 24.5f, 23.0f, 21.5f, 20.0f, 18.5f, 17.0f, 15.5f, 14.0f, 12.5f, 11.0f,  9.5f,  8.0f,  6.5f, 5.0f};
-	float baseAR[17] = {19.0f, 18.5f, 18.0f, 17.5f, 17.0f, 16.5f, 16.0f, 15.5f, 15.0f, 14.5f, 12.0f, 10.5f, 8.5f,  7.5f,  6.5f,  6.5f, 5.0f};
-	// Lvl Diff -8 -7 -6 -5 -4 -3 -2 -1 +0 +1 +2  +3  +4  +5  +6  +7  +8
-	// Arr Pos   0  1  2  3  4  5  6  7  8  9 10  11  12  13  14  15  16
-	int8 lvlDiff = target->getLevel() - m_Unit->getLevel();
-	uint8 realLvlDiff = lvlDiff;
-	if(lvlDiff > 8)
-	{
-		lvlDiff = 8;
-	}
-	if(lvlDiff < -8)
-	{
-		lvlDiff = -8;
-	}
 	if(!((Creature*)m_Unit)->CanSee(target))
 		return 0;
-	
-	float AggroRange = baseAR[lvlDiff + 8];
-	if(realLvlDiff > 8)
-	{
-		AggroRange += AggroRange * ((lvlDiff - 8) * 5 / 100);
-	}
 
-	// Multiply by elite value
-	if(((Creature*)m_Unit)->GetCreatureName() && ((Creature*)m_Unit)->GetCreatureName()->Rank > 0)
-		AggroRange *= (((Creature*)m_Unit)->GetCreatureName()->Rank) * 1.50f;
+	// Blizzlike TBC formula: base = 20 + levelDiff, clamped to [5, 45].
+	// Creature rank does not modify aggro range on retail.
+	// Positive levelDiff means creature outlevels player (wider range).
+	// Negative levelDiff means player outlevels creature (narrower range).
+	int32 levelDiff = (int32)m_Unit->getLevel() - (int32)target->getLevel();
+	float AggroRange = 20.0f + (float)levelDiff;
 
-	if(AggroRange > 40.0f) // cap at 40.0f
-	{
-		AggroRange = 40.0f;
-	}
-  /*  //printf("aggro range: %f , stealthlvl: %d , detectlvl: %d\n",AggroRange,target->GetStealthLevel(),m_Unit->m_stealthDetectBonus);
-	if(! ((Creature*)m_Unit)->CanSee(target))
-	{
-		AggroRange =0;
-	//	AggroRange *= ( 100.0f - (target->m_stealthLevel - m_Unit->m_stealthDetectBonus)* 20.0f ) / 100.0f;
-	}
-*/
-	// SPELL_AURA_MOD_DETECT_RANGE
+	if(AggroRange < 5.0f)  AggroRange = 5.0f;
+	if(AggroRange > 45.0f) AggroRange = 45.0f;
+
+	// SPELL_AURA_MOD_DETECT_RANGE and stealth/invisibility modifiers
 	int32 modDetectRange = target->getDetectRangeMod(m_Unit->GetGUID());
 	AggroRange += modDetectRange;
 	if(target->IsPlayer())
-		AggroRange += static_cast< Player* >( target )->DetectedRange;
-	if(AggroRange < 3.0f)
-	{
-		AggroRange = 3.0f;
-	}
-	if(AggroRange > 40.0f) // cap at 40.0f
-	{
-		AggroRange = 40.0f;
-	}
+		AggroRange += static_cast<Player*>(target)->DetectedRange;
 
-	return (AggroRange*AggroRange);
+	if(AggroRange < 3.0f)  AggroRange = 3.0f;
+	if(AggroRange > 40.0f) AggroRange = 40.0f;
+
+	return AggroRange * AggroRange;
 }
 
 void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
@@ -2230,7 +2460,7 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		if(m_Unit->GetMapMgr()->NormalizeGroundPosition(m_nextPosX, m_nextPosY, m_nextPosZ, &normalizedZ, NULL, "calc_destination_and_move", 8.0f))
 			m_nextPosZ = normalizedZ;
 
-		const bool hasActiveRoute = !m_movementPath.empty();
+		const bool hasActiveRoute = (m_movementPathIndex < m_movementPath.size());
 		const float currentDistanceToTarget = (target != NULL) ? m_Unit->CalcDistance(target) : 0.0f;
 		const float finalApproachReach = dist + PLAYER_SIZE;
 		const float finalApproachRange = finalApproachReach + DISTANCE_TO_SMALL_TO_WALK;
@@ -2246,7 +2476,9 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 			if(isCloseMeleeApproach)
 			{
 #ifdef COLLISION
-				allowCloseMeleeRepath = !CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), target->GetPositionNC());
+				allowCloseMeleeRepath = !CollideInterface.CheckLOS(m_Unit->GetMapId(),
+					m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+					target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + 2.0f);
 #endif
 				if(!allowCloseMeleeRepath && !m_Unit->isInFront(target))
 					allowCloseMeleeRepath = true;
@@ -2307,7 +2539,9 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 			{
 				bool needsCorrection = false;
 #ifdef COLLISION
-				needsCorrection = !CollideInterface.CheckLOS(m_Unit->GetMapId(), m_Unit->GetPositionNC(), target->GetPositionNC());
+				needsCorrection = !CollideInterface.CheckLOS(m_Unit->GetMapId(),
+					m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ() + 2.0f,
+					target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + 2.0f);
 #endif
 				if(!needsCorrection && !m_Unit->isInFront(target))
 					needsCorrection = true;
@@ -2358,6 +2592,7 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 		PathQueryResult pathResult = m_Unit->GetMapMgr()->BuildPath(m_Unit, m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), m_nextPosX, m_nextPosY, m_nextPosZ);
 		if(!ApplyPathResult(pathResult) && pathResult.status == PATH_QUERY_STATUS_NOPATH)
 		{
+			const bool hardRouteFailure = (pathResult.detail == "no_end_poly");
 			m_lastMoveRejectTime = getMSTime();
 			if(m_AIType == AITYPE_PET && target != NULL)
 			{
@@ -2372,7 +2607,20 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 			}
 			else
 			{
-			if(hadRouteBeforeRepath && m_creatureState == MOVING)
+			bool usedDirectFallback = false;
+			if(hardRouteFailure)
+			{
+				if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[MMAP][REPATH] map=%u creature=%u decision=hold_blocked reason=no_end_poly",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0);
+				}
+				ClearMovementPath("repath_no_end_poly");
+				if(m_AIState == STATE_CASTING)
+					m_AIState = STATE_ATTACKING;
+			}
+			else if(hadRouteBeforeRepath && m_creatureState == MOVING)
 			{
 				if(sWorld.MMapDebugPathing)
 				{
@@ -2383,9 +2631,37 @@ void AIInterface::_CalcDestinationAndMove(Unit *target, float dist)
 				}
 				return;
 			}
-			if(m_creatureState == MOVING)
-				StopMovement(200);
-			return;
+			else if(target != NULL && m_Unit->GetMapMgr() != NULL)
+			{
+				float fallbackZ = m_nextPosZ;
+				if(m_Unit->GetMapMgr()->ValidateGroundMovement(m_Unit, m_nextPosX, m_nextPosY, m_nextPosZ, &fallbackZ, NULL, "mmap_fallback"))
+				{
+					m_nextPosZ = fallbackZ;
+					m_skipDirectPathValidation = true;
+					usedDirectFallback = true;
+					if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+					{
+						sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=mmap_failed_but_direct_fallback_used detail=%s dest=(%0.3f,%0.3f,%0.3f)",
+							m_Unit->GetMapId(),
+							(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+							pathResult.detail.c_str(),
+							m_nextPosX, m_nextPosY, m_nextPosZ);
+					}
+				}
+				else if(sWorld.MMapDebugPathing || sWorld.CollisionDebugMovement)
+				{
+					sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=mmap_failed_no_safe_fallback detail=%s",
+						m_Unit->GetMapId(),
+						(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+						pathResult.detail.c_str());
+				}
+			}
+			if(!usedDirectFallback)
+			{
+				if(m_creatureState == MOVING)
+					StopMovement(200);
+				return;
+			}
 			}
 		}
 	}
@@ -2699,15 +2975,37 @@ bool AIInterface::ApplyPathResult(const PathQueryResult& pathResult)
 
 	if(hadRoute && pathResult.status == PATH_QUERY_STATUS_PARTIAL)
 	{
-		if(sWorld.MMapDebugPathing)
+		const bool hasExistingActiveRoute = (m_movementPathIndex < m_movementPath.size() &&
+			m_creatureState == MOVING && !m_movementPath.empty());
+		float existingGoalDistance = 0.0f;
+		float replacementGoalDistance = 0.0f;
+		bool keepExistingRoute = false;
+
+		if(hasExistingActiveRoute)
 		{
-			sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=rejected reason=keep_existing_complete_route status=%s had_route=1 points=%u",
-				m_Unit->GetMapId(),
-				(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
-				GetPathQueryStatusName(pathResult.status),
-				(uint32)pathResult.points.size());
+			const LocationVector& existingFinalPoint = m_movementPath.back();
+			const LocationVector& replacementFinalPoint = pathResult.points.back();
+			existingGoalDistance = m_Unit->CalcDistance(existingFinalPoint.x, existingFinalPoint.y, existingFinalPoint.z,
+				m_nextPosX, m_nextPosY, m_nextPosZ);
+			replacementGoalDistance = m_Unit->CalcDistance(replacementFinalPoint.x, replacementFinalPoint.y, replacementFinalPoint.z,
+				m_nextPosX, m_nextPosY, m_nextPosZ);
+			keepExistingRoute = (existingGoalDistance <= (replacementGoalDistance + ROUTED_MOVEMENT_FINAL_APPROACH_TOLERANCE));
 		}
-		return false;
+
+		if(keepExistingRoute)
+		{
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][REPLACE] map=%u creature=%u result=rejected reason=keep_existing_complete_route status=%s had_route=1 points=%u existing_delta=%0.3f replacement_delta=%0.3f",
+					m_Unit->GetMapId(),
+					(m_Unit->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(m_Unit)->GetEntry() : 0,
+					GetPathQueryStatusName(pathResult.status),
+					(uint32)pathResult.points.size(),
+					existingGoalDistance,
+					replacementGoalDistance);
+			}
+			return false;
+		}
 	}
 
 	ClearMovementPath("repath_replace");
@@ -3044,15 +3342,8 @@ void AIInterface::SendCurrentMove(Player* plyr/*uint64 guid*/)
 
 bool AIInterface::setInFront(Unit* target) // not the best way to do it, though
 {
-	//angle the object has to face
-	float angle = m_Unit->calcAngle(m_Unit->GetPositionX(), m_Unit->GetPositionY(), target->GetPositionX(), target->GetPositionY() ); 
-	//Change angle slowly 2000ms to turn 180 deg around
-	if(angle > 180) angle += 90;
-	else angle -= 90; //angle < 180
-	m_Unit->getEasyAngle(angle);
-	//Convert from degrees to radians (180 deg = PI rad)
-	float orientation = angle / float(180 / M_PI);
-	//Update Orentation Server Side
+	// Compute facing direction in radians directly — no degree/radian conversion needed.
+	float orientation = m_Unit->calcRadAngle(m_Unit->GetPositionX(), m_Unit->GetPositionY(), target->GetPositionX(), target->GetPositionY());
 	m_Unit->SetPosition(m_Unit->GetPositionX(), m_Unit->GetPositionY(), m_Unit->GetPositionZ(), orientation);
 	
 	return m_Unit->isInFront(target);

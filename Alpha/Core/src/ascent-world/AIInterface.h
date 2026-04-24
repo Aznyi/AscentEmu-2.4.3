@@ -519,8 +519,7 @@ protected:
 	std::vector<LocationVector> m_movementPath;
 	size_t m_movementPathIndex;
 	uint32 m_lastPathRepathTime;
-	uint32 m_lastFinalApproachLogTime;
-	float m_lastFinalApproachDistance;
+
 	float m_lastRepathGoalX;
 	float m_lastRepathGoalY;
 	float m_lastRepathGoalZ;

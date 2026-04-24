@@ -216,6 +216,44 @@ namespace
                 return true;
         }
 
+        const char* ClassifyEndpointProjectionFailure(const ProjectedNavPoint& point, const NearestPolyLookupResult& lookup, const char* failureReason)
+        {
+                const float rawZ = point.originalWorld.z;
+                const float closestZ = lookup.closest[1];
+
+                if(rawZ > (closestZ + 1.5f))
+                        return "endpoint_upper_surface_missing_navmesh";
+                if(rawZ < (closestZ - 1.5f))
+                        return "endpoint_lower_surface_mismatch";
+
+                if(failureReason != NULL && !strcmp(failureReason, "projection_blocked"))
+                        return "endpoint_projection_blocked";
+                if(failureReason != NULL && !strcmp(failureReason, "height_mismatch"))
+                        return "endpoint_lower_surface_mismatch";
+
+                return "endpoint_projection_blocked";
+        }
+
+        bool ShouldAllowEndpointPartial(const ProjectedNavPoint& point, const NearestPolyLookupResult& lookup, const char* classifiedReason)
+        {
+                if(classifiedReason == NULL)
+                        return false;
+
+                const float rawZ = point.originalWorld.z;
+                const float closestZ = lookup.closest[1];
+                const float dx = lookup.closest[0] - point.originalWorld.x;
+                const float dy = lookup.closest[2] - point.originalWorld.y;
+                const float xySnapDistance = sqrtf((dx * dx) + (dy * dy));
+
+                if(strcmp(classifiedReason, "endpoint_lower_surface_mismatch") == 0)
+                        return (closestZ > rawZ && xySnapDistance <= 2.0f);
+
+                if(strcmp(classifiedReason, "endpoint_upper_surface_missing_navmesh") == 0)
+                        return (xySnapDistance <= 2.5f);
+
+                return false;
+        }
+
         bool NormalizePathPoint(MapMgr* mapMgr, const char* reason, LocationVector& point)
         {
                 if(mapMgr == NULL)
@@ -236,7 +274,7 @@ namespace
                 return true;
         }
 
-        bool ValidatePathSegment(MapMgr* mapMgr, Unit* mover, const LocationVector& startPoint, const LocationVector& endPoint, string* detail)
+        bool ValidatePathSegment(MapMgr* mapMgr, Unit* mover, const LocationVector& startPoint, const LocationVector& endPoint, string* detail, bool allowFirstSegmentDetourLosBlockedGroundOk = false)
         {
                 if(mapMgr == NULL || mover == NULL || mover->IsPlayer())
                         return true;
@@ -249,9 +287,44 @@ namespace
                 LocationVector collisionEnd(endPoint);
                 if(!CollideInterface.CheckLOS(mapMgr->GetMapId(), collisionStart, collisionEnd))
                 {
-                        if(detail != NULL)
-                                *detail = "unsafe_segment_blocked_los";
-                        return false;
+                        const float zDelta = fabsf(endPoint.z - startPoint.z);
+                        if(zDelta <= 2.0f)
+                        {
+                                DirectGroundPathResult directResult;
+                                if(allowFirstSegmentDetourLosBlockedGroundOk &&
+                                   mapMgr->ValidateDirectGroundPath(mover, startPoint.x, startPoint.y, startPoint.z, endPoint.x, endPoint.y, endPoint.z, &directResult, "mmap_path_segment"))
+                                {
+                                        if(sWorld.MMapDebugPathing)
+                                        {
+                                                sLog.outDebug("[MMAP][PATH] map=%u creature=%u decision=allow_first_segment_detour_los_blocked_ground_ok from=(%0.3f,%0.3f,%0.3f) to=(%0.3f,%0.3f,%0.3f)",
+                                                        mapMgr->GetMapId(),
+                                                        (mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(mover)->GetEntry() : 0,
+                                                        startPoint.x, startPoint.y, startPoint.z,
+                                                        endPoint.x, endPoint.y, endPoint.z);
+                                        }
+                                        return true;
+                                }
+                                // Small Z delta with blocked LOS: treat as real obstruction (wall, fence, etc.)
+                                if(detail != NULL)
+                                        *detail = "unsafe_segment_blocked_los";
+                                return false;
+                        }
+                        // Large Z delta: the ray may be grazing a slope or ramp surface rather than
+                        // hitting a genuine obstruction. Re-test with both endpoints raised by 1 unit.
+                        // A slope surface clears because the lifted ray travels above it; a wall,
+                        // building floor, or cliff face that truly blocks the path will still intercept
+                        // the lifted ray, because lifting by 1 unit does not move the ray laterally.
+                        LocationVector liftedStart(startPoint.x, startPoint.y, startPoint.z + 1.0f);
+                        LocationVector liftedEnd(endPoint.x, endPoint.y, endPoint.z + 1.0f);
+                        if(!CollideInterface.CheckLOS(mapMgr->GetMapId(), liftedStart, liftedEnd))
+                        {
+                                // Still blocked after lifting — genuine geometry obstruction, not a slope.
+                                if(detail != NULL)
+                                        *detail = "unsafe_segment_blocked_los";
+                                return false;
+                        }
+                        // Lifted check passes: original failure was slope/terrain surface grazing.
+                        // Fall through to ground-path validation for the final safety check.
                 }
 #endif
 
@@ -1106,9 +1179,6 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
         const float verticalExtent = ClampNearestPolyExtent(sWorld.mmap_nearest_poly_extent_vertical, 4.0f, 60.0f);
         const float baseExtents[3] = { horizontalExtent, verticalExtent, horizontalExtent };
         const float expandedExtents[3] = { horizontalExtent * 2.0f, verticalExtent * 2.0f, horizontalExtent * 2.0f };
-        const float strictVerticalExtent = ClampNearestPolyExtent((verticalExtent < 8.0f) ? verticalExtent : 8.0f, 2.0f, 12.0f);
-        const float strictExtents[3] = { horizontalExtent, strictVerticalExtent, horizontalExtent };
-
         ProjectedNavPoint projectedStart;
         projectedStart.originalWorld = LocationVector(request.startX, request.startY, request.startZ);
         projectedStart.queryWorld = projectedStart.originalWorld;
@@ -1143,6 +1213,9 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
         }
         ToNavMeshCoords(projectedEnd.queryWorld.x, projectedEnd.queryWorld.y, projectedEnd.queryWorld.z, projectedEnd.queryNav);
 
+        bool forceEndpointPartial = false;
+        const char* endpointProjectionReason = NULL;
+
         if(sWorld.MMapDebugPathing)
         {
                 LogPathingCreatureLine("MOVE", request.mapId, request.mover, request, request.reason ? request.reason : "query");
@@ -1176,23 +1249,6 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                         startLookup.usedExpandedExtents = true;
                         memcpy(startLookup.extents, expandedExtents, sizeof(startLookup.extents));
                         startLookup.status = query->findNearestPoly(projectedStart.originalNav, expandedExtents, &filter, &startLookup.polyRef, startLookup.closest);
-                }
-        }
-
-        if(!dtStatusFailed(startLookup.status) && startLookup.polyRef != 0 && !IsNearestPolyHeightAcceptable(startLookup, projectedStart, MMAP_NEAREST_POLY_MAX_Z_DELTA))
-        {
-                startLookup.usedProjectedPoint = true;
-                startLookup.usedExpandedExtents = false;
-                memcpy(startLookup.extents, strictExtents, sizeof(startLookup.extents));
-                startLookup.status = query->findNearestPoly(projectedStart.queryNav, strictExtents, &filter, &startLookup.polyRef, startLookup.closest);
-
-                if((dtStatusFailed(startLookup.status) || startLookup.polyRef == 0 ||
-                        !IsNearestPolyHeightAcceptable(startLookup, projectedStart, MMAP_NEAREST_POLY_MAX_Z_DELTA)) &&
-                        projectedStart.usedResolvedGround)
-                {
-                        startLookup.usedProjectedPoint = false;
-                        memcpy(startLookup.extents, strictExtents, sizeof(startLookup.extents));
-                        startLookup.status = query->findNearestPoly(projectedStart.originalNav, strictExtents, &filter, &startLookup.polyRef, startLookup.closest);
                 }
         }
 
@@ -1238,6 +1294,13 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                         startLookup.closest[0], startLookup.closest[2], startLookup.closest[1],
                         startLookup.usedProjectedPoint ? 1 : 0,
                         startLookup.usedExpandedExtents ? 1 : 0);
+                const float snapStartDx = startLookup.closest[0] - startReference.x;
+                const float snapStartDy = startLookup.closest[2] - startReference.y;
+                sLog.outDebug("[MMAP][SNAP] map=%u creature=%u which=start xy_dist=%0.3f z_delta=%0.3f",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        sqrtf((snapStartDx * snapStartDx) + (snapStartDy * snapStartDy)),
+                        fabsf(startLookup.closest[1] - startReference.z));
         }
 
         NearestPolyLookupResult endLookup;
@@ -1265,23 +1328,8 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
         }
 
         const char* endProjectionFailure = "no_poly";
-        if(!dtStatusFailed(endLookup.status) && endLookup.polyRef != 0 && !IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure))
-        {
-                endLookup.usedProjectedPoint = true;
-                endLookup.usedExpandedExtents = false;
-                memcpy(endLookup.extents, strictExtents, sizeof(endLookup.extents));
-                endLookup.status = query->findNearestPoly(projectedEnd.queryNav, strictExtents, &filter, &endLookup.polyRef, endLookup.closest);
-
-                if((dtStatusFailed(endLookup.status) || endLookup.polyRef == 0 ||
-                        !IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure)) &&
-                        projectedEnd.usedResolvedGround)
-                {
-                        endLookup.usedProjectedPoint = false;
-                        memcpy(endLookup.extents, strictExtents, sizeof(endLookup.extents));
-                        endLookup.status = query->findNearestPoly(projectedEnd.originalNav, strictExtents, &filter, &endLookup.polyRef, endLookup.closest);
-                        IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure);
-                }
-        }
+        if(!dtStatusFailed(endLookup.status) && endLookup.polyRef != 0)
+                IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure);
 
         if(dtStatusFailed(endLookup.status) || endLookup.polyRef == 0)
         {
@@ -1289,30 +1337,47 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                 result.detail = "no_end_poly";
                 if(sWorld.MMapDebugPathing)
                 {
-                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly status=0x%08X projected=%u expanded=%u extents=(%0.3f,%0.3f,%0.3f)",
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly status=0x%08X projected=%u expanded=%u extents=(%0.3f,%0.3f,%0.3f) rawZ=%0.3f terrainZ=%0.3f vmapZ=%0.3f resolvedZ=%0.3f",
                                 request.mapId,
                                 (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
                                 endLookup.status, endLookup.usedProjectedPoint ? 1 : 0, endLookup.usedExpandedExtents ? 1 : 0,
-                                endLookup.extents[0], endLookup.extents[1], endLookup.extents[2]);
+                                endLookup.extents[0], endLookup.extents[1], endLookup.extents[2],
+                                projectedEnd.originalWorld.z, projectedEnd.ground.terrainZ, projectedEnd.ground.vmapZ, projectedEnd.queryWorld.z);
                 }
                 return result;
         }
 
         if(!IsNearestPolyProjectionAcceptable(request.mapId, request.mover, projectedEnd, endLookup, MMAP_NEAREST_POLY_MAX_Z_DELTA, &endProjectionFailure))
         {
-                result.status = PATH_QUERY_STATUS_NOPATH;
-                result.detail = "no_end_poly";
+                endpointProjectionReason = ClassifyEndpointProjectionFailure(projectedEnd, endLookup, endProjectionFailure);
+                forceEndpointPartial = request.allowPartial && ShouldAllowEndpointPartial(projectedEnd, endLookup, endpointProjectionReason);
+                if(!forceEndpointPartial)
+                {
+                        result.status = PATH_QUERY_STATUS_NOPATH;
+                        result.detail = endpointProjectionReason;
+                }
                 if(sWorld.MMapDebugPathing)
                 {
-                        const float referenceZ = endLookup.usedProjectedPoint ? projectedEnd.queryWorld.z : projectedEnd.originalWorld.z;
-                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly detail=%s closestZ=%0.3f referenceZ=%0.3f delta=%0.3f extents=(%0.3f,%0.3f,%0.3f)",
+                        const LocationVector& endReference = endLookup.usedProjectedPoint ? projectedEnd.queryWorld : projectedEnd.originalWorld;
+                        const float rawZ = projectedEnd.originalWorld.z;
+                        const float closestZ = endLookup.closest[1];
+                        const float snapEndDx = endLookup.closest[0] - endReference.x;
+                        const float snapEndDy = endLookup.closest[2] - endReference.y;
+                        const float snapDistance = sqrtf((snapEndDx * snapEndDx) + (snapEndDy * snapEndDy));
+                        const char* relation = (rawZ > closestZ + 1.5f) ? "above_navmesh" : ((rawZ < closestZ - 1.5f) ? "below_navmesh" : "aligned_navmesh");
+                        sLog.outDebug("[MMAP][FALLBACK] map=%u creature=%u reason=no_end_poly detail=%s classified=%s rawZ=%0.3f terrainZ=%0.3f vmapZ=%0.3f referenceZ=%0.3f closestZ=%0.3f snapXY=%0.3f z_delta=%0.3f relation=%s extents=(%0.3f,%0.3f,%0.3f) partial=%u",
                                 request.mapId,
                                 (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
                                 endProjectionFailure,
-                                endLookup.closest[1], referenceZ, fabsf(endLookup.closest[1] - referenceZ),
-                                endLookup.extents[0], endLookup.extents[1], endLookup.extents[2]);
+                                endpointProjectionReason != NULL ? endpointProjectionReason : "endpoint_projection_blocked",
+                                rawZ, projectedEnd.ground.terrainZ, projectedEnd.ground.vmapZ,
+                                endReference.z, closestZ, snapDistance, fabsf(closestZ - endReference.z),
+                                relation,
+                                endLookup.extents[0], endLookup.extents[1], endLookup.extents[2],
+                                forceEndpointPartial ? 1 : 0);
                 }
-                return result;
+                if(!forceEndpointPartial)
+                        return result;
         }
 
         if(sWorld.MMapDebugPathing)
@@ -1326,6 +1391,13 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
                         endLookup.closest[0], endLookup.closest[2], endLookup.closest[1],
                         endLookup.usedProjectedPoint ? 1 : 0,
                         endLookup.usedExpandedExtents ? 1 : 0);
+                const float snapEndDx = endLookup.closest[0] - endReference.x;
+                const float snapEndDy = endLookup.closest[2] - endReference.y;
+                sLog.outDebug("[MMAP][SNAP] map=%u creature=%u which=end xy_dist=%0.3f z_delta=%0.3f",
+                        request.mapId,
+                        (request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+                        sqrtf((snapEndDx * snapEndDx) + (snapEndDy * snapEndDy)),
+                        fabsf(endLookup.closest[1] - endReference.z));
         }
 
         dtPolyRef pathPolys[MMAP_MAX_PATH_POLYS];
@@ -1415,6 +1487,7 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 	for(int i = 0; i < straightCount; ++i)
 	{
 		LocationVector worldPoint = ToWorldCoords(&straightPath[i * 3]);
+		const float rawNavZ = worldPoint.z;
 		if(!NormalizePathPoint(mapMgr, "mmap_path_point", worldPoint))
 		{
 			result.status = PATH_QUERY_STATUS_NOPATH;
@@ -1426,6 +1499,28 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 					(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
 					i, worldPoint.x, worldPoint.y, worldPoint.z);
 			}
+			return result;
+		}
+
+		// Navmesh surface drop guard: if the raw navmesh Z is significantly above the
+		// resolved terrain/VMAP Z, NormalizePathPoint returned a lower surface layer
+		// (e.g., navmesh baked on a building roof at nav_z=65, but the VMAP query from
+		// zHint+2 only reached terrain at 55). Committing this point would place the
+		// creature below the intended walkable surface, causing fall-through.
+		// Normal bake tolerances produce a sub-unit delta in this direction.
+		const float navSurfaceDrop = rawNavZ - worldPoint.z;
+		if(navSurfaceDrop > 3.0f)
+		{
+			result.status = PATH_QUERY_STATUS_NOPATH;
+			result.detail = "navmesh_surface_miss";
+			if(sWorld.MMapDebugPathing)
+			{
+				sLog.outDebug("[MMAP][PATH] map=%u creature=%u reject=navmesh_surface_miss index=%d nav_z=%0.3f resolved_z=%0.3f drop=%0.3f point=(%0.3f,%0.3f)",
+					request.mapId,
+					(request.mover != NULL && request.mover->GetTypeId() == TYPEID_UNIT) ? static_cast<Creature*>(request.mover)->GetEntry() : 0,
+					i, rawNavZ, worldPoint.z, navSurfaceDrop, worldPoint.x, worldPoint.y);
+			}
+			result.points.clear();
 			return result;
 		}
 
@@ -1447,7 +1542,8 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 			continue;
 
 		string pathValidationDetail;
-		if(!ValidatePathSegment(mapMgr, request.mover, result.points.back(), worldPoint, &pathValidationDetail))
+                const bool allowFirstSegmentDetourLosBlockedGroundOk = (i == 0 && pathPolyCount > 0);
+		if(!ValidatePathSegment(mapMgr, request.mover, result.points.back(), worldPoint, &pathValidationDetail, allowFirstSegmentDetourLosBlockedGroundOk))
 		{
 			result.status = PATH_QUERY_STATUS_NOPATH;
 			result.detail = pathValidationDetail.empty() ? "unsafe_path_segment" : pathValidationDetail;
@@ -1474,7 +1570,13 @@ PathQueryResult MMapInterface::QueryPath(MapMgr* mapMgr, uint32 mapId, uint32 in
 		return result;
 	}
 
-        if(pathPolys[pathPolyCount - 1] == endLookup.polyRef)
+        if(forceEndpointPartial)
+        {
+                result.status = PATH_QUERY_STATUS_PARTIAL;
+                result.detail = (endpointProjectionReason != NULL) ? endpointProjectionReason : "partial_clamped";
+                result.acceptedPartial = true;
+        }
+        else if(pathPolys[pathPolyCount - 1] == endLookup.polyRef)
 	{
 		result.status = PATH_QUERY_STATUS_COMPLETE;
 		result.detail = "complete";

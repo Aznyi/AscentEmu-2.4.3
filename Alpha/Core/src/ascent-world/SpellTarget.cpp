@@ -398,33 +398,68 @@ void Spell::SpellTargetSingleTargetEnemy(uint32 i, uint32 j)
 	else
 		SafeAddTarget(tmpMap, pTarget->GetGUID());
 
-	if(m_spellInfo->EffectChainTarget[i])
+	if(m_spellInfo->EffectChainTarget[i] && pTarget)
 	{
-		uint32 jumps=m_spellInfo->EffectChainTarget[i]-1;
-		float range=GetMaxRange(dbcSpellRange.LookupEntry(m_spellInfo->rangeIndex));//this is probably wrong
-		range*=range;
-		std::set<Object*>::iterator itr;
-		for( itr = m_caster->GetInRangeSetBegin(); itr != m_caster->GetInRangeSetEnd(); itr++ )
+		uint32 jumps = m_spellInfo->EffectChainTarget[i] - 1;
+		float jumpRangeSq = GetMaxRange(dbcSpellRange.LookupEntry(m_spellInfo->rangeIndex));
+		jumpRangeSq *= jumpRangeSq;
+
+		// Each jump originates from the previous target, not the caster.
+		float originX = pTarget->GetPositionX();
+		float originY = pTarget->GetPositionY();
+		float originZ = pTarget->GetPositionZ();
+
+		while(jumps--)
 		{
-			if((*itr)->GetGUID()==m_targets.m_unitTarget)
-				continue;
-			if( !((*itr)->IsUnit()) || !((Unit*)(*itr))->isAlive())
-				continue;
+			Unit* bestTarget = NULL;
+			float bestDistSq = jumpRangeSq + 1.0f;
 
-			if(IsInrange(m_caster->GetPositionX(),m_caster->GetPositionY(),m_caster->GetPositionZ(),(*itr),range))
+			for(std::set<Object*>::iterator itr = m_caster->GetInRangeSetBegin(); itr != m_caster->GetInRangeSetEnd(); ++itr)
 			{
-				if(isAttackable(u_caster,(Unit*)(*itr)))
-				{
-					did_hit_result = DidHit(i,((Unit*)*itr));
-					if(did_hit_result==SPELL_DID_HIT_SUCCESS)
-						SafeAddTarget(tmpMap, (*itr)->GetGUID());
-					else
-						SafeAddModeratedTarget((*itr)->GetGUID(), did_hit_result);
+				if(!(*itr)->IsUnit() || !static_cast<Unit*>(*itr)->isAlive())
+					continue;
+				if(!isAttackable(u_caster, static_cast<Unit*>(*itr)))
+					continue;
 
-					if(!--jumps)
-						return;
-				}
+				uint64 guid = (*itr)->GetGUID();
+				if(guid == m_targets.m_unitTarget)
+					continue;
+				bool alreadyChained = false;
+				for(TargetsList::iterator tItr = tmpMap->begin(); tItr != tmpMap->end(); ++tItr)
+					if(*tItr == guid) { alreadyChained = true; break; }
+				if(alreadyChained)
+					continue;
+
+				float dx = (*itr)->GetPositionX() - originX;
+				float dy = (*itr)->GetPositionY() - originY;
+				float dz = (*itr)->GetPositionZ() - originZ;
+				float distSq = dx * dx + dy * dy + dz * dz;
+				if(distSq > jumpRangeSq || distSq >= bestDistSq)
+					continue;
+
+#ifdef COLLISION
+				if(u_caster && u_caster->GetMapId() == (*itr)->GetMapId() &&
+					!CollideInterface.CheckLOS(u_caster->GetMapId(),
+						originX, originY, originZ + 2.0f,
+						(*itr)->GetPositionX(), (*itr)->GetPositionY(), (*itr)->GetPositionZ() + 2.0f))
+					continue;
+#endif
+				bestDistSq = distSq;
+				bestTarget = static_cast<Unit*>(*itr);
 			}
+
+			if(!bestTarget)
+				break;
+
+			did_hit_result = DidHit(i, bestTarget);
+			if(did_hit_result == SPELL_DID_HIT_SUCCESS)
+				SafeAddTarget(tmpMap, bestTarget->GetGUID());
+			else
+				SafeAddModeratedTarget(bestTarget->GetGUID(), did_hit_result);
+
+			originX = bestTarget->GetPositionX();
+			originY = bestTarget->GetPositionY();
+			originZ = bestTarget->GetPositionZ();
 		}
 	}
 }
@@ -548,12 +583,19 @@ void Spell::SpellTargetInFrontOfCaster(uint32 i, uint32 j)
 			{
 				if(isAttackable(u_caster, (Unit*)(*itr)))
 				{
+#ifdef COLLISION
+					if( u_caster && u_caster->GetMapId() == (*itr)->GetMapId() &&
+						!CollideInterface.CheckLOS( u_caster->GetMapId(),
+							m_caster->GetPositionX(), m_caster->GetPositionY(), m_caster->GetPositionZ() + 2.0f,
+							(*itr)->GetPositionX(), (*itr)->GetPositionY(), (*itr)->GetPositionZ() + 2.0f ) )
+						continue;
+#endif
 					did_hit_result = DidHit(i,((Unit*)*itr));
 					if(did_hit_result==SPELL_DID_HIT_SUCCESS)
 						SafeAddTarget(tmpMap,(*itr)->GetGUID());
 					else
 						SafeAddModeratedTarget((*itr)->GetGUID(), did_hit_result);
-				}	
+				}
 			}
 		}
 	}
@@ -941,12 +983,19 @@ void Spell::SpellTargetInFrontOfCaster2(uint32 i, uint32 j)
 			{
 				if(isAttackable(u_caster, (Unit*)(*itr)))
 				{
+#ifdef COLLISION
+					if( u_caster && u_caster->GetMapId() == (*itr)->GetMapId() &&
+						!CollideInterface.CheckLOS( u_caster->GetMapId(),
+							m_caster->GetPositionX(), m_caster->GetPositionY(), m_caster->GetPositionZ() + 2.0f,
+							(*itr)->GetPositionX(), (*itr)->GetPositionY(), (*itr)->GetPositionZ() + 2.0f ) )
+						continue;
+#endif
 					did_hit_result = DidHit(i,((Unit*)*itr));
 					if(did_hit_result==SPELL_DID_HIT_SUCCESS)
 						SafeAddTarget(tmpMap,(*itr)->GetGUID());
 					else
 						SafeAddModeratedTarget((*itr)->GetGUID(), did_hit_result);
-				}	
+				}
 			}
 		}
 	}

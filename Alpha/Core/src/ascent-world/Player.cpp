@@ -5041,14 +5041,8 @@ bool Player::CanSee(Object* obj) // * Invisibility & Stealth Detection - Partha 
 
 					if(isInFront(pObj)) // stealthed player is in front of us
 					{
-						// Detection Range = 5yds + (Detection Skill - Stealth Skill)/5
-						if(getLevel() < 70)
-							detectRange = 5.0f + getLevel() + 0.2f * (float)(GetStealthDetectBonus() - pObj->GetStealthLevel());
-						else
-							detectRange = 75.0f + 0.2f * (float)(GetStealthDetectBonus() - pObj->GetStealthLevel());
-						// Hehe... stealth skill is increased by 5 each level and detection skill is increased by 5 each level too.
-						// This way, a level 70 should easily be able to detect a level 4 rogue (level 4 because that's when you get stealth)
-						//	detectRange += 0.2f * ( getLevel() - pObj->getLevel() );
+						// Blizzlike TBC formula: 5 + (detectBonus - stealthLevel) / 5 yards.
+						detectRange = 5.0f + (float)(GetStealthDetectBonus() - pObj->GetStealthLevel()) / 5.0f;
 						if(detectRange < 1.0f) detectRange = 1.0f; // Minimum Detection Range = 1yd
 					}
 					else // stealthed player is behind us
@@ -5634,7 +5628,9 @@ int32 Player::CanShootRangedWeapon( uint32 spellid, Unit* target, bool autoshot 
 
 	// Check if in line of sight (need collision detection).
 #ifdef COLLISION
-	if (GetMapId() == target->GetMapId() && !CollideInterface.CheckLOS(GetMapId(),GetPositionNC(),target->GetPositionNC()))
+	if (GetMapId() == target->GetMapId() && !CollideInterface.CheckLOS(GetMapId(),
+		GetPositionX(), GetPositionY(), GetPositionZ() + 2.0f,
+		target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + 2.0f))
 		return SPELL_FAILED_LINE_OF_SIGHT;
 #endif
 

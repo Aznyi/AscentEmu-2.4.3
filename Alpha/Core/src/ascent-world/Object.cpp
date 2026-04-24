@@ -1011,11 +1011,12 @@ void Object::RemoveFromWorld(bool free_guid)
 {
 	ASSERT(m_mapMgr);
 	MapMgr * m = m_mapMgr;
-	m_mapMgr = 0;
 
 	mSemaphoreTeleport = true;
 
 	m->RemoveObject(this, free_guid);
+
+	m_mapMgr = 0;
 	
 	// update our event holder
 	event_Relocate();
@@ -1444,8 +1445,9 @@ bool Object::isInBack(Object* target)
 	if(target == NULL)
 		return false;
 
-	// Keep back-attack logic aligned with the shared front-facing check.
-	return !target->isInFront(this);
+	// "target is in my back arc" is the symmetric counterpart of isInFront:
+	// target is NOT within my forward hemisphere.
+	return !isInFront(target);
 }
 bool Object::isInArc(Object* target , float angle) // angle in degrees
 {
