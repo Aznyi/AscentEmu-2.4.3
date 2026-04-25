@@ -3301,7 +3301,9 @@ uint8 Spell::CanCast(bool tolerate)
 	// set up our max Range
 	// The +2.52 tolerance applied at the range check below covers Blizzard's intended
 	// client-server movement tolerance; a per-ping dynamic extension is exploitable.
-	float maxRange = GetMaxRange( dbcSpellRange.LookupEntry( m_spellInfo->rangeIndex ) );
+	SpellRange* spellRange = dbcSpellRange.LookupEntry( m_spellInfo->rangeIndex );
+	float maxRange = GetMaxRange( spellRange );
+	float minRange = GetSpellMinimumRange( m_spellInfo, spellRange, p_caster != NULL );
 	if( m_spellInfo->SpellGroupType && u_caster != NULL )
 	{
 		SM_FFValue( u_caster->SM_FRange, &maxRange, m_spellInfo->SpellGroupType );
@@ -3334,6 +3336,9 @@ uint8 Spell::CanCast(bool tolerate)
 		{
 			// Partha: +2.52yds to max range, this matches the range the client is calculating.
 			// see extra/supalosa_range_research.txt for more info
+
+			if( minRange > 0.0f && m_caster->CalcDistance( m_caster, target ) < minRange )
+				return SPELL_FAILED_TOO_CLOSE;
 
 			if( tolerate ) // add an extra 33% to range on final check (squared = 1.78x)
 			{

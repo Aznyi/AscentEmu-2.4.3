@@ -5643,7 +5643,7 @@ int32 Player::CanShootRangedWeapon( uint32 spellid, Unit* target, bool autoshot 
 	uint8 fail = 0;
 	uint32 rIndex = autoshot ? 114 : spellinfo->rangeIndex;
 	SpellRange* range = dbcSpellRange.LookupEntry( rIndex );
-	float minrange = GetMinRange( range );
+	float minrange = GetSpellMinimumRange( spellinfo, range, true );
 	float dist = CalcDistance( this, target );
 	float maxr = GetMaxRange( range ) + 2.52f;
 
@@ -5671,9 +5671,8 @@ int32 Player::CanShootRangedWeapon( uint32 spellid, Unit* target, bool autoshot 
 	//sLog.outString( "Bonus range = %f" , bonusRange );
 
 	// Check for too close
-	if( spellid != SPELL_RANGED_WAND )//no min limit for wands
-		if( minrange > dist )
-			fail = SPELL_FAILED_TOO_CLOSE;
+	if( minrange > dist )
+		fail = SPELL_FAILED_TOO_CLOSE;
 	
 	if( dist > maxr )
 	{

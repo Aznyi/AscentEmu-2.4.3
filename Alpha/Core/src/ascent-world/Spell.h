@@ -591,6 +591,29 @@ enum SpellTargetType
 #define SPELL_RANGED_THROW      2764
 #define SPELL_RANGED_WAND       5019
 
+ASCENT_INLINE bool IsPlayerRangedWeaponMinimumRangeSpell(SpellEntry* sp)
+{
+	if(sp == NULL || sp->Id == SPELL_RANGED_WAND)
+		return false;
+
+	if(sp->Id == SPELL_RANGED_GENERAL || sp->Id == SPELL_RANGED_THROW || sp->Id == 75)
+		return true;
+
+	return sp->Spell_Dmg_Type == SPELL_DMG_TYPE_RANGED && (sp->AttributesExB & FLAGS3_REQ_RANGED_WEAPON);
+}
+
+ASCENT_INLINE float GetSpellMinimumRange(SpellEntry* sp, SpellRange* range, bool playerCast)
+{
+	float minRange = range != NULL ? GetMinRange(range) : 0.0f;
+
+	// TBC 2.4.3 player ranged weapon attacks have a 5yd minimum range even when
+	// the shipped range row in this DBC reports 0yd as its minimum.
+	if(minRange <= 0.0f && playerCast && IsPlayerRangedWeaponMinimumRangeSpell(sp))
+		minRange = 5.0f;
+
+	return minRange;
+}
+
 #pragma pack(push,1)
 struct TeleportCoords
 {
