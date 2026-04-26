@@ -30,6 +30,34 @@ typedef struct
 ASCENT_INLINE static void swap32(uint32* p) { *p = ((*p >> 24 & 0xff)) | ((*p >> 8) & 0xff00) | ((*p << 8) & 0xff0000) | (*p << 24); }
 #endif
 
+static const uint32 LOGONCOMM_MAX_PACKET_SIZE = 1024 * 1024;
+
+static bool LogonPacketHasBytes(WorldPacket & data, size_t bytes, const char * handler)
+{
+	if(data.rpos() <= data.size() && bytes <= data.size() - data.rpos())
+		return true;
+
+	Log.Error("LogonCommClient", "%s received short packet opcode=%u size=%u rpos=%u need=%u",
+		handler, data.GetOpcode(), (uint32)data.size(), (uint32)data.rpos(), (uint32)bytes);
+	return false;
+}
+
+static bool LogonPacketHasCStringAt(WorldPacket & data, size_t offset, const char * handler)
+{
+	if(offset < data.size())
+	{
+		for(size_t i = offset; i < data.size(); ++i)
+		{
+			if(data.contents()[i] == 0)
+				return true;
+		}
+	}
+
+	Log.Error("LogonCommClient", "%s received unterminated string opcode=%u size=%u offset=%u",
+		handler, data.GetOpcode(), (uint32)data.size(), (uint32)offset);
+	return false;
+}
+
 LogonCommClientSocket::LogonCommClientSocket(SOCKET fd) : Socket(fd, 724288, 262444)
 {
 	// do nothing
@@ -67,6 +95,14 @@ void LogonCommClientSocket::OnRead()
 			// convert network byte order
 			swap32(&remaining);
 #endif
+
+			if(remaining > LOGONCOMM_MAX_PACKET_SIZE)
+			{
+				Log.Error("LogonCommClient", "Disconnecting logon socket: packet opcode=%u size=%u exceeds max=%u",
+					opcode, remaining, LOGONCOMM_MAX_PACKET_SIZE);
+				Disconnect();
+				return;
+			}
 		}
 
 		// do we have a full packet?
@@ -118,7 +154,8 @@ void LogonCommClientSocket::HandlePacket(WorldPacket & recvData)
 
 	if(recvData.GetOpcode() >= RMSG_COUNT || Handlers[recvData.GetOpcode()] == 0)
 	{
-		printf("Got unknwon packet from logoncomm: %u\n", recvData.GetOpcode());
+		Log.Error("LogonCommClient", "Unknown packet opcode=%u size=%u authenticated=%u",
+			recvData.GetOpcode(), (uint32)recvData.size(), authenticated);
 		return;
 	}
 
@@ -127,9 +164,20 @@ void LogonCommClientSocket::HandlePacket(WorldPacket & recvData)
 
 void LogonCommClientSocket::HandleRegister(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 8, "HandleRegister"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint32 realmlid;
 	uint32 error;
 	string realmname;
+	if(!LogonPacketHasCStringAt(recvData, recvData.rpos() + 8, "HandleRegister"))
+	{
+		Disconnect();
+		return;
+	}
 	recvData >> error >> realmlid >> realmname;
 
 	Log.Notice("LogonCommClient", "Realm `%s` registered as realm %u.", realmname.c_str(), realmlid);
@@ -139,6 +187,12 @@ void LogonCommClientSocket::HandleRegister(WorldPacket & recvData)
 
 void LogonCommClientSocket::HandleSessionInfo(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 4, "HandleSessionInfo"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint32 request_id;
 	recvData >> request_id;
 
@@ -180,7 +234,11 @@ void LogonCommClientSocket::SendPacket(WorldPacket * data, bool no_crypto)
 	logonpacket header;
 	bool rv;
 	if(!m_connected || m_deleted)
+	{
+		Log.Warning("LogonCommClient", "Dropping send opcode=%u size=%u on disconnected/deleted socket.",
+			data ? data->GetOpcode() : 0, data ? (uint32)data->size() : 0);
 		return;
+	}
 
 	BurstBegin();
 
@@ -213,16 +271,15 @@ void LogonCommClientSocket::SendPacket(WorldPacket * data, bool no_crypto)
 
 void LogonCommClientSocket::OnDisconnect()
 {
+	Log.Warning("LogonCommClient", "Disconnected from logon server.");
 	if(_id != 0)
 	{
-		printf("Calling ConnectionDropped() due to OnDisconnect().\n");
 		sLogonCommHandler.ConnectionDropped(_id);	
 	}
 }
 
 LogonCommClientSocket::~LogonCommClientSocket()
 {
-
 }
 
 void LogonCommClientSocket::SendChallenge()
@@ -242,6 +299,12 @@ void LogonCommClientSocket::SendChallenge()
 
 void LogonCommClientSocket::HandleAuthResponse(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 1, "HandleAuthResponse"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint8 result;
 	recvData >> result;
 	if(result != 1)
@@ -269,6 +332,12 @@ void LogonCommClientSocket::UpdateAccountCount(uint32 account_id, uint8 add)
 
 void LogonCommClientSocket::HandleRequestAccountMapping(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 4, "HandleRequestAccountMapping"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint32 t= getMSTime();
 	uint32 realm_id;
 	uint32 account_id;
@@ -391,6 +460,12 @@ void LogonCommClientSocket::CompressAndSend(ByteBuffer & uncompressed)
 
 void LogonCommClientSocket::HandleDisconnectAccount(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 4, "HandleDisconnectAccount"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint32 id;
 	recvData >> id;
 
@@ -402,6 +477,12 @@ void LogonCommClientSocket::HandleDisconnectAccount(WorldPacket & recvData)
 void ConsoleAuthCallback(uint32 request, uint32 result);
 void LogonCommClientSocket::HandleConsoleAuthResult(WorldPacket & recvData)
 {
+	if(!LogonPacketHasBytes(recvData, 8, "HandleConsoleAuthResult"))
+	{
+		Disconnect();
+		return;
+	}
+
 	uint32 requestid, result;
 	recvData >> requestid >> result;
 

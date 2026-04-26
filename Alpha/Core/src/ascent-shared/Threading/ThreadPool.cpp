@@ -23,6 +23,7 @@
 #ifdef WIN32
 
 	#include <process.h>
+	#include "../CrashHandler.h"
 
 #else
 	
@@ -270,6 +271,7 @@ void CThreadPool::Shutdown()
 
 static unsigned long WINAPI thread_proc(void* param)
 {
+	THREAD_TRY_EXECUTION2
 	Thread * t = (Thread*)param;
 	t->SetupMutex.Acquire();
 	uint32 tid = t->ControlInterface.GetId();
@@ -307,6 +309,8 @@ static unsigned long WINAPI thread_proc(void* param)
 
 	// not reached
 	return 0;
+	THREAD_HANDLE_CRASH2
+	return 1;
 }
 
 Thread * CThreadPool::StartThread(ThreadBase * ExecutionTarget)

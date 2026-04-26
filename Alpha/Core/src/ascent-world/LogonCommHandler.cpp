@@ -19,6 +19,7 @@
 
 #include "StdAfx.h"
 initialiseSingleton(LogonCommHandler);
+
 LogonCommHandler::LogonCommHandler()
 {
 	idhigh = 1;
@@ -112,7 +113,6 @@ public:
 			Sleep( 3000 );
 #endif
 		}
-
 		return true;
 	}
 
@@ -348,8 +348,7 @@ void LogonCommHandler::ConnectionDropped(uint32 ID)
 	{
 		if(itr->first->ID == ID && itr->second != 0)
 		{
-			sLog.outColor(TNORMAL, " >> realm id %u connection was dropped unexpectedly. reconnecting next loop.", ID);
-			sLog.outColor(TNORMAL, "\n");
+			Log.Warning("LogonCommClient", "Connection to logonserver id %u dropped unexpectedly. Reconnecting next loop.", ID);
 			itr->second = 0;
 			break;
 		}
@@ -439,6 +438,9 @@ void LogonCommHandler::LoadRealmConfiguration()
 	ls->Name = Config.RealmConfig.GetStringDefault("LogonServer", "Name", "UnkLogon");
 	ls->Address = Config.RealmConfig.GetStringDefault("LogonServer", "Address", "127.0.0.1");
 	ls->Port = Config.RealmConfig.GetIntDefault("LogonServer", "Port", 8093);
+	ls->ServerID = 0;
+	ls->RetryTime = 0;
+	ls->Registered = false;
 	servers.insert(ls);
 
 	uint32 realmcount = Config.RealmConfig.GetIntDefault("LogonServer", "RealmCount", 1);
@@ -456,6 +458,7 @@ void LogonCommHandler::LoadRealmConfiguration()
 //			realm->Colour = Config.RealmConfig.GetIntVA("Colour", 1, "Realm%u", i);
 			realm->TimeZone = Config.RealmConfig.GetIntVA("TimeZone", 1, "Realm%u", i);
 			realm->Population = Config.RealmConfig.GetFloatVA("Population", 0, "Realm%u", i);
+			realm->Lock = (uint8)Config.RealmConfig.GetIntVA("Lock", 0, "Realm%u", i);
 			string rt = Config.RealmConfig.GetStringVA("Icon", "Normal", "Realm%u", i);
 			uint32 type;
 

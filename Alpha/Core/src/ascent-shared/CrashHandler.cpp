@@ -51,11 +51,67 @@ Mutex m_crashLock;
 
 #include <stdio.h>
 #include <time.h>
+#include <signal.h>
+#include <exception>
+#include <stdlib.h>
 //#include <windows.h>
 #include "Log.h"
 #include <tchar.h>
 
 bool ON_CRASH_BREAK_DEBUGGER;
+static volatile LONG g_handlingFatalExit = 0;
+
+LONG WINAPI AscentUnhandledExceptionFilter(PEXCEPTION_POINTERS pExceptPtrs)
+{
+	return HandleCrash(pExceptPtrs);
+}
+
+static void ForceCrashDump(const char * reason)
+{
+	OutputCrashLogLine("Fatal runtime path reached: %s thread=%u", reason, GetCurrentThreadId());
+	if(InterlockedExchange(&g_handlingFatalExit, 1) != 0)
+		return;
+
+	__try
+	{
+		RaiseException(0xE0000001, EXCEPTION_NONCONTINUABLE, 0, NULL);
+	}
+	__except(HandleCrash(GetExceptionInformation()))
+	{
+	}
+}
+
+static void AscentTerminateHandler()
+{
+	ForceCrashDump("std::terminate");
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+static void AscentPurecallHandler()
+{
+	ForceCrashDump("pure virtual function call");
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+static void AscentInvalidParameterHandler(const wchar_t * expression, const wchar_t * function, const wchar_t * file, unsigned int line, uintptr_t)
+{
+	OutputCrashLogLine("Invalid parameter expression=%S function=%S file=%S line=%u",
+		expression ? expression : L"<null>", function ? function : L"<null>", file ? file : L"<null>", line);
+	ForceCrashDump("invalid parameter");
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+static void AscentAbortSignalHandler(int signal)
+{
+	OutputCrashLogLine("CRT signal received: %d thread=%u", signal, GetCurrentThreadId());
+	ForceCrashDump("CRT signal");
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+static void AscentAtExitHandler()
+{
+	OutputCrashLogLine("Process exiting through CRT atexit handler thread=%u", GetCurrentThreadId());
+}
 
 void StartCrashHandler()
 {
@@ -88,6 +144,15 @@ void StartCrashHandler()
 #else
 	ON_CRASH_BREAK_DEBUGGER = (IsDebuggerPresent() == TRUE) ? true : false;
 #endif
+
+	SetUnhandledExceptionFilter(AscentUnhandledExceptionFilter);
+	std::set_terminate(AscentTerminateHandler);
+	_set_purecall_handler(AscentPurecallHandler);
+	_set_invalid_parameter_handler(AscentInvalidParameterHandler);
+	signal(SIGABRT, AscentAbortSignalHandler);
+	atexit(AscentAtExitHandler);
+	OutputCrashLogLine("Crash handler armed. dumps=CrashDumps, break_debugger=%u, thread=%u",
+		ON_CRASH_BREAK_DEBUGGER ? 1 : 0, GetCurrentThreadId());
 }
 
 
@@ -178,14 +243,16 @@ void echo(const char * format, ...)
 	va_list ap;
 	va_start(ap, format);
 	vprintf(format, ap);
+	va_end(ap);
+
 	std::string s = FormatOutputString("logs", "CrashLog", false);
 	FILE * m_file = fopen(s.c_str(), "a");
 	if(!m_file)
 	{
-		va_end(ap);
 		return;
 	}
 
+	va_start(ap, format);
 	vfprintf(m_file, format, ap);
 	fclose(m_file);
 	va_end(ap);
@@ -198,6 +265,16 @@ void PrintCrashInformation(PEXCEPTION_POINTERS except)
     echo("   %s at %p\n",
         GetExceptionDescription(except->ExceptionRecord->ExceptionCode),
         except->ExceptionRecord->ExceptionAddress);
+	echo("   Exception code: 0x%08X thread: %u\n",
+		except->ExceptionRecord->ExceptionCode, GetCurrentThreadId());
+
+	MEMORY_BASIC_INFORMATION mbi;
+	if(VirtualQuery(except->ExceptionRecord->ExceptionAddress, &mbi, sizeof(mbi)) == sizeof(mbi))
+	{
+		TCHAR module[MAX_PATH];
+		if(GetModuleFileName((HMODULE)mbi.AllocationBase, module, MAX_PATH) > 0)
+			echo("   Module: %s base: %p\n", module, mbi.AllocationBase);
+	}
 #ifdef REPACK
 	echo("%s repack by %s has crashed. Visit %s for support.", REPACK, REPACK_AUTHOR, REPACK_WEBSITE);
 #endif
@@ -312,7 +389,10 @@ int __cdecl HandleCrash(PEXCEPTION_POINTERS pExceptPtrs)
 		strcpy(modname, "UNKNOWN");
 
 	char * mname = strrchr(modname, '\\');
-	(void*)mname++;	 // Remove the last 
+	if(mname)
+		++mname;	 // Remove the last slash.
+	else
+		mname = modname;
 
 	sprintf(filename, "CrashDumps\\dump-%s-%u-%u-%u-%u-%u-%u-%u.dmp",
 		mname, pTime->tm_year+1900, pTime->tm_mon, pTime->tm_mday,
@@ -338,6 +418,7 @@ int __cdecl HandleCrash(PEXCEPTION_POINTERS pExceptPtrs)
 	if(hDump == INVALID_HANDLE_VALUE)
 	{
 		MessageBox(0, "Could not open crash dump file.", "Crash dump error.", MB_OK);
+		OutputCrashLogLine("Crash dump open failed: %s gle=%u", filename, GetLastError());
 	}
 	else
 	{
@@ -347,8 +428,10 @@ int __cdecl HandleCrash(PEXCEPTION_POINTERS pExceptPtrs)
 		info.ThreadId = GetCurrentThreadId();
 
 
-		MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
+		BOOL dump_ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(),
 			hDump, MiniDumpWithIndirectlyReferencedMemory, &info, 0, 0);
+		OutputCrashLogLine("MiniDumpWriteDump %s: %s gle=%u",
+			dump_ok ? "succeeded" : "failed", filename, dump_ok ? 0 : GetLastError());
 
 		CloseHandle(hDump);
 	}
