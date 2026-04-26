@@ -208,16 +208,25 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\InstanceScripts\EscortCreatureAI.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Instance_AlteracValley.cpp" />
+    <ClCompile Include="..\src\InstanceScripts\Instance_BloodFurnace.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Instance_Deadmines.cpp" />
+    <ClCompile Include="..\src\InstanceScripts\Instance_HellfireRamparts.cpp" />
+    <ClCompile Include="..\src\InstanceScripts\Instance_ShadowfangKeep.cpp" />
+    <ClCompile Include="..\src\InstanceScripts\InstanceContext.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_BlackwingLair.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_MoltenCore.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_Naxxramas.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_OnyxiasLair.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Raid_ZulGurub.cpp" />
+    <ClCompile Include="..\src\InstanceScripts\ScriptedCreatureAI.cpp" />
     <ClCompile Include="..\src\InstanceScripts\Setup.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\src\InstanceScripts\EscortCreatureAI.h" />
+    <ClInclude Include="..\src\InstanceScripts\InstanceContext.h" />
+    <ClInclude Include="..\src\InstanceScripts\ScriptedCreatureAI.h" />
     <ClInclude Include="..\src\InstanceScripts\Setup.h" />
   </ItemGroup>
   <Import Project="..\..\..\win\Ascent.Build.targets" Condition="Exists('..\..\..\win\Ascent.Build.targets')" />

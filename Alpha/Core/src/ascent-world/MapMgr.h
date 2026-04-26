@@ -39,6 +39,7 @@ class Transporter;
 class Corpse;
 class CBattleground;
 class Instance;
+class InstanceScript;
 
 
 enum MapMgrTimers
@@ -312,6 +313,7 @@ public:
 	void SendChatMessageToCellPlayers(Object * obj, WorldPacket * packet, uint32 cell_radius, uint32 langpos, int32 lang, WorldSession * originator);
 
 	Instance * pInstance;
+    InstanceScript* m_instanceScript;
 	void BeginInstanceExpireCountdown();
 	void HookOnAreaTrigger(Player * plr, uint32 id);
 

@@ -85,6 +85,7 @@ MapMgr::MapMgr(Map *map, uint32 mapId, uint32 instanceid) : CellHandler<MapCell>
 	InactiveMoveTime = 0;
 	mLoopCounter=0;
 	pInstance = NULL;
+    m_instanceScript = NULL;
 	thread_kill_only = false;
 	thread_running = false;
 }
@@ -95,6 +96,11 @@ MapMgr::~MapMgr()
 	_shutdown=true;
 	sEventMgr.RemoveEvents(this);
 	delete ScriptInterface;
+    if (m_instanceScript != NULL)
+    {
+        m_instanceScript->Destroy();  // self-deletes from DLL heap; do NOT delete here
+        m_instanceScript = NULL;
+    }
 	
 	// Remove objects
 	if(_cells)
